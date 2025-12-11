@@ -1,8 +1,30 @@
-# Probar
+<p align="center">
+  <img src="https://raw.githubusercontent.com/paiml/probar/main/docs/assets/probar-hero.svg" alt="Probar Testing Framework" width="800"/>
+</p>
 
-[![Crates.io](https://img.shields.io/crates/v/probar.svg)](https://crates.io/crates/probar)
-[![Documentation](https://docs.rs/probar/badge.svg)](https://docs.rs/probar)
-[![License](https://img.shields.io/crates/l/probar.svg)](LICENSE)
+<h1 align="center">Probar</h1>
+
+<p align="center">
+  <strong>Rust-Native Testing Framework for WASM Games</strong><br>
+  <em>Pure Rust • Zero JavaScript • 95%+ Coverage</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/paiml/probar/actions/workflows/ci.yml">
+    <img src="https://github.com/paiml/probar/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
+  <a href="https://crates.io/crates/probar">
+    <img src="https://img.shields.io/crates/v/probar.svg" alt="Crates.io">
+  </a>
+  <a href="https://docs.rs/probar">
+    <img src="https://docs.rs/probar/badge.svg" alt="Documentation">
+  </a>
+  <a href="https://paiml.github.io/probar/">
+    <img src="https://img.shields.io/badge/book-mdbook-blue" alt="Book">
+  </a>
+</p>
+
+---
 
 **Probar** (Spanish: "to test/prove") is a Rust-native testing framework for WASM games, providing a pure Rust alternative to Playwright/Puppeteer.
 
