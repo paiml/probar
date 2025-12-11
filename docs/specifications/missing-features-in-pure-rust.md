@@ -752,39 +752,323 @@ async fn test_user_login(browser: &Browser, db: &Database) -> ProbarResult<()> {
 
 ---
 
+## Category 7: EDD (Equation-Driven Development) Support
+
+> **PRIORITY: P0 (CRITICAL)** - Required for simular EDD compliance
+>
+> These features enable "100% provable UX" for simulation interfaces as required
+> by the EDD specification. See GitHub Issues #1-4 for detailed requirements.
+
+#### Feature 21: TUI Testing for Ratatui Applications
+
+**Priority:** P0 (Critical)
+**Complexity:** High
+**Pure Rust Feasibility:** ✅ Yes
+**GitHub Issue:** #1
+
+**Description:** Add TUI (Terminal User Interface) testing support for ratatui-based applications, enabling 100% provable UX for terminal simulations.
+
+**Rust Crates Required:**
+- `ratatui` (v0.28) - Terminal UI framework
+- `crossterm` (v0.28) - Terminal manipulation
+
+**API Design:**
+```rust
+/// TUI test backend for capturing frames
+pub struct TuiTestBackend {
+    buffer: Buffer,
+    width: u16,
+    height: u16,
+}
+
+/// TUI test assertions
+#[macro_export]
+macro_rules! assert_contains {
+    ($frame:expr, $text:expr) => { ... };
+}
+
+#[macro_export]
+macro_rules! assert_matches {
+    ($frame:expr, $pattern:expr) => { ... };
+}
+
+#[macro_export]
+macro_rules! send_key {
+    ($tui:expr, $key:expr) => { ... };
+}
+
+/// TUI snapshot testing
+pub struct TuiSnapshot {
+    frames: Vec<Buffer>,
+}
+
+impl TuiSnapshot {
+    pub fn capture(&mut self, backend: &TuiTestBackend);
+    pub fn assert_matches(&self, golden: &Path) -> ProbarResult<()>;
+    pub fn save_golden(&self, path: &Path) -> ProbarResult<()>;
+}
+```
+
+**Toyota Way Application:**
+- **Poka-Yoke**: Type-safe frame capture with Buffer type
+- **Muda**: Direct buffer comparison without rendering overhead
+- **Genchi Genbutsu**: TestBackend reflects actual terminal behavior
+
+---
+
+#### Feature 22: Equation Verification Assertions
+
+**Priority:** P0 (Critical)
+**Complexity:** Medium
+**Pure Rust Feasibility:** ✅ Yes
+**GitHub Issue:** #2
+
+**Description:** Specialized assertions for verifying simulation UIs correctly display mathematical equations, EMC references, and live computed values.
+
+**API Design:**
+```rust
+/// Assert equation text is displayed (Unicode math support)
+#[macro_export]
+macro_rules! assert_equation {
+    ($frame:expr, $equation:expr) => { ... };
+}
+
+/// Assert EMC (Equation Model Card) reference is visible
+#[macro_export]
+macro_rules! assert_emc_ref {
+    ($frame:expr, $ref:expr) => { ... };
+}
+
+/// Track value changes across frames
+pub struct ValueTracker {
+    name: String,
+    history: Vec<f64>,
+}
+
+impl ValueTracker {
+    pub fn new(name: &str) -> Self;
+    pub fn record(&mut self, value: f64);
+    pub fn assert_changed(&self) -> ProbarResult<()>;
+    pub fn assert_decreasing(&self) -> ProbarResult<()>;
+    pub fn assert_increasing(&self) -> ProbarResult<()>;
+}
+
+/// Assert units are displayed correctly
+#[macro_export]
+macro_rules! assert_unit {
+    ($frame:expr, $quantity:expr, $unit:expr) => { ... };
+}
+
+/// Assert falsification criterion status
+#[macro_export]
+macro_rules! assert_criterion_status {
+    ($frame:expr, $criterion:expr, passed: $passed:expr) => { ... };
+}
+```
+
+**Toyota Way Application:**
+- **Jidoka**: Fail-fast on equation mismatch
+- **Poka-Yoke**: Unicode normalization prevents false negatives
+- **Kaizen**: ValueTracker enables trend analysis
+
+---
+
+#### Feature 23: Deterministic Replay for Simulation UX
+
+**Priority:** P0 (Critical)
+**Complexity:** High
+**Pure Rust Feasibility:** ✅ Yes
+**GitHub Issue:** #3
+
+**Description:** Deterministic replay support ensuring same seed produces identical UI states.
+
+**Rust Crates Required:**
+- `serde_yaml` (v0.9) - YAML config loading
+- `sha2` (v0.10) - State hashing
+
+**API Design:**
+```rust
+/// Load simulation config from YAML (EDD requirement)
+#[macro_export]
+macro_rules! load_yaml {
+    ($path:expr) => { ... };
+}
+
+/// Record user interactions for replay
+pub struct SessionRecorder {
+    events: Vec<RecordedEvent>,
+    start_time: Instant,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct RecordedEvent {
+    timestamp_ms: u64,
+    event: InputEvent,
+}
+
+impl SessionRecorder {
+    pub fn new() -> Self;
+    pub fn record_key(&mut self, key: KeyCode);
+    pub fn record_mouse(&mut self, x: u16, y: u16, button: MouseButton);
+    pub fn save(&self, path: &Path) -> ProbarResult<()>;
+    pub fn load(path: &Path) -> ProbarResult<Self>;
+}
+
+/// Replay recorded session
+pub fn replay_session<T: TuiApp>(
+    app: &mut T,
+    session: &SessionRecorder,
+) -> ProbarResult<()>;
+
+/// Frame sequence for golden file comparison
+pub struct FrameSequence {
+    frames: Vec<Buffer>,
+    timestamps: Vec<u64>,
+}
+
+impl FrameSequence {
+    pub fn capture(&mut self, backend: &TuiTestBackend);
+    pub fn assert_matches(&self, golden: &Path) -> ProbarResult<()>;
+}
+
+/// Hash state for cross-platform verification
+pub fn hash_state<T: Serialize>(state: &T) -> String;
+
+/// Assert bitwise identical frames
+#[macro_export]
+macro_rules! assert_identical {
+    ($frame1:expr, $frame2:expr) => { ... };
+}
+```
+
+**Toyota Way Application:**
+- **Heijunka**: Consistent frame timing in replay
+- **Genchi Genbutsu**: YAML configs reflect actual experiment setup
+- **Jidoka**: Hash verification catches non-determinism
+
+---
+
+#### Feature 24: 100% UX Coverage Metrics
+
+**Priority:** P0 (Critical)
+**Complexity:** High
+**Pure Rust Feasibility:** ✅ Yes
+**GitHub Issue:** #4
+
+**Description:** UX coverage metrics enabling verification that 100% of simulation UI elements are tested.
+
+**API Design:**
+```rust
+/// Track UX element coverage
+pub struct UxCoverage {
+    elements: HashMap<String, bool>,
+    required_elements: Vec<String>,
+}
+
+impl UxCoverage {
+    pub fn track(elements: &[&str]) -> Self;
+    pub fn mark_tested(&mut self, element: &str);
+    pub fn assert_complete(&self) -> ProbarResult<()>;
+    pub fn coverage_percent(&self) -> f64;
+}
+
+/// Track interaction coverage
+pub struct InteractionCoverage {
+    interactions: HashMap<String, bool>,
+}
+
+impl InteractionCoverage {
+    pub fn track(interactions: &[(&str, &str)]) -> Self;  // (key, action)
+    pub fn test_key(&mut self, key: KeyCode, action: &str) -> ProbarResult<()>;
+    pub fn assert_complete(&self) -> ProbarResult<()>;
+}
+
+/// Track equation coverage from EMC
+pub struct EquationCoverage {
+    equations: HashMap<String, bool>,
+    criteria: HashMap<String, bool>,
+}
+
+impl EquationCoverage {
+    pub fn from_emc(emc_path: &Path) -> ProbarResult<Self>;
+    pub fn verify_equation(&mut self, name: &str, expected: &str) -> ProbarResult<()>;
+    pub fn verify_criterion(&mut self, name: &str) -> ProbarResult<()>;
+    pub fn assert_complete(&self) -> ProbarResult<()>;
+}
+
+/// Coverage report generation
+pub struct UxCoverageReport {
+    pub element_coverage: f64,
+    pub interaction_coverage: f64,
+    pub equation_coverage: f64,
+    pub total_coverage: f64,
+}
+
+impl UxCoverageReport {
+    pub fn generate(
+        ux: &UxCoverage,
+        interaction: &InteractionCoverage,
+        equation: &EquationCoverage,
+    ) -> Self;
+
+    pub fn save_html(&self, path: &Path) -> ProbarResult<()>;
+    pub fn save_json(&self, path: &Path) -> ProbarResult<()>;
+    pub fn generate_badge(&self, path: &Path) -> ProbarResult<()>;
+}
+
+/// Attribute for enforcing coverage threshold
+#[proc_macro_attribute]
+pub fn coverage(threshold: u8) { ... }
+```
+
+**Toyota Way Application:**
+- **Jidoka**: Automatic enforcement of 100% coverage
+- **Mieruka**: Visual coverage reports
+- **Kaizen**: Coverage trends over time
+
+---
+
 ## Implementation Roadmap
 
-### Phase 1: Core Media Generation (Weeks 1-2)
-- Feature 1: GIF Recording
-- Feature 2: PNG Export
-- Feature 5: CLI (basic)
+### Phase 0: EDD Compliance (PRIORITY - NOW)
+> **BLOCKING**: Required for simular EDD integration
 
-### Phase 2: Coverage & Reporting (Weeks 3-4)
-- Feature 11: LCOV Reports
-- Feature 12: HTML Coverage
-- Feature 13: Cobertura XML
+- Feature 21: TUI Testing for Ratatui (Issue #1)
+- Feature 22: Equation Verification Assertions (Issue #2)
+- Feature 23: Deterministic Replay (Issue #3)
+- Feature 24: 100% UX Coverage Metrics (Issue #4)
 
-### Phase 3: Advanced Media (Weeks 5-6)
-- Feature 3: SVG Export
-- Feature 4: MP4 Recording
-- Feature 9: Execution Tracing
+### Phase 1: Core Media Generation ✅ COMPLETED
+- Feature 1: GIF Recording ✅
+- Feature 2: PNG Export ✅
+- Feature 5: CLI (basic) ✅
 
-### Phase 4: Browser Enhancements (Weeks 7-8)
-- Feature 7: Network Interception
-- Feature 14: Context Management
-- Feature 15: Device Emulation
+### Phase 2: Coverage & Reporting ✅ COMPLETED
+- Feature 11: LCOV Reports ✅
+- Feature 12: HTML Coverage ✅
+- Feature 13: Cobertura XML ✅
 
-### Phase 5: Testing Patterns (Weeks 9-10)
-- Feature 17: Soft Assertions
-- Feature 18: Retry Assertions
-- Feature 19: Page Object Model
-- Feature 20: Fixture Management
+### Phase 3: Advanced Media ✅ COMPLETED
+- Feature 3: SVG Export ✅
+- Feature 4: MP4 Recording ✅
+- Feature 9: Execution Tracing (pending)
 
-### Phase 6: Advanced Features (Weeks 11-12)
+### Phase 4: Browser Enhancements (PARTIAL)
+- Feature 7: Network Interception (pending)
+- Feature 14: Context Management (pending)
+- Feature 15: Device Emulation ✅
+- Feature 16: Geolocation Mocking ✅
+
+### Phase 5: Testing Patterns ✅ COMPLETED
+- Feature 17: Soft Assertions ✅
+- Feature 18: Retry Assertions ✅
+- Feature 19: Page Object Model ✅
+- Feature 20: Fixture Management ✅
+
+### Phase 6: Advanced Features (pending)
 - Feature 6: Watch Mode
 - Feature 8: WebSocket Monitoring
 - Feature 10: Performance Profiling
-- Feature 16: Geolocation Mocking
 
 ---
 
