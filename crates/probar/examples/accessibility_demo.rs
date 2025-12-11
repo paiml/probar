@@ -204,7 +204,7 @@ fn demo_full_audit() {
 }
 
 // Helper functions
-fn pass_fail(passed: bool) -> &'static str {
+const fn pass_fail(passed: bool) -> &'static str {
     if passed {
         "PASS"
     } else {
@@ -212,7 +212,7 @@ fn pass_fail(passed: bool) -> &'static str {
     }
 }
 
-fn check_mark(enabled: bool) -> &'static str {
+const fn check_mark(enabled: bool) -> &'static str {
     if enabled {
         "[x]"
     } else {
@@ -220,7 +220,7 @@ fn check_mark(enabled: bool) -> &'static str {
     }
 }
 
-fn severity_label(severity: &Severity) -> &'static str {
+const fn severity_label(severity: &Severity) -> &'static str {
     match severity {
         Severity::Critical => "CRITICAL",
         Severity::Major => "MAJOR",

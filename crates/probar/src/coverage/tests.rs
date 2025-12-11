@@ -10,7 +10,8 @@
     clippy::float_cmp,
     clippy::single_char_pattern,
     clippy::needless_range_loop,
-    clippy::clone_on_copy
+    clippy::clone_on_copy,
+    unused_results
 )]
 
 use super::*;

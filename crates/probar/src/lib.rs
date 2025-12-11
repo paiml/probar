@@ -81,12 +81,50 @@ mod result;
     clippy::doc_markdown,
     clippy::if_not_else,
     clippy::ptr_as_ptr,
+    clippy::expect_used,
     unsafe_code
 )]
 mod runtime;
 mod simulation;
 mod snapshot;
 mod visual_regression;
+
+/// Page Object Model Support (Feature 19)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+mod page_object;
+
+/// Fixture Management (Feature 20)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+mod fixture;
+
+/// Device Emulation and Geolocation Mocking (Features 15-16)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod emulation;
+
+/// Media Generation Module (Spec: missing-features-in-pure-rust.md)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown,
+    clippy::cast_possible_truncation
+)]
+pub mod media;
 
 /// WASM Coverage Tooling (spec: probar-wasm-coverage-tooling.md)
 #[allow(
@@ -112,7 +150,11 @@ pub use accessibility::{
     ContrastAnalysis, ContrastPair, FlashDetector, FlashResult, FocusConfig, KeyboardIssue,
     Severity, MIN_CONTRAST_LARGE, MIN_CONTRAST_NORMAL, MIN_CONTRAST_UI,
 };
-pub use assertion::{Assertion, AssertionResult};
+pub use assertion::{
+    retry_contains, retry_eq, retry_none, retry_some, retry_true, Assertion,
+    AssertionCheckResult, AssertionFailure, AssertionMode, AssertionResult, AssertionSummary,
+    RetryAssertion, RetryConfig, RetryError, RetryResult, SoftAssertionError, SoftAssertions,
+};
 pub use bridge::{
     BridgeConnection, DiffRegion, EntitySnapshot, GameStateData, GameStateSnapshot, SnapshotCache,
     StateBridge, VisualDiff,
@@ -148,6 +190,10 @@ pub use simulation::{
 };
 pub use snapshot::{Snapshot, SnapshotConfig, SnapshotDiff};
 pub use visual_regression::{ImageDiffResult, VisualRegressionConfig, VisualRegressionTester};
+pub use page_object::{
+    PageObject, PageObjectBuilder, PageObjectInfo, PageRegistry, SimplePageObject, UrlMatcher,
+};
+pub use fixture::{Fixture, FixtureBuilder, FixtureManager, FixtureScope, FixtureState, SimpleFixture};
 
 /// Prelude for convenient imports
 pub mod prelude {
@@ -157,9 +203,11 @@ pub mod prelude {
     pub use super::browser::*;
     pub use super::driver::*;
     pub use super::event::*;
+    pub use super::fixture::*;
     pub use super::fuzzer::*;
     pub use super::harness::*;
     pub use super::locator::*;
+    pub use super::page_object::*;
     pub use super::reporter::*;
     pub use super::result::*;
     pub use super::runtime::*;

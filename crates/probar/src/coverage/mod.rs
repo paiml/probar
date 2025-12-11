@@ -27,6 +27,7 @@
 mod block;
 mod collector;
 mod executor;
+pub mod formatters;
 mod hypotheses;
 mod jidoka;
 mod memory;
@@ -37,6 +38,7 @@ mod thread_local;
 pub use block::{BlockId, EdgeId, FunctionId};
 pub use collector::{CoverageCollector, CoverageConfig, Granularity};
 pub use executor::{CoverageExecutor, SuperblockResult};
+pub use formatters::{CoberturaFormatter, HtmlFormatter, HtmlReportConfig, LcovFormatter, Theme};
 pub use hypotheses::{CoverageHypothesis, NullificationConfig, NullificationResult};
 pub use jidoka::{CoverageViolation, JidokaAction, TaintedBlocks};
 pub use memory::CoverageMemoryView;

@@ -1,6 +1,21 @@
 //! Assertions for test validation.
+//!
+//! This module provides assertion helpers for testing including:
+//! - Basic assertions (equality, boolean, etc.)
+//! - Soft assertions (collect multiple failures)
+//! - Retry assertions (poll until success or timeout)
+
+mod retry;
+mod soft;
 
 use std::fmt::Debug;
+
+// Re-export submodules
+pub use retry::{
+    retry_contains, retry_eq, retry_none, retry_some, retry_true, AssertionCheckResult,
+    RetryAssertion, RetryConfig, RetryError, RetryResult,
+};
+pub use soft::{AssertionFailure, AssertionMode, AssertionSummary, SoftAssertionError, SoftAssertions};
 
 /// Result of an assertion
 #[derive(Debug, Clone)]
@@ -32,6 +47,7 @@ impl AssertionResult {
 }
 
 /// Assertion helpers for testing
+#[derive(Debug)]
 pub struct Assertion;
 
 impl Assertion {

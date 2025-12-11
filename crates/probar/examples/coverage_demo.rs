@@ -13,7 +13,7 @@
 //!
 //! - Type-safe block identifiers (Poka-Yoke)
 //! - Thread-local buffering (Muda elimination)
-//! - Soft Jidoka (Stop vs LogAndContinue)
+//! - Soft Jidoka (Stop vs `LogAndContinue`)
 //! - Superblock tiling (Heijunka)
 //! - Popperian falsification methodology
 
@@ -132,7 +132,7 @@ fn demo_thread_local_buffering() {
     println!("  ✓ Batched flushes reduce synchronization overhead\n");
 }
 
-/// Demo 3: Soft Jidoka - Stop vs LogAndContinue
+/// Demo 3: Soft Jidoka - Stop vs `LogAndContinue`
 fn demo_soft_jidoka() {
     println!("┌─────────────────────────────────────────────────────────────────┐");
     println!("│ Demo 3: SOFT JIDOKA (Stop vs LogAndContinue)                    │");
@@ -179,7 +179,7 @@ fn demo_soft_jidoka() {
     // Tainted blocks tracker
     println!("\n  TaintedBlocks Tracker:");
     let mut tainted = TaintedBlocks::new();
-    tainted.taint(BlockId::new(5), overflow.clone());
+    tainted.taint(BlockId::new(5), overflow);
     tainted.record_violation(regression);
 
     println!("    Tainted blocks: {}", tainted.tainted_count());
@@ -231,8 +231,7 @@ fn demo_superblock_tiling() {
         superblocks
             .iter()
             .find(|sb| sb.contains(test_block))
-            .map(|sb| sb.id().as_u32())
-            .unwrap_or(0)
+            .map_or(0, |sb| sb.id().as_u32())
     );
 
     println!("\n  ✓ Superblocks group related blocks for efficient scheduling");

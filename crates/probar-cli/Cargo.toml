@@ -1,0 +1,39 @@
+[package]
+name = "probar-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Probar CLI: Command-line interface for WASM testing"
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "probar"
+path = "src/main.rs"
+
+[dependencies]
+# Core library
+probar = { path = "../probar" }
+
+# CLI framework
+clap = { workspace = true }
+console = { workspace = true }
+indicatif = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+assert_cmd = "2.0"
+predicates = "3.1"
+
+[lints]
+workspace = true

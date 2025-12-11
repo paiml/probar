@@ -25,6 +25,11 @@ serde_json = { workspace = true }
 image = { workspace = true }
 base64 = { workspace = true }
 
+# Media generation
+gif = { workspace = true }
+png = { workspace = true }
+mp4 = { workspace = true }
+
 # Optional CDP browser control
 chromiumoxide = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
@@ -40,6 +45,8 @@ probar-derive = { workspace = true, optional = true }
 [dev-dependencies]
 tokio = { workspace = true }
 async-trait = { workspace = true }
+proptest = { workspace = true }
+tempfile = { workspace = true }
 
 [[example]]
 name = "locator_demo"

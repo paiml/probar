@@ -107,6 +107,34 @@ pub enum ProbarError {
         message: String,
     },
 
+    /// Image processing error (resizing, encoding, etc.)
+    #[error("Image processing failed: {message}")]
+    ImageProcessing {
+        /// Error message
+        message: String,
+    },
+
+    /// Invalid state error (operation called in wrong state)
+    #[error("Invalid state: {message}")]
+    InvalidState {
+        /// Error message
+        message: String,
+    },
+
+    /// Video recording error
+    #[error("Video recording failed: {message}")]
+    VideoRecording {
+        /// Error message
+        message: String,
+    },
+
+    /// Fixture error (setup/teardown failed)
+    #[error("Fixture error: {message}")]
+    FixtureError {
+        /// Error message
+        message: String,
+    },
+
     /// I/O error
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),

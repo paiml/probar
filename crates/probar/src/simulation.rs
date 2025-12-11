@@ -694,4 +694,223 @@ mod tests {
             );
         }
     }
+
+    mod additional_coverage_tests {
+        use super::*;
+
+        #[test]
+        fn test_recording_mark_failed() {
+            let mut recording = SimulationRecording::new(SimulationConfig::default());
+            recording.mark_failed("Test error");
+
+            assert!(!recording.completed);
+            assert_eq!(recording.error, Some("Test error".to_string()));
+        }
+
+        #[test]
+        fn test_recording_mark_completed() {
+            let mut recording = SimulationRecording::new(SimulationConfig::default());
+            recording.mark_completed();
+
+            assert!(recording.completed);
+        }
+
+        #[test]
+        fn test_replay_result_diverged() {
+            let result = ReplayResult::diverged(50, 12345, 67890);
+
+            assert!(!result.determinism_verified);
+            assert_eq!(result.divergence_frame, Some(50));
+            assert_eq!(result.final_state_hash, 67890);
+            assert!(result.error.is_some());
+            assert!(result.error.unwrap().contains("diverged at frame 50"));
+        }
+
+        #[test]
+        fn test_game_state_touch_input() {
+            let mut state = SimulatedGameState::new(0);
+            state.player_x = 100.0;
+            state.player_y = 100.0;
+
+            // Touch far away - should move toward it
+            state.update(&[InputEvent::Touch {
+                x: 200.0,
+                y: 100.0,
+            }]);
+
+            assert!(state.player_x > 100.0, "Player should move toward touch");
+        }
+
+        #[test]
+        fn test_game_state_mouse_click_input() {
+            let mut state = SimulatedGameState::new(0);
+            state.player_x = 100.0;
+            state.player_y = 100.0;
+
+            // Click far away - should move toward it
+            state.update(&[InputEvent::MouseClick { x: 100.0, y: 200.0 }]);
+
+            assert!(state.player_y > 100.0, "Player should move toward click");
+        }
+
+        #[test]
+        fn test_game_state_touch_close_no_move() {
+            let mut state = SimulatedGameState::new(0);
+            state.player_x = 100.0;
+            state.player_y = 100.0;
+            let initial_x = state.player_x;
+            let initial_y = state.player_y;
+
+            // Touch very close - should not move (distance < 1.0)
+            state.update(&[InputEvent::Touch {
+                x: 100.5,
+                y: 100.5,
+            }]);
+
+            // Account for frame update effects on random state
+            assert!(
+                (state.player_x - initial_x).abs() < 6.0,
+                "Player should barely move"
+            );
+            assert!(
+                (state.player_y - initial_y).abs() < 6.0,
+                "Player should barely move"
+            );
+        }
+
+        #[test]
+        fn test_game_state_movement_keys() {
+            let mut state = SimulatedGameState::new(0);
+            state.player_x = 400.0;
+            state.player_y = 300.0;
+
+            // Test all movement keys
+            let initial_x = state.player_x;
+            state.update(&[InputEvent::key_press("ArrowRight")]);
+            assert!(state.player_x > initial_x, "ArrowRight should move right");
+
+            let initial_x = state.player_x;
+            state.update(&[InputEvent::key_press("ArrowLeft")]);
+            assert!(state.player_x < initial_x, "ArrowLeft should move left");
+
+            let initial_y = state.player_y;
+            state.update(&[InputEvent::key_press("ArrowDown")]);
+            assert!(state.player_y > initial_y, "ArrowDown should move down");
+
+            // Test WASD alternatives
+            let initial_x = state.player_x;
+            state.update(&[InputEvent::key_press("KeyD")]);
+            assert!(state.player_x > initial_x, "KeyD should move right");
+
+            let initial_y = state.player_y;
+            state.update(&[InputEvent::key_press("KeyW")]);
+            assert!(state.player_y < initial_y, "KeyW should move up");
+
+            let initial_y = state.player_y;
+            state.update(&[InputEvent::key_press("KeyS")]);
+            assert!(state.player_y > initial_y, "KeyS should move down");
+
+            let initial_x = state.player_x;
+            state.update(&[InputEvent::key_press("KeyA")]);
+            assert!(state.player_x < initial_x, "KeyA should move left");
+        }
+
+        #[test]
+        fn test_game_state_unknown_key() {
+            let mut state = SimulatedGameState::new(0);
+            state.player_x = 400.0;
+            state.player_y = 300.0;
+            let initial_x = state.player_x;
+            let initial_y = state.player_y;
+
+            state.update(&[InputEvent::key_press("Unknown")]);
+
+            // Should not move from key, but state still updates
+            assert_eq!(state.frame, 1);
+            // Position unchanged from key input
+            assert!((state.player_x - initial_x).abs() < 0.1);
+            assert!((state.player_y - initial_y).abs() < 0.1);
+        }
+
+        #[test]
+        fn test_game_state_clamp_bounds() {
+            let mut state = SimulatedGameState::new(0);
+
+            // Move to edge
+            state.player_x = 0.0;
+            state.player_y = 0.0;
+
+            // Try to move past bounds
+            for _ in 0..100 {
+                state.update(&[InputEvent::key_press("ArrowUp")]);
+                state.update(&[InputEvent::key_press("ArrowLeft")]);
+            }
+
+            assert!(state.player_x >= 0.0, "X should be clamped at 0");
+            assert!(state.player_y >= 0.0, "Y should be clamped at 0");
+
+            // Move to other edge
+            state.player_x = 800.0;
+            state.player_y = 600.0;
+
+            for _ in 0..100 {
+                state.update(&[InputEvent::key_press("ArrowDown")]);
+                state.update(&[InputEvent::key_press("ArrowRight")]);
+            }
+
+            assert!(state.player_x <= 800.0, "X should be clamped at 800");
+            assert!(state.player_y <= 600.0, "Y should be clamped at 600");
+        }
+    }
+
+    mod prop_tests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn prop_simulation_always_completes(seed in 0u64..10000, frames in 1u64..500) {
+                let config = SimulationConfig::new(seed, frames);
+                let recording = run_simulation(config, |_| vec![]);
+
+                prop_assert!(recording.completed);
+                prop_assert_eq!(recording.total_frames, frames);
+            }
+
+            #[test]
+            fn prop_simulation_deterministic(seed in 0u64..10000) {
+                let config1 = SimulationConfig::new(seed, 100);
+                let config2 = SimulationConfig::new(seed, 100);
+
+                let rec1 = run_simulation(config1, |f| {
+                    if f % 2 == 0 { vec![InputEvent::key_press("Space")] } else { vec![] }
+                });
+                let rec2 = run_simulation(config2, |f| {
+                    if f % 2 == 0 { vec![InputEvent::key_press("Space")] } else { vec![] }
+                });
+
+                prop_assert!(rec1.matches(&rec2));
+            }
+
+            #[test]
+            fn prop_game_state_always_valid(seed in 0u64..10000, frames in 1usize..1000) {
+                let mut state = SimulatedGameState::new(seed);
+
+                for _ in 0..frames {
+                    state.update(&[InputEvent::key_press("Space")]);
+                    prop_assert!(state.is_valid());
+                }
+            }
+
+            #[test]
+            fn prop_replay_verifies(seed in 0u64..1000) {
+                let config = SimulationConfig::new(seed, 100);
+                let recording = run_simulation(config, |_| vec![]);
+                let replay = run_replay(&recording);
+
+                prop_assert!(replay.determinism_verified);
+                prop_assert_eq!(replay.final_state_hash, recording.final_state_hash);
+            }
+        }
+    }
 }

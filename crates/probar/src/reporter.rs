@@ -889,4 +889,118 @@ mod tests {
             assert_eq!(escape_xml("plain text"), "plain text");
         }
     }
+
+    mod additional_coverage_tests {
+        use super::*;
+        use tempfile::tempdir;
+
+        #[test]
+        fn test_with_screenshot() {
+            let screenshot = Screenshot::new(vec![1, 2, 3], 100, 100);
+            let result =
+                TestResultEntry::failed("test", Duration::ZERO, "error").with_screenshot(screenshot);
+            assert!(result.failure_screenshot.is_some());
+        }
+
+        #[test]
+        fn test_reporter_start() {
+            let mut reporter = Reporter::new();
+            assert!(reporter.start_time.is_none());
+            reporter.start();
+            assert!(reporter.start_time.is_some());
+        }
+
+        #[test]
+        fn test_reporter_add_screenshot() {
+            let mut reporter = Reporter::new();
+            let screenshot = Screenshot::new(vec![1, 2, 3], 100, 100);
+            reporter.add_screenshot("test_shot", screenshot);
+            assert_eq!(reporter.screenshots.len(), 1);
+        }
+
+        #[test]
+        fn test_reporter_add_visual_diff() {
+            let mut reporter = Reporter::new();
+            let diff = VisualDiff::new(0.95, vec![1, 2, 3]);
+            reporter.add_visual_diff("test_diff", diff);
+            assert_eq!(reporter.visual_diffs.len(), 1);
+        }
+
+        #[test]
+        fn test_reporter_add_trace() {
+            let mut reporter = Reporter::new();
+            let mut trace = TraceData::new();
+            trace.add_step("step1", Duration::from_millis(100));
+            reporter.add_trace(trace);
+            assert_eq!(reporter.traces.len(), 1);
+        }
+
+        #[test]
+        fn test_reporter_results_accessor() {
+            let mut reporter = Reporter::collect_all();
+            reporter
+                .record(TestResultEntry::passed("t1", Duration::ZERO))
+                .unwrap();
+            reporter
+                .record(TestResultEntry::passed("t2", Duration::ZERO))
+                .unwrap();
+
+            let results = reporter.results();
+            assert_eq!(results.len(), 2);
+            assert_eq!(results[0].name, "t1");
+            assert_eq!(results[1].name, "t2");
+        }
+
+        #[test]
+        fn test_generate_html_to_file() {
+            let mut reporter = Reporter::collect_all().with_name("File Test");
+            reporter
+                .record(TestResultEntry::passed("t1", Duration::ZERO))
+                .unwrap();
+
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("report.html");
+
+            let result = reporter.generate_html(&path);
+            assert!(result.is_ok());
+            assert!(path.exists());
+
+            let content = std::fs::read_to_string(&path).unwrap();
+            assert!(content.contains("File Test"));
+        }
+
+        #[test]
+        fn test_generate_junit_to_file() {
+            let mut reporter = Reporter::collect_all().with_name("JUnit File Test");
+            reporter
+                .record(TestResultEntry::passed("t1", Duration::ZERO))
+                .unwrap();
+
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("report.xml");
+
+            let result = reporter.generate_junit(&path);
+            assert!(result.is_ok());
+            assert!(path.exists());
+
+            let content = std::fs::read_to_string(&path).unwrap();
+            assert!(content.contains("JUnit File Test"));
+        }
+
+        #[test]
+        fn test_render_html_with_visual_diffs() {
+            let mut reporter = Reporter::collect_all().with_name("Visual Test");
+            reporter
+                .record(TestResultEntry::passed("t1", Duration::ZERO))
+                .unwrap();
+
+            let diff = VisualDiff::new(0.85, vec![1, 2, 3]);
+            reporter.add_visual_diff("homepage", diff);
+
+            let html = reporter.render_html();
+            assert!(html.contains("Visual Differences"));
+            assert!(html.contains("homepage"));
+            assert!(html.contains("85.0%")); // 0.85 * 100
+        }
+    }
 }

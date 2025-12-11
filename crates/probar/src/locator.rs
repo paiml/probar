@@ -1076,6 +1076,96 @@ mod tests {
             let query = locator.bounding_box().unwrap();
             assert!(matches!(query, LocatorQuery::BoundingBox { .. }));
         }
+
+        #[test]
+        fn test_locator_from_selector() {
+            let selector = Selector::XPath("//button[@id='submit']".to_string());
+            let locator = Locator::from_selector(selector);
+            assert!(matches!(locator.selector(), Selector::XPath(_)));
+        }
+
+        #[test]
+        fn test_locator_with_text_non_css() {
+            // For non-CSS selectors, with_text should preserve original
+            let locator =
+                Locator::from_selector(Selector::Entity("hero".to_string())).with_text("ignored");
+            assert!(matches!(locator.selector(), Selector::Entity(_)));
+        }
+
+        #[test]
+        fn test_locator_with_visible() {
+            let locator = Locator::new("button").with_visible(false);
+            assert!(!locator.options().visible);
+        }
+
+        #[test]
+        fn test_locator_double_click() {
+            let locator = Locator::new("button");
+            let action = locator.double_click().unwrap();
+            assert!(matches!(action, LocatorAction::DoubleClick { .. }));
+        }
+
+        #[test]
+        fn test_locator_wait_for_visible() {
+            let locator = Locator::new("button");
+            let action = locator.wait_for_visible().unwrap();
+            assert!(matches!(action, LocatorAction::WaitForVisible { .. }));
+        }
+
+        #[test]
+        fn test_locator_wait_for_hidden() {
+            let locator = Locator::new("button");
+            let action = locator.wait_for_hidden().unwrap();
+            assert!(matches!(action, LocatorAction::WaitForHidden { .. }));
+        }
+
+        #[test]
+        fn test_locator_action_locator_accessor() {
+            let locator = Locator::new("button");
+            let action = locator.click().unwrap();
+            let _ = action.locator(); // Access the locator
+            assert!(matches!(action, LocatorAction::Click { .. }));
+        }
+
+        #[test]
+        fn test_locator_query_locator_accessor() {
+            let locator = Locator::new("button");
+            let query = locator.count().unwrap();
+            let accessed = query.locator();
+            assert!(matches!(accessed.selector(), Selector::Css(_)));
+        }
+
+        #[test]
+        fn test_selector_to_count_query_all_variants() {
+            // Test XPath count query
+            let xpath = Selector::XPath("//button".to_string());
+            assert!(xpath.to_count_query().contains("snapshotLength"));
+
+            // Test Text count query
+            let text = Selector::Text("Click me".to_string());
+            assert!(text.to_count_query().contains(".length"));
+
+            // Test TestId count query
+            let testid = Selector::TestId("btn".to_string());
+            assert!(testid.to_count_query().contains("data-testid"));
+
+            // Test Entity count query
+            let entity = Selector::Entity("hero".to_string());
+            assert!(entity.to_count_query().contains("__wasm_count_entities"));
+
+            // Test CssWithText count query
+            let css_text = Selector::CssWithText {
+                css: "button".to_string(),
+                text: "Submit".to_string(),
+            };
+            assert!(css_text.to_count_query().contains(".length"));
+
+            // Test CanvasEntity count query
+            let canvas = Selector::CanvasEntity {
+                entity: "player".to_string(),
+            };
+            assert!(canvas.to_count_query().contains("__wasm_count_canvas_entities"));
+        }
     }
 
     mod additional_bounding_box_tests {

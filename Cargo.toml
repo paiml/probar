@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/probar",
     "crates/probar-derive",
+    "crates/probar-cli",
 ]
 
 [workspace.package]
@@ -39,15 +40,36 @@ futures = "0.3"
 wasmtime = "29"
 async-trait = "0.1"
 
+# Media generation (Phase 1)
+gif = "0.13"
+png = "0.17"
+# Video recording - pure Rust approach
+mp4 = "0.14"
+
+# CLI (Phase 1)
+clap = { version = "4.5", features = ["derive", "env", "unicode", "wrap_help"] }
+indicatif = "0.17"
+console = "0.15"
+
+# File watching (Phase 6)
+notify = "7.0"
+
+# Tracing (Phase 3)
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
 # Testing
 proptest = "1.5"
 criterion = "0.5"
+tempfile = "3"
 
 # UUID for unique identifiers
 uuid = { version = "1.11", features = ["v4", "serde"] }
 
 # Local crates
+probar = { path = "crates/probar" }
 probar-derive = { path = "crates/probar-derive" }
+probar-cli = { path = "crates/probar-cli" }
 
 [workspace.lints.rust]
 # Safety and correctness
