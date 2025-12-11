@@ -4,13 +4,19 @@
 //! - Basic assertions (equality, boolean, etc.)
 //! - Soft assertions (collect multiple failures)
 //! - Retry assertions (poll until success or timeout)
+//! - Equation verification (physics, game invariants - EDD compliance)
 
+mod equation;
 mod retry;
 mod soft;
 
 use std::fmt::Debug;
 
 // Re-export submodules
+pub use equation::{
+    EnergyVerifier, EquationContext, EquationResult, EquationVerifier, InvariantVerifier,
+    KinematicVerifier, MomentumVerifier, Variable,
+};
 pub use retry::{
     retry_contains, retry_eq, retry_none, retry_some, retry_true, AssertionCheckResult,
     RetryAssertion, RetryConfig, RetryError, RetryResult,

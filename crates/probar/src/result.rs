@@ -142,4 +142,18 @@ pub enum ProbarError {
     /// JSON error
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    /// TUI testing error (Feature 21 - EDD Compliance)
+    #[error("TUI error: {message}")]
+    TuiError {
+        /// Error message
+        message: String,
+    },
+
+    /// Snapshot serialization error
+    #[error("Snapshot serialization error: {message}")]
+    SnapshotSerializationError {
+        /// Error message
+        message: String,
+    },
 }

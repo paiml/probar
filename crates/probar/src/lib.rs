@@ -107,6 +107,33 @@ mod page_object;
 )]
 mod fixture;
 
+/// TUI Testing Support (Feature 21 - EDD Compliance)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod tui;
+
+/// Deterministic Replay System (Feature 23 - EDD Compliance)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod replay;
+
+/// UX Coverage Metrics (Feature 24 - EDD Compliance)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod ux_coverage;
+
 /// Device Emulation and Geolocation Mocking (Features 15-16)
 #[allow(
     clippy::missing_errors_doc,
@@ -153,7 +180,9 @@ pub use accessibility::{
 pub use assertion::{
     retry_contains, retry_eq, retry_none, retry_some, retry_true, Assertion,
     AssertionCheckResult, AssertionFailure, AssertionMode, AssertionResult, AssertionSummary,
-    RetryAssertion, RetryConfig, RetryError, RetryResult, SoftAssertionError, SoftAssertions,
+    EnergyVerifier, EquationContext, EquationResult, EquationVerifier, InvariantVerifier,
+    KinematicVerifier, MomentumVerifier, RetryAssertion, RetryConfig, RetryError, RetryResult,
+    SoftAssertionError, SoftAssertions, Variable,
 };
 pub use bridge::{
     BridgeConnection, DiffRegion, EntitySnapshot, GameStateData, GameStateSnapshot, SnapshotCache,
@@ -194,6 +223,15 @@ pub use page_object::{
     PageObject, PageObjectBuilder, PageObjectInfo, PageRegistry, SimplePageObject, UrlMatcher,
 };
 pub use fixture::{Fixture, FixtureBuilder, FixtureManager, FixtureScope, FixtureState, SimpleFixture};
+pub use tui::{TuiTestBackend, TuiFrame, FrameAssertion, ValueTracker, TuiSnapshot, FrameSequence};
+pub use replay::{
+    Replay, ReplayHeader, ReplayPlayer, ReplayRecorder, StateCheckpoint, TimedInput,
+    VerificationResult, REPLAY_FORMAT_VERSION,
+};
+pub use ux_coverage::{
+    ElementCoverage, ElementId, InteractionType, StateId, TrackedInteraction,
+    UxCoverageBuilder, UxCoverageReport, UxCoverageTracker,
+};
 
 /// Prelude for convenient imports
 pub mod prelude {
@@ -213,6 +251,9 @@ pub mod prelude {
     pub use super::runtime::*;
     pub use super::simulation::*;
     pub use super::snapshot::*;
+    pub use super::tui::*;
+    pub use super::replay::*;
+    pub use super::ux_coverage::*;
     pub use super::visual_regression::*;
 }
 
