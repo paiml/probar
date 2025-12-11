@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/paiml/probar/main/docs/assets/probar-hero.svg" alt="Probar Testing Framework" width="800"/>
+  <img src="https://raw.githubusercontent.com/paiml/probar/main/docs/assets/probar-hero.svg?v=2" alt="Probar - Playwright-Compatible Testing for WASM + TUI" width="800"/>
 </p>
 
 <h1 align="center">Probar</h1>
