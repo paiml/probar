@@ -63,6 +63,15 @@ proptest = "1.5"
 criterion = "0.5"
 tempfile = "3"
 
+# TUI Testing (EDD compliance)
+ratatui = "0.29"
+crossterm = "0.28"
+
+# Deterministic replay
+serde_yaml = "0.9"
+sha2 = "0.10"
+regex = "1.11"
+
 # UUID for unique identifiers
 uuid = { version = "1.11", features = ["v4", "serde"] }
 

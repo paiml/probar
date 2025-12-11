@@ -5,8 +5,8 @@
 <h1 align="center">Probar</h1>
 
 <p align="center">
-  <strong>Rust-Native Testing Framework for WASM Games</strong><br>
-  <em>Pure Rust • Zero JavaScript • 95%+ Coverage</em>
+  <strong>Playwright-Compatible Testing for WASM + TUI Applications</strong><br>
+  <em>Pure Rust • Zero JavaScript • Games • Simulations • Web Apps</em>
 </p>
 
 <p align="center">
@@ -26,17 +26,41 @@
 
 ---
 
-**Probar** (Spanish: "to test/prove") is a Rust-native testing framework for WASM games, providing a pure Rust alternative to Playwright/Puppeteer.
+**Probar** (Spanish: "to test/prove") is a **Playwright-compatible** testing framework written in **pure Rust**. It provides comprehensive testing for:
+
+- **WASM Applications** - Games, simulations, web apps running in browsers
+- **TUI Applications** - Terminal interfaces built with ratatui/crossterm
+- **Headless Testing** - Fast CI/CD without browser overhead
 
 ## Features
 
+### Playwright-Compatible API
+```rust
+// Familiar Playwright-style locators and assertions
+let button = page.locator("button").with_text("Start Game");
+button.click().await?;
+
+expect(&score).to_have_text("100").await?;
+```
+
+### Test Targets
+
+| Target | Description | Use Case |
+|--------|-------------|----------|
+| **WASM Browser** | Chrome DevTools Protocol (CDP) | Games, web apps, simulations |
+| **WASM Headless** | wasmtime runtime | Fast CI, logic testing |
+| **TUI** | ratatui/crossterm backends | Terminal applications |
+
+### Core Capabilities
+
 - **Browser Automation**: Chrome DevTools Protocol (CDP) via chromiumoxide
 - **WASM Runtime Testing**: Logic-only testing via wasmtime (no browser overhead)
+- **TUI Testing**: Frame capture and assertion for terminal UIs
 - **Visual Regression**: Image comparison for UI stability
-- **Accessibility Auditing**: WCAG compliance checking (contrast, flash, keyboard nav)
-- **Deterministic Replay**: Record and replay game sessions
+- **Accessibility Auditing**: WCAG compliance checking
+- **Deterministic Replay**: Record and replay sessions with seed control
 - **Monte Carlo Fuzzing**: Random input generation with invariant checking
-- **Type-Safe Selectors**: Compile-time checked entity/component queries
+- **100% UX Coverage**: Provable UI element and interaction coverage
 
 ## Quick Start
 

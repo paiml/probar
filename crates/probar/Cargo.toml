@@ -30,6 +30,13 @@ gif = { workspace = true }
 png = { workspace = true }
 mp4 = { workspace = true }
 
+# TUI testing (EDD compliance)
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+regex = { workspace = true }
+sha2 = { workspace = true }
+serde_yaml = { workspace = true }
+
 # Optional CDP browser control
 chromiumoxide = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
