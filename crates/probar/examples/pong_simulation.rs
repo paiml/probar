@@ -6,7 +6,7 @@
 //! # Running
 //!
 //! ```bash
-//! cargo run --example pong_simulation -p jugar-probar
+//! cargo run --example pong_simulation -p probar
 //! ```
 //!
 //! # Features
@@ -24,7 +24,7 @@
     dead_code
 )]
 
-use jugar_probar::{
+use probar::{
     run_replay, run_simulation, Assertion, InputEvent, RandomWalkAgent, Seed, SimulationConfig,
 };
 use std::collections::hash_map::DefaultHasher;

@@ -6,7 +6,7 @@
 //! # Running
 //!
 //! ```bash
-//! cargo run --example locator_demo -p jugar-probar
+//! cargo run --example locator_demo -p probar
 //! ```
 //!
 //! # Features
@@ -22,7 +22,7 @@
     clippy::unwrap_used
 )]
 
-use jugar_probar::{
+use probar::{
     expect, BoundingBox, Locator, Point, Selector, DEFAULT_POLL_INTERVAL_MS, DEFAULT_TIMEOUT_MS,
 };
 use std::time::Duration;

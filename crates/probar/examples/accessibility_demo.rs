@@ -6,7 +6,7 @@
 //! # Running
 //!
 //! ```bash
-//! cargo run --example accessibility_demo -p jugar-probar
+//! cargo run --example accessibility_demo -p probar
 //! ```
 //!
 //! # Features
@@ -21,7 +21,7 @@
     clippy::unwrap_used
 )]
 
-use jugar_probar::{
+use probar::{
     AccessibilityAudit, AccessibilityConfig, AccessibilityValidator, Color, ContrastAnalysis,
     FlashDetector, Severity, MIN_CONTRAST_LARGE, MIN_CONTRAST_NORMAL, MIN_CONTRAST_UI,
 };
@@ -229,7 +229,7 @@ fn severity_label(severity: &Severity) -> &'static str {
     }
 }
 
-fn print_flash_result(result: &jugar_probar::FlashResult) {
+fn print_flash_result(result: &probar::FlashResult) {
     println!("  Flash rate: {:.1} Hz", result.flash_rate);
     println!("  Red flash exceeded: {}", result.red_flash_exceeded);
     println!("  Flash area: {:.0}%", result.flash_area * 100.0);

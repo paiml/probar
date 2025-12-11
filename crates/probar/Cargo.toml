@@ -41,5 +41,21 @@ probar-derive = { workspace = true, optional = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 
+[[example]]
+name = "locator_demo"
+path = "examples/locator_demo.rs"
+
+[[example]]
+name = "accessibility_demo"
+path = "examples/accessibility_demo.rs"
+
+[[example]]
+name = "coverage_demo"
+path = "examples/coverage_demo.rs"
+
+[[example]]
+name = "pong_simulation"
+path = "examples/pong_simulation.rs"
+
 [lints]
 workspace = true

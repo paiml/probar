@@ -71,6 +71,35 @@ doc:
 	cargo doc --workspace --no-deps --open
 
 # ============================================================================
+# BOOK
+# ============================================================================
+
+book:
+	cd book && mdbook build
+
+book-serve:
+	cd book && mdbook serve --open
+
+book-clean:
+	rm -rf book/book
+
+# ============================================================================
+# EXAMPLES
+# ============================================================================
+
+example-locator:
+	cargo run --example locator_demo -p probar
+
+example-accessibility:
+	cargo run --example accessibility_demo -p probar
+
+example-coverage:
+	cargo run --example coverage_demo -p probar
+
+example-simulation:
+	cargo run --example pong_simulation -p probar
+
+# ============================================================================
 # HELP
 # ============================================================================
 
@@ -90,3 +119,14 @@ help:
 	@echo "  make coverage   - Generate coverage report"
 	@echo "  make doc        - Generate documentation"
 	@echo "  make clean      - Clean build artifacts"
+	@echo ""
+	@echo "Book Commands:"
+	@echo "  make book       - Build mdbook documentation"
+	@echo "  make book-serve - Serve book locally with hot reload"
+	@echo "  make book-clean - Clean generated book"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make example-locator      - Run locator demo"
+	@echo "  make example-accessibility - Run accessibility demo"
+	@echo "  make example-coverage     - Run coverage demo"
+	@echo "  make example-simulation   - Run simulation demo"
