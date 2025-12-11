@@ -1,0 +1,98 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/probar",
+    "crates/probar-derive",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/paiml/probar"
+homepage = "https://github.com/paiml/probar"
+authors = ["PAIML Team"]
+keywords = ["testing", "wasm", "games", "browser", "e2e"]
+categories = ["development-tools::testing", "wasm", "game-development"]
+
+[workspace.dependencies]
+# Core dependencies
+thiserror = "2.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Image comparison for visual regression
+image = "0.25"
+
+# Base64 for export/sharing
+base64 = "0.22"
+
+# CDP/Browser testing (optional)
+chromiumoxide = { version = "0.8", default-features = false, features = ["tokio-runtime"] }
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
+futures = "0.3"
+
+# WASM runtime for logic testing (optional)
+wasmtime = "29"
+async-trait = "0.1"
+
+# Testing
+proptest = "1.5"
+criterion = "0.5"
+
+# UUID for unique identifiers
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+# Local crates
+probar-derive = { path = "crates/probar-derive" }
+
+[workspace.lints.rust]
+# Safety and correctness
+unsafe_code = "warn"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+
+# Prevent common mistakes
+unused_results = "warn"
+unused_must_use = "warn"
+
+[workspace.lints.clippy]
+# PMAT compliance - zero tolerance for panic paths
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+
+# Code quality
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+# Performance
+inefficient_to_string = "warn"
+large_enum_variant = "warn"
+large_stack_arrays = "warn"
+
+# Style consistency
+module_name_repetitions = "allow"
+similar_names = "allow"
+
+# Testing framework - numeric precision is acceptable
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[profile.bench]
+inherits = "release"
+debug = true

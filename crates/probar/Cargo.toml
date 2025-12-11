@@ -1,0 +1,45 @@
+[package]
+name = "probar"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Probar: Rust-native testing framework for WASM games"
+license.workspace = true
+repository.workspace = true
+keywords = ["testing", "wasm", "games", "browser", "e2e"]
+categories = ["development-tools::testing", "wasm"]
+
+[features]
+default = []
+# Enable real browser control (requires chromium)
+browser = ["chromiumoxide", "tokio", "futures"]
+# Enable WASM runtime for logic testing (Phase 1)
+runtime = ["wasmtime", "async-trait"]
+# Enable derive macros for type-safe selectors (Phase 4)
+derive = ["probar-derive"]
+
+[dependencies]
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+image = { workspace = true }
+base64 = { workspace = true }
+
+# Optional CDP browser control
+chromiumoxide = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+
+# Optional WASM runtime for logic testing (Phase 1)
+wasmtime = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+
+# Optional derive macros for type-safe selectors (Phase 4)
+probar-derive = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+[lints]
+workspace = true
