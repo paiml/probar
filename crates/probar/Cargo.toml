@@ -1,6 +1,6 @@
 [package]
-name = "probar"
-version.workspace = true
+name = "jugar-probar"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Probar: Rust-native testing framework for WASM games"
@@ -16,7 +16,7 @@ browser = ["chromiumoxide", "tokio", "futures"]
 # Enable WASM runtime for logic testing (Phase 1)
 runtime = ["wasmtime", "async-trait"]
 # Enable derive macros for type-safe selectors (Phase 4)
-derive = ["probar-derive"]
+derive = ["jugar-probar-derive"]
 # TUI testing support (included by default)
 # Note: For wasm32-unknown-unknown target, use --no-default-features
 tui = ["ratatui", "crossterm"]
@@ -66,7 +66,7 @@ wasmtime = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
 
 # Optional derive macros for type-safe selectors (Phase 4)
-probar-derive = { workspace = true, optional = true }
+jugar-probar-derive = { version = "0.1.0", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

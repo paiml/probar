@@ -3,8 +3,9 @@ resolver = "2"
 members = [
     "crates/probar",
     "crates/probar-derive",
-    "crates/probar-cli",
-    "crates/showcase-calculator",
+    # Temporarily excluded for publishing (depend on jugar-probar path)
+    # "crates/probar-cli",
+    # "crates/showcase-calculator",
 ]
 
 [workspace.package]
