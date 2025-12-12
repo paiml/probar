@@ -156,4 +156,32 @@ pub enum ProbarError {
         /// Error message
         message: String,
     },
+
+    /// HTML generation error (Feature E - Zero-JavaScript Policy)
+    #[error("HTML generation error: {0}")]
+    HtmlGeneration(String),
+
+    /// CSS generation error (Feature E - Zero-JavaScript Policy)
+    #[error("CSS generation error: {0}")]
+    CssGeneration(String),
+
+    /// JavaScript generation error (Feature E - Zero-JavaScript Policy)
+    #[error("JavaScript generation error: {0}")]
+    JsGeneration(String),
+
+    /// Web validation error (Feature E - Zero-JavaScript Policy)
+    #[error("Web validation error: {0}")]
+    WebValidation(String),
+
+    /// Pixel coverage error (Feature A - Pixel-Level GUI Coverage)
+    #[error("Pixel coverage error: {0}")]
+    PixelCoverage(String),
+
+    /// Performance tracing error (Feature C - Renacer Integration)
+    #[error("Performance tracing error: {0}")]
+    PerformanceTracing(String),
+
+    /// WASM runner error (Feature D - WASM Runner)
+    #[error("WASM runner error: {0}")]
+    WasmRunner(String),
 }

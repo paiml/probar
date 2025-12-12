@@ -235,6 +235,34 @@ pub mod context;
 )]
 pub mod coverage;
 
+/// Zero-JavaScript Web Asset Generation (Advanced Feature E)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod web;
+
+/// Pixel-Level GUI Coverage Visualization (Advanced Feature A)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown,
+    clippy::cast_precision_loss
+)]
+pub mod pixel_coverage;
+
+/// WASM Runner with Hot Reload (Advanced Feature D)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod runner;
+
 pub use accessibility::{
     AccessibilityAudit, AccessibilityConfig, AccessibilityIssue, AccessibilityValidator, Color,
     ContrastAnalysis, ContrastPair, FlashDetector, FlashResult, FocusConfig, KeyboardIssue,
@@ -365,7 +393,10 @@ pub mod prelude {
         NETWORK_IDLE_THRESHOLD_MS,
     };
     pub use super::watch::*;
+    pub use super::web::*;
     pub use super::websocket::*;
+    pub use super::pixel_coverage::*;
+    pub use super::runner::*;
 }
 
 /// Standard invariants for game testing

@@ -45,6 +45,7 @@ notify = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 
 # Optional CDP browser control
 chromiumoxide = { workspace = true, optional = true }
