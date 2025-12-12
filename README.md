@@ -22,9 +22,6 @@
   <a href="https://paiml.github.io/probar/">
     <img src="https://img.shields.io/badge/book-mdbook-blue" alt="Book">
   </a>
-  <a href="https://codecov.io/gh/paiml/probar">
-    <img src="https://codecov.io/gh/paiml/probar/branch/main/graph/badge.svg" alt="Coverage">
-  </a>
 </p>
 
 ---
