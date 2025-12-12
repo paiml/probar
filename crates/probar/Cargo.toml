@@ -17,7 +17,8 @@ browser = ["chromiumoxide", "tokio", "futures"]
 runtime = ["wasmtime", "async-trait"]
 # Enable derive macros for type-safe selectors (Phase 4)
 derive = ["probar-derive"]
-# Enable TUI testing (not available on WASM due to crossterm)
+# TUI testing support (included by default)
+# Note: For wasm32-unknown-unknown target, use --no-default-features
 tui = ["ratatui", "crossterm"]
 
 [dependencies]
