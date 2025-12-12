@@ -215,7 +215,6 @@ impl<'a> FrameAssertion<'a> {
 
 /// Create a frame assertion
 #[must_use]
-#[allow(dead_code)] // API for future use
 pub fn expect_frame(frame: &TuiFrame) -> FrameAssertion<'_> {
     FrameAssertion::new(frame)
 }
@@ -394,12 +393,10 @@ impl ValueTracker<i64> {
 
 /// Multi-value tracker for monitoring multiple named values
 #[derive(Debug, Default)]
-#[allow(dead_code)] // API for future use
 pub struct MultiValueTracker {
     trackers: HashMap<String, ValueTracker<f64>>,
 }
 
-#[allow(dead_code)] // API for future use
 impl MultiValueTracker {
     /// Create a new multi-value tracker
     #[must_use]

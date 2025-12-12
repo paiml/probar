@@ -382,7 +382,6 @@ pub struct StateBridge {
     /// Connection type
     connection: BridgeConnection,
     /// Memory view for zero-copy access (used in direct mode)
-    #[allow(dead_code)]
     memory_view: Option<MemoryView>,
     /// Snapshot cache for RPC mode
     snapshot_cache: SnapshotCache,
@@ -419,6 +418,12 @@ impl StateBridge {
     #[must_use]
     pub const fn is_direct(&self) -> bool {
         matches!(self.connection, BridgeConnection::Direct)
+    }
+
+    /// Get the memory view if using direct mode
+    #[must_use]
+    pub const fn memory_view(&self) -> Option<&MemoryView> {
+        self.memory_view.as_ref()
     }
 
     /// Query entity by ID

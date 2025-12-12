@@ -147,7 +147,6 @@ impl TuiSnapshot {
 
 /// Snapshot manager for organizing and comparing snapshots
 #[derive(Debug)]
-#[allow(dead_code)] // API for future use
 pub struct SnapshotManager {
     /// Directory for snapshot files
     snapshot_dir: PathBuf,
@@ -155,7 +154,6 @@ pub struct SnapshotManager {
     update_mode: bool,
 }
 
-#[allow(dead_code)] // API for future use
 impl SnapshotManager {
     /// Create a new snapshot manager
     #[must_use]

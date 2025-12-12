@@ -16,6 +16,6 @@ mod assertions;
 mod backend;
 mod snapshot;
 
-pub use assertions::{FrameAssertion, ValueTracker};
+pub use assertions::{expect_frame, FrameAssertion, MultiValueTracker, ValueTracker};
 pub use backend::{TuiFrame, TuiTestBackend};
-pub use snapshot::{FrameSequence, TuiSnapshot};
+pub use snapshot::{FrameSequence, SnapshotManager, TuiSnapshot};

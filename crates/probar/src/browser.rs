@@ -117,7 +117,6 @@ mod cdp {
     pub struct Browser {
         config: BrowserConfig,
         inner: Arc<Mutex<CdpBrowser>>,
-        #[allow(dead_code)]
         handle: tokio::task::JoinHandle<()>,
     }
 
@@ -201,6 +200,12 @@ mod cdp {
         #[must_use]
         pub const fn config(&self) -> &BrowserConfig {
             &self.config
+        }
+
+        /// Check if the browser handler task is still running
+        #[must_use]
+        pub fn is_handler_running(&self) -> bool {
+            !self.handle.is_finished()
         }
 
         /// Close the browser

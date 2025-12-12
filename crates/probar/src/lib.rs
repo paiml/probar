@@ -299,12 +299,17 @@ pub use tracing_support::{
     SpanStatus, TraceArchive, TraceMetadata, TracedEvent, TracedSpan, TracingConfig,
 };
 #[cfg(feature = "tui")]
-pub use tui::{FrameAssertion, FrameSequence, TuiFrame, TuiSnapshot, TuiTestBackend, ValueTracker};
+pub use tui::{
+    expect_frame, FrameAssertion, FrameSequence, MultiValueTracker, SnapshotManager, TuiFrame,
+    TuiSnapshot, TuiTestBackend, ValueTracker,
+};
 pub use ux_coverage::{
     ElementCoverage, ElementId, InteractionType, StateId, TrackedInteraction, UxCoverageBuilder,
     UxCoverageReport, UxCoverageTracker,
 };
-pub use visual_regression::{ImageDiffResult, VisualRegressionConfig, VisualRegressionTester};
+pub use visual_regression::{
+    perceptual_diff, ImageDiffResult, VisualRegressionConfig, VisualRegressionTester,
+};
 pub use watch::{
     FileChange, FileChangeKind, FileWatcher, FnWatchHandler, WatchBuilder, WatchConfig,
     WatchHandler, WatchStats,

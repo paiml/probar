@@ -109,6 +109,69 @@ fn test_physics() -> ProbarResult<()> {
 }
 ```
 
+## Installation
+
+Add Probar to your `Cargo.toml`:
+
+```toml
+[dependencies]
+probar = "0.1"
+
+# Optional: Enable browser automation
+[dependencies.probar]
+version = "0.1"
+features = ["browser"]
+
+# Optional: Enable WASM runtime testing
+[dependencies.probar]
+version = "0.1"
+features = ["runtime"]
+```
+
+Or install the CLI:
+
+```bash
+cargo install probar-cli
+```
+
+## Usage
+
+### Running Tests
+
+```bash
+# Run all tests
+probar test
+
+# Run tests with filter
+probar test --filter "game::*"
+
+# Run with coverage
+probar test --coverage
+
+# Watch mode for development
+probar test --watch
+```
+
+### Recording Test Sessions
+
+```bash
+# Record as GIF
+probar record my_test --gif
+
+# Record as MP4
+probar record my_test --mp4 --fps 30
+```
+
+### Generating Reports
+
+```bash
+# HTML coverage report
+probar report --html -o coverage.html
+
+# LCOV format
+probar report --lcov -o coverage.lcov
+```
+
 ## Feature Flags
 
 | Feature | Description | Dependencies |
@@ -116,6 +179,7 @@ fn test_physics() -> ProbarResult<()> {
 | `browser` | CDP browser automation | chromiumoxide, tokio |
 | `runtime` | WASM runtime testing | wasmtime |
 | `derive` | Type-safe derive macros | probar-derive |
+| `tui` | TUI testing support (default) | ratatui, crossterm |
 
 ## Toyota Way Principles
 
@@ -132,6 +196,30 @@ Probar is built on Toyota Production System principles:
 - [Book Chapter](book/src/probar/why-probar.md)
 - [WASM Testing Spec](docs/specifications/probar-wasm-testing-spec.md)
 - [Coverage Tooling Spec](docs/specifications/probar-wasm-coverage-tooling.md)
+
+## Contributing
+
+Contributions are welcome! Please follow these guidelines:
+
+1. **Fork the repository** and create your branch from `main`
+2. **Run tests** before submitting: `cargo test`
+3. **Ensure formatting**: `cargo fmt`
+4. **Check lints**: `cargo clippy --all-targets --all-features`
+5. **Update documentation** if you change public APIs
+6. **Add tests** for new functionality
+
+### Development Setup
+
+```bash
+git clone https://github.com/paiml/probar.git
+cd probar
+cargo build
+cargo test
+```
+
+### Code of Conduct
+
+This project follows the [Rust Code of Conduct](https://www.rust-lang.org/policies/code-of-conduct).
 
 ## License
 

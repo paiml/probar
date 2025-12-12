@@ -369,23 +369,6 @@ impl FixtureManager {
     }
 }
 
-/// Extension trait for downcasting fixtures.
-#[allow(dead_code)] // API for future use
-trait AsAny {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
-impl<T: Fixture + 'static> AsAny for T {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
 impl dyn Fixture {
     fn as_any(&self) -> &dyn Any {
         // This uses the vtable to get the actual type

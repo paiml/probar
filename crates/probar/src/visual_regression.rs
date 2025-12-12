@@ -307,8 +307,13 @@ fn pixel_diff(a: Rgba<u8>, b: Rgba<u8>) -> u32 {
 }
 
 /// Calculate perceptual color difference (weighted for human vision)
-#[allow(dead_code)]
-fn perceptual_diff(a: Rgba<u8>, b: Rgba<u8>) -> f64 {
+///
+/// Uses weighted RGB based on human perception:
+/// - Red: 0.299
+/// - Green: 0.587
+/// - Blue: 0.114
+#[must_use]
+pub fn perceptual_diff(a: Rgba<u8>, b: Rgba<u8>) -> f64 {
     let Rgba([r1, g1, b1, _]) = a;
     let Rgba([r2, g2, b2, _]) = b;
 

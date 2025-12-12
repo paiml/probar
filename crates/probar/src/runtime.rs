@@ -443,7 +443,6 @@ impl RuntimeConfig {
 /// ```
 #[cfg(feature = "runtime")]
 pub struct WasmRuntime {
-    #[allow(dead_code)] // Engine kept for potential reuse/extension
     engine: Engine,
     store: Store<GameHostState>,
     instance: Instance,
@@ -566,6 +565,12 @@ impl WasmRuntime {
             })?;
 
         Ok(())
+    }
+
+    /// Get a reference to the WASM engine
+    #[must_use]
+    pub const fn engine(&self) -> &Engine {
+        &self.engine
     }
 
     /// Inject an input event into the input queue

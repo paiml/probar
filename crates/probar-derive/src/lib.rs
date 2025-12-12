@@ -422,21 +422,23 @@ pub fn probar_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Extract the `name` attribute from `#[probar(name = "...")]`
 fn extract_name_attribute(attrs: &[Attribute]) -> Option<String> {
-    for attr in attrs {
-        if attr.path().is_ident("probar") {
-            if let Ok(Meta::NameValue(nv)) = attr.parse_args::<Meta>() {
-                if nv.path.is_ident("name") {
-                    if let syn::Expr::Lit(syn::ExprLit {
-                        lit: Lit::Str(s), ..
-                    }) = &nv.value
-                    {
-                        return Some(s.value());
-                    }
-                }
-            }
-        }
+    attrs.iter().find_map(|attr| extract_name_from_attr(attr))
+}
+
+/// Helper to extract name from a single attribute
+fn extract_name_from_attr(attr: &Attribute) -> Option<String> {
+    if !attr.path().is_ident("probar") {
+        return None;
     }
-    None
+    let nv = attr.parse_args::<Meta>().ok()?;
+    let Meta::NameValue(nv) = nv else { return None };
+    if !nv.path.is_ident("name") {
+        return None;
+    }
+    let syn::Expr::Lit(syn::ExprLit { lit: Lit::Str(s), .. }) = &nv.value else {
+        return None;
+    };
+    Some(s.value())
 }
 
 /// Extract field names and skip flags from struct data
@@ -476,46 +478,36 @@ fn parse_selector_attributes(attrs: &[Attribute]) -> (Vec<String>, Vec<String>) 
     let mut components = Vec::new();
 
     for attr in attrs {
-        if attr.path().is_ident("probar") {
-            // Parse the attribute tokens manually for list syntax
-            let tokens = attr.meta.to_token_stream().to_string();
+        if !attr.path().is_ident("probar") {
+            continue;
+        }
+        let tokens = attr.meta.to_token_stream().to_string();
 
-            if tokens.contains("entities") {
-                // Extract entity names from entities = [...]
-                if let Some(start) = tokens.find('[') {
-                    if let Some(end) = tokens.find(']') {
-                        let list = &tokens[start + 1..end];
-                        for name in list.split(',') {
-                            let name = name.trim();
-                            if !name.is_empty() {
-                                entities.push(name.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-
-            if tokens.contains("components") {
-                // Extract component names from components = [...]
-                if let Some(entities_end) = tokens.find(']') {
-                    let rest = &tokens[entities_end + 1..];
-                    if let Some(start) = rest.find('[') {
-                        if let Some(end) = rest.find(']') {
-                            let list = &rest[start + 1..end];
-                            for name in list.split(',') {
-                                let name = name.trim();
-                                if !name.is_empty() {
-                                    components.push(name.to_string());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        if tokens.contains("entities") {
+            entities.extend(extract_list_items(&tokens, 0));
+        }
+        if tokens.contains("components") {
+            // Components list comes after entities list
+            let offset = tokens.find(']').map(|i| i + 1).unwrap_or(0);
+            components.extend(extract_list_items(&tokens, offset));
         }
     }
 
     (entities, components)
+}
+
+/// Extract items from a bracketed list in token string starting at offset
+fn extract_list_items(tokens: &str, offset: usize) -> Vec<String> {
+    let rest = &tokens[offset..];
+    let Some(start) = rest.find('[') else { return vec![] };
+    let Some(end) = rest.find(']') else { return vec![] };
+
+    rest[start + 1..end]
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect()
 }
 
 /// Parse timeout from attribute tokens
