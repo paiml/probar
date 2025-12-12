@@ -42,6 +42,12 @@ pub mod tui;
 /// (Mock DOM allows testing without actual browser bindings)
 pub mod wasm;
 
+/// Probar Advanced Testing Module
+/// Demonstrates all Probar features: Page Objects, Accessibility,
+/// Visual Regression, Device Emulation, Fixtures, Replay, UX Coverage
+#[cfg(test)]
+mod probar_tests;
+
 /// Prelude for convenient imports
 pub mod prelude {
     pub use crate::core::evaluator::Evaluator;

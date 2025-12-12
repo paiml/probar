@@ -2644,4 +2644,383 @@ mod tests {
             assert!(assertion.validate_state(true).is_ok());
         }
     }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Auto-Waiting Tests (Spec G.1 P0)
+    // =========================================================================
+
+    mod h0_auto_waiting_tests {
+        use super::*;
+
+        #[test]
+        fn h0_locator_01_default_timeout_is_5_seconds() {
+            assert_eq!(DEFAULT_TIMEOUT_MS, 5000);
+        }
+
+        #[test]
+        fn h0_locator_02_default_poll_interval_is_50ms() {
+            assert_eq!(DEFAULT_POLL_INTERVAL_MS, 50);
+        }
+
+        #[test]
+        fn h0_locator_03_locator_options_default_timeout() {
+            let opts = LocatorOptions::default();
+            assert_eq!(opts.timeout, Duration::from_millis(DEFAULT_TIMEOUT_MS));
+        }
+
+        #[test]
+        fn h0_locator_04_locator_options_default_strict_true() {
+            let opts = LocatorOptions::default();
+            assert!(opts.strict);
+        }
+
+        #[test]
+        fn h0_locator_05_locator_options_default_visible_true() {
+            let opts = LocatorOptions::default();
+            assert!(opts.visible);
+        }
+
+        #[test]
+        fn h0_locator_06_with_timeout_custom_value() {
+            let locator = Locator::new("button").with_timeout(Duration::from_secs(30));
+            assert_eq!(locator.options().timeout, Duration::from_secs(30));
+        }
+
+        #[test]
+        fn h0_locator_07_with_strict_false() {
+            let locator = Locator::new("button").with_strict(false);
+            assert!(!locator.options().strict);
+        }
+
+        #[test]
+        fn h0_locator_08_with_visible_false() {
+            let locator = Locator::new("button").with_visible(false);
+            assert!(!locator.options().visible);
+        }
+
+        #[test]
+        fn h0_locator_09_wait_for_visible_action() {
+            let locator = Locator::new("button");
+            let action = locator.wait_for_visible().unwrap();
+            assert!(matches!(action, LocatorAction::WaitForVisible { .. }));
+        }
+
+        #[test]
+        fn h0_locator_10_wait_for_hidden_action() {
+            let locator = Locator::new("button");
+            let action = locator.wait_for_hidden().unwrap();
+            assert!(matches!(action, LocatorAction::WaitForHidden { .. }));
+        }
+    }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Semantic Locators (Spec G.1 Playwright Parity)
+    // =========================================================================
+
+    mod h0_semantic_locator_tests {
+        use super::*;
+
+        #[test]
+        fn h0_locator_11_role_selector_button() {
+            let selector = Selector::role("button");
+            assert!(matches!(selector, Selector::Role { role, name: None } if role == "button"));
+        }
+
+        #[test]
+        fn h0_locator_12_role_selector_with_name() {
+            let selector = Selector::role_with_name("button", "Submit");
+            assert!(
+                matches!(selector, Selector::Role { role, name: Some(n) } if role == "button" && n == "Submit")
+            );
+        }
+
+        #[test]
+        fn h0_locator_13_label_selector() {
+            let selector = Selector::label("Username");
+            assert!(matches!(selector, Selector::Label(l) if l == "Username"));
+        }
+
+        #[test]
+        fn h0_locator_14_placeholder_selector() {
+            let selector = Selector::placeholder("Enter email");
+            assert!(matches!(selector, Selector::Placeholder(p) if p == "Enter email"));
+        }
+
+        #[test]
+        fn h0_locator_15_alt_text_selector() {
+            let selector = Selector::alt_text("Logo image");
+            assert!(matches!(selector, Selector::AltText(a) if a == "Logo image"));
+        }
+
+        #[test]
+        fn h0_locator_16_role_to_query() {
+            let selector = Selector::role("button");
+            let query = selector.to_query();
+            assert!(query.contains("role") || query.contains("button"));
+        }
+
+        #[test]
+        fn h0_locator_17_label_to_query() {
+            let selector = Selector::label("Email");
+            let query = selector.to_query();
+            assert!(query.contains("label") || query.contains("Email"));
+        }
+
+        #[test]
+        fn h0_locator_18_placeholder_to_query() {
+            let selector = Selector::placeholder("Search");
+            let query = selector.to_query();
+            assert!(query.contains("placeholder") || query.contains("Search"));
+        }
+
+        #[test]
+        fn h0_locator_19_alt_text_to_query() {
+            let selector = Selector::alt_text("Company Logo");
+            let query = selector.to_query();
+            assert!(query.contains("alt") || query.contains("Company Logo"));
+        }
+
+        #[test]
+        fn h0_locator_20_css_selector_factory() {
+            let selector = Selector::css("div.container");
+            assert!(matches!(selector, Selector::Css(s) if s == "div.container"));
+        }
+    }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Expect Assertions (Spec G.1 Auto-Retry)
+    // =========================================================================
+
+    mod h0_expect_assertion_tests {
+        use super::*;
+
+        #[test]
+        fn h0_locator_21_expect_to_have_text() {
+            let locator = Locator::new("span");
+            let assertion = expect(locator).to_have_text("Hello");
+            assert!(matches!(assertion, ExpectAssertion::HasText { .. }));
+        }
+
+        #[test]
+        fn h0_locator_22_expect_to_contain_text() {
+            let locator = Locator::new("span");
+            let assertion = expect(locator).to_contain_text("ell");
+            assert!(matches!(assertion, ExpectAssertion::ContainsText { .. }));
+        }
+
+        #[test]
+        fn h0_locator_23_expect_to_have_count() {
+            let locator = Locator::new("li");
+            let assertion = expect(locator).to_have_count(5);
+            assert!(
+                matches!(assertion, ExpectAssertion::HasCount { expected, .. } if expected == 5)
+            );
+        }
+
+        #[test]
+        fn h0_locator_24_expect_to_be_visible() {
+            let locator = Locator::new("button");
+            let assertion = expect(locator).to_be_visible();
+            assert!(matches!(assertion, ExpectAssertion::IsVisible { .. }));
+        }
+
+        #[test]
+        fn h0_locator_25_expect_to_be_hidden() {
+            let locator = Locator::new("button");
+            let assertion = expect(locator).to_be_hidden();
+            assert!(matches!(assertion, ExpectAssertion::IsHidden { .. }));
+        }
+
+        #[test]
+        fn h0_locator_26_expect_to_be_enabled() {
+            let locator = Locator::new("button");
+            let assertion = expect(locator).to_be_enabled();
+            assert!(matches!(assertion, ExpectAssertion::IsEnabled { .. }));
+        }
+
+        #[test]
+        fn h0_locator_27_expect_to_be_disabled() {
+            let locator = Locator::new("button");
+            let assertion = expect(locator).to_be_disabled();
+            assert!(matches!(assertion, ExpectAssertion::IsDisabled { .. }));
+        }
+
+        #[test]
+        fn h0_locator_28_expect_to_be_checked() {
+            let locator = Locator::new("input[type=checkbox]");
+            let assertion = expect(locator).to_be_checked();
+            assert!(matches!(assertion, ExpectAssertion::IsChecked { .. }));
+        }
+
+        #[test]
+        fn h0_locator_29_expect_to_have_value() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_have_value("test");
+            assert!(matches!(assertion, ExpectAssertion::HasValue { .. }));
+        }
+
+        #[test]
+        fn h0_locator_30_expect_to_have_attribute() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_have_attribute("type", "email");
+            assert!(matches!(assertion, ExpectAssertion::HasAttribute { .. }));
+        }
+    }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Locator Actions (Spec G.1)
+    // =========================================================================
+
+    mod h0_locator_action_tests {
+        use super::*;
+
+        #[test]
+        fn h0_locator_31_click_action() {
+            let locator = Locator::new("button");
+            let action = locator.click().unwrap();
+            assert!(matches!(action, LocatorAction::Click { .. }));
+        }
+
+        #[test]
+        fn h0_locator_32_double_click_action() {
+            let locator = Locator::new("button");
+            let action = locator.double_click().unwrap();
+            assert!(matches!(action, LocatorAction::DoubleClick { .. }));
+        }
+
+        #[test]
+        fn h0_locator_33_fill_action() {
+            let locator = Locator::new("input");
+            let action = locator.fill("hello").unwrap();
+            assert!(
+                matches!(action, LocatorAction::Fill { text, .. } if text == "hello")
+            );
+        }
+
+        #[test]
+        fn h0_locator_34_hover_action() {
+            let locator = Locator::new("button");
+            let action = locator.hover().unwrap();
+            assert!(matches!(action, LocatorAction::Hover { .. }));
+        }
+
+        #[test]
+        fn h0_locator_35_focus_action() {
+            let locator = Locator::new("input");
+            let action = locator.focus().unwrap();
+            assert!(matches!(action, LocatorAction::Focus { .. }));
+        }
+
+        #[test]
+        fn h0_locator_36_drag_to_action() {
+            let locator = Locator::new("div.draggable");
+            let action = locator.drag_to(&Point::new(100.0, 200.0)).build();
+            assert!(matches!(action, LocatorAction::Drag { .. }));
+        }
+
+        #[test]
+        fn h0_locator_37_drag_steps_custom() {
+            let locator = Locator::new("div");
+            let action = locator.drag_to(&Point::new(0.0, 0.0)).steps(25).build();
+            assert!(matches!(action, LocatorAction::Drag { steps: 25, .. }));
+        }
+
+        #[test]
+        fn h0_locator_38_drag_duration_custom() {
+            let locator = Locator::new("div");
+            let action = locator
+                .drag_to(&Point::new(0.0, 0.0))
+                .duration(Duration::from_secs(2))
+                .build();
+            assert!(matches!(action, LocatorAction::Drag { duration, .. } if duration == Duration::from_secs(2)));
+        }
+
+        #[test]
+        fn h0_locator_39_text_content_query() {
+            let locator = Locator::new("span");
+            let query = locator.text_content().unwrap();
+            assert!(matches!(query, LocatorQuery::TextContent { .. }));
+        }
+
+        #[test]
+        fn h0_locator_40_count_query() {
+            let locator = Locator::new("li");
+            let query = locator.count().unwrap();
+            assert!(matches!(query, LocatorQuery::Count { .. }));
+        }
+    }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: BoundingBox and Point (Spec G.1)
+    // =========================================================================
+
+    mod h0_geometry_tests {
+        use super::*;
+
+        #[test]
+        fn h0_locator_41_point_new() {
+            let p = Point::new(10.5, 20.5);
+            assert!((p.x - 10.5).abs() < f32::EPSILON);
+            assert!((p.y - 20.5).abs() < f32::EPSILON);
+        }
+
+        #[test]
+        fn h0_locator_42_bounding_box_new() {
+            let bbox = BoundingBox::new(10.0, 20.0, 100.0, 50.0);
+            assert!((bbox.x - 10.0).abs() < f32::EPSILON);
+            assert!((bbox.width - 100.0).abs() < f32::EPSILON);
+        }
+
+        #[test]
+        fn h0_locator_43_bounding_box_center() {
+            let bbox = BoundingBox::new(0.0, 0.0, 100.0, 100.0);
+            let center = bbox.center();
+            assert!((center.x - 50.0).abs() < f32::EPSILON);
+            assert!((center.y - 50.0).abs() < f32::EPSILON);
+        }
+
+        #[test]
+        fn h0_locator_44_bounding_box_contains_inside() {
+            let bbox = BoundingBox::new(0.0, 0.0, 100.0, 100.0);
+            assert!(bbox.contains(&Point::new(50.0, 50.0)));
+        }
+
+        #[test]
+        fn h0_locator_45_bounding_box_contains_outside() {
+            let bbox = BoundingBox::new(0.0, 0.0, 100.0, 100.0);
+            assert!(!bbox.contains(&Point::new(150.0, 150.0)));
+        }
+
+        #[test]
+        fn h0_locator_46_bounding_box_contains_edge() {
+            let bbox = BoundingBox::new(0.0, 0.0, 100.0, 100.0);
+            assert!(bbox.contains(&Point::new(0.0, 0.0)));
+        }
+
+        #[test]
+        fn h0_locator_47_drag_operation_default_steps() {
+            let drag = DragOperation::to(Point::new(100.0, 100.0));
+            assert_eq!(drag.steps, 10);
+        }
+
+        #[test]
+        fn h0_locator_48_drag_operation_default_duration() {
+            let drag = DragOperation::to(Point::new(100.0, 100.0));
+            assert_eq!(drag.duration, Duration::from_millis(500));
+        }
+
+        #[test]
+        fn h0_locator_49_locator_bounding_box_query() {
+            let locator = Locator::new("div");
+            let query = locator.bounding_box().unwrap();
+            assert!(matches!(query, LocatorQuery::BoundingBox { .. }));
+        }
+
+        #[test]
+        fn h0_locator_50_locator_is_visible_query() {
+            let locator = Locator::new("div");
+            let query = locator.is_visible().unwrap();
+            assert!(matches!(query, LocatorQuery::IsVisible { .. }));
+        }
+    }
 }

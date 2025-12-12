@@ -1460,4 +1460,377 @@ mod tests {
             assert_eq!(any.to_string(), "*");
         }
     }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Network Interception Tests (Spec G.2 P0)
+    // =========================================================================
+
+    mod h0_network_tests {
+        use super::*;
+
+        #[test]
+        fn h0_network_01_abort_reason_failed_message() {
+            assert_eq!(AbortReason::Failed.message(), "net::ERR_FAILED");
+        }
+
+        #[test]
+        fn h0_network_02_abort_reason_timed_out() {
+            assert_eq!(AbortReason::TimedOut.message(), "net::ERR_TIMED_OUT");
+        }
+
+        #[test]
+        fn h0_network_03_abort_reason_access_denied() {
+            assert_eq!(AbortReason::AccessDenied.message(), "net::ERR_ACCESS_DENIED");
+        }
+
+        #[test]
+        fn h0_network_04_abort_reason_connection_refused() {
+            assert_eq!(
+                AbortReason::ConnectionRefused.message(),
+                "net::ERR_CONNECTION_REFUSED"
+            );
+        }
+
+        #[test]
+        fn h0_network_05_abort_reason_internet_disconnected() {
+            assert_eq!(
+                AbortReason::InternetDisconnected.message(),
+                "net::ERR_INTERNET_DISCONNECTED"
+            );
+        }
+
+        #[test]
+        fn h0_network_06_route_action_default_continue() {
+            let action: RouteAction = Default::default();
+            assert!(matches!(action, RouteAction::Continue));
+        }
+
+        #[test]
+        fn h0_network_07_http_method_from_str_get() {
+            let method = HttpMethod::from_str("GET");
+            assert_eq!(method, HttpMethod::Get);
+        }
+
+        #[test]
+        fn h0_network_08_http_method_from_str_post() {
+            let method = HttpMethod::from_str("POST");
+            assert_eq!(method, HttpMethod::Post);
+        }
+
+        #[test]
+        fn h0_network_09_http_method_from_str_put() {
+            let method = HttpMethod::from_str("PUT");
+            assert_eq!(method, HttpMethod::Put);
+        }
+
+        #[test]
+        fn h0_network_10_http_method_from_str_delete() {
+            let method = HttpMethod::from_str("DELETE");
+            assert_eq!(method, HttpMethod::Delete);
+        }
+    }
+
+    mod h0_mock_response_tests {
+        use super::*;
+
+        #[test]
+        fn h0_network_11_mock_response_text() {
+            let resp = MockResponse::text("hello");
+            assert_eq!(resp.body_string(), "hello");
+        }
+
+        #[test]
+        fn h0_network_12_mock_response_json() {
+            let resp = MockResponse::json(&serde_json::json!({"key": "value"})).unwrap();
+            assert_eq!(resp.content_type, "application/json");
+        }
+
+        #[test]
+        fn h0_network_13_mock_response_error() {
+            let resp = MockResponse::error(404, "Not Found");
+            assert_eq!(resp.status, 404);
+        }
+
+        #[test]
+        fn h0_network_14_mock_response_status_200() {
+            let resp = MockResponse::text("ok");
+            assert_eq!(resp.status, 200);
+        }
+
+        #[test]
+        fn h0_network_15_mock_response_with_body() {
+            let resp = MockResponse::new().with_body(vec![1, 2, 3]);
+            assert_eq!(resp.body, vec![1, 2, 3]);
+        }
+
+        #[test]
+        fn h0_network_16_mock_response_with_header() {
+            let resp = MockResponse::text("body").with_header("X-Custom", "value");
+            assert_eq!(resp.headers.get("X-Custom"), Some(&"value".to_string()));
+        }
+
+        #[test]
+        fn h0_network_17_mock_response_with_content_type() {
+            let resp = MockResponse::new().with_content_type("text/plain");
+            assert_eq!(resp.content_type, "text/plain");
+        }
+
+        #[test]
+        fn h0_network_18_mock_response_default() {
+            let resp = MockResponse::default();
+            assert_eq!(resp.status, 200);
+        }
+
+        #[test]
+        fn h0_network_19_mock_response_clone() {
+            let resp1 = MockResponse::text("cloned");
+            let resp2 = resp1.clone();
+            assert_eq!(resp1.body, resp2.body);
+        }
+
+        #[test]
+        fn h0_network_20_mock_response_debug() {
+            let resp = MockResponse::text("test");
+            let debug = format!("{:?}", resp);
+            assert!(debug.contains("MockResponse"));
+        }
+    }
+
+    mod h0_url_pattern_tests {
+        use super::*;
+
+        #[test]
+        fn h0_network_21_url_pattern_exact_match() {
+            let pattern = UrlPattern::Exact("https://example.com".to_string());
+            assert!(pattern.matches("https://example.com"));
+        }
+
+        #[test]
+        fn h0_network_22_url_pattern_exact_no_match() {
+            let pattern = UrlPattern::Exact("https://example.com".to_string());
+            assert!(!pattern.matches("https://example.com/path"));
+        }
+
+        #[test]
+        fn h0_network_23_url_pattern_prefix_match() {
+            let pattern = UrlPattern::Prefix("https://api.".to_string());
+            assert!(pattern.matches("https://api.example.com/v1"));
+        }
+
+        #[test]
+        fn h0_network_24_url_pattern_contains_match() {
+            let pattern = UrlPattern::Contains("/api/".to_string());
+            assert!(pattern.matches("https://example.com/api/users"));
+        }
+
+        #[test]
+        fn h0_network_25_url_pattern_any_matches_all() {
+            let pattern = UrlPattern::Any;
+            assert!(pattern.matches("https://any-url.com/any/path"));
+        }
+
+        #[test]
+        fn h0_network_26_url_pattern_glob_single_star() {
+            let pattern = UrlPattern::Glob("**/api/*".to_string());
+            assert!(pattern.matches("https://example.com/api/users"));
+        }
+
+        #[test]
+        fn h0_network_27_url_pattern_regex() {
+            let pattern = UrlPattern::Regex(r"/users/\d+".to_string());
+            assert!(pattern.matches("https://api.com/users/123"));
+        }
+
+        #[test]
+        fn h0_network_28_url_pattern_to_string_exact() {
+            let pattern = UrlPattern::Exact("test".to_string());
+            assert_eq!(pattern.to_string(), "test");
+        }
+
+        #[test]
+        fn h0_network_29_url_pattern_to_string_any() {
+            let pattern = UrlPattern::Any;
+            assert_eq!(pattern.to_string(), "*");
+        }
+
+        #[test]
+        fn h0_network_30_url_pattern_clone() {
+            let pattern1 = UrlPattern::Contains("api".to_string());
+            let pattern2 = pattern1;
+            assert!(pattern2.matches("https://api.com"));
+        }
+    }
+
+    mod h0_network_interception_tests {
+        use super::*;
+
+        #[test]
+        fn h0_network_31_interception_new() {
+            let interception = NetworkInterception::new();
+            assert!(!interception.is_active());
+        }
+
+        #[test]
+        fn h0_network_32_interception_start_stop() {
+            let mut interception = NetworkInterception::new();
+            interception.start();
+            assert!(interception.is_active());
+            interception.stop();
+            assert!(!interception.is_active());
+        }
+
+        #[test]
+        fn h0_network_33_interception_get_route() {
+            let mut interception = NetworkInterception::new();
+            interception.get("/api/users", MockResponse::text("users"));
+            assert_eq!(interception.route_count(), 1);
+        }
+
+        #[test]
+        fn h0_network_34_interception_post_route() {
+            let mut interception = NetworkInterception::new();
+            interception.post("/api/create", MockResponse::text("data"));
+            assert_eq!(interception.route_count(), 1);
+        }
+
+        #[test]
+        fn h0_network_35_interception_put_route() {
+            let mut interception = NetworkInterception::new();
+            interception.put("/api/update", MockResponse::text("updated"));
+            assert_eq!(interception.route_count(), 1);
+        }
+
+        #[test]
+        fn h0_network_36_interception_delete_route() {
+            let mut interception = NetworkInterception::new();
+            interception.delete("/api/remove", MockResponse::text("deleted"));
+            assert_eq!(interception.route_count(), 1);
+        }
+
+        #[test]
+        fn h0_network_37_interception_abort() {
+            let mut interception = NetworkInterception::new();
+            interception.abort("/blocked", AbortReason::BlockedByClient);
+            assert_eq!(interception.route_count(), 1);
+        }
+
+        #[test]
+        fn h0_network_38_interception_clear() {
+            let mut interception = NetworkInterception::new();
+            interception.get("/api", MockResponse::text("data"));
+            interception.clear_routes();
+            assert_eq!(interception.route_count(), 0);
+        }
+
+        #[test]
+        fn h0_network_39_interception_captured_requests() {
+            let interception = NetworkInterception::new();
+            assert!(interception.captured_requests().is_empty());
+        }
+
+        #[test]
+        fn h0_network_40_interception_captured_responses() {
+            let interception = NetworkInterception::new();
+            assert!(interception.captured_responses().is_empty());
+        }
+    }
+
+    mod h0_route_tests {
+        use super::*;
+
+        #[test]
+        fn h0_network_41_route_new() {
+            let route = Route::new(
+                UrlPattern::Contains("/api".to_string()),
+                HttpMethod::Get,
+                MockResponse::text("response"),
+            );
+            assert!(route.pattern.matches("https://example.com/api"));
+        }
+
+        #[test]
+        fn h0_network_42_route_matches_url_and_method() {
+            let route = Route::new(
+                UrlPattern::Contains("/api".to_string()),
+                HttpMethod::Post,
+                MockResponse::text("data"),
+            );
+            assert!(route.matches("https://example.com/api", &HttpMethod::Post));
+        }
+
+        #[test]
+        fn h0_network_43_route_no_match_wrong_method() {
+            let route = Route::new(
+                UrlPattern::Contains("/api".to_string()),
+                HttpMethod::Get,
+                MockResponse::text("data"),
+            );
+            assert!(!route.matches("https://example.com/api", &HttpMethod::Post));
+        }
+
+        #[test]
+        fn h0_network_44_route_record_match() {
+            let mut route = Route::new(
+                UrlPattern::Any,
+                HttpMethod::Get,
+                MockResponse::text("data"),
+            );
+            route.record_match();
+            assert_eq!(route.match_count, 1);
+        }
+
+        #[test]
+        fn h0_network_45_captured_request_new() {
+            let request = CapturedRequest::new(
+                "https://api.com/users",
+                HttpMethod::Get,
+                1000,
+            );
+            assert_eq!(request.url, "https://api.com/users");
+            assert_eq!(request.method, HttpMethod::Get);
+        }
+
+        #[test]
+        fn h0_network_46_captured_request_body_string() {
+            let mut request = CapturedRequest::new("https://api.com", HttpMethod::Post, 0);
+            request.body = Some(b"hello".to_vec());
+            assert_eq!(request.body_string(), Some("hello".to_string()));
+        }
+
+        #[test]
+        fn h0_network_47_http_method_matches_same() {
+            assert!(HttpMethod::Get.matches(&HttpMethod::Get));
+        }
+
+        #[test]
+        fn h0_network_48_http_method_matches_any() {
+            assert!(HttpMethod::Any.matches(&HttpMethod::Get));
+            assert!(HttpMethod::Any.matches(&HttpMethod::Post));
+        }
+
+        #[test]
+        fn h0_network_49_http_method_no_match_different() {
+            assert!(!HttpMethod::Get.matches(&HttpMethod::Post));
+        }
+
+        #[test]
+        fn h0_network_50_abort_reason_all_variants() {
+            let reasons = vec![
+                AbortReason::Failed,
+                AbortReason::Aborted,
+                AbortReason::TimedOut,
+                AbortReason::AccessDenied,
+                AbortReason::ConnectionClosed,
+                AbortReason::ConnectionFailed,
+                AbortReason::ConnectionRefused,
+                AbortReason::ConnectionReset,
+                AbortReason::InternetDisconnected,
+                AbortReason::NameNotResolved,
+                AbortReason::BlockedByClient,
+            ];
+            for reason in reasons {
+                assert!(!reason.message().is_empty());
+            }
+        }
+    }
 }

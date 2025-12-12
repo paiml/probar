@@ -306,6 +306,87 @@ fn pixel_diff(a: Rgba<u8>, b: Rgba<u8>) -> u32 {
     dr.unsigned_abs() + dg.unsigned_abs() + db.unsigned_abs()
 }
 
+/// Mask region for screenshot comparison - excludes dynamic areas from comparison
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaskRegion {
+    /// X coordinate of top-left corner
+    pub x: u32,
+    /// Y coordinate of top-left corner
+    pub y: u32,
+    /// Width of mask region
+    pub width: u32,
+    /// Height of mask region
+    pub height: u32,
+}
+
+impl MaskRegion {
+    /// Create a new mask region
+    #[must_use]
+    pub const fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    /// Check if a point is within this mask region
+    #[must_use]
+    pub const fn contains(&self, px: u32, py: u32) -> bool {
+        px >= self.x && px < self.x + self.width && py >= self.y && py < self.y + self.height
+    }
+}
+
+/// Screenshot comparison configuration (Playwright API parity)
+#[derive(Debug, Clone, Default)]
+pub struct ScreenshotComparison {
+    /// Threshold for comparison (0.0-1.0)
+    pub threshold: f64,
+    /// Maximum number of pixels that can differ
+    pub max_diff_pixels: Option<usize>,
+    /// Maximum ratio of pixels that can differ (0.0-1.0)
+    pub max_diff_pixel_ratio: Option<f64>,
+    /// Regions to mask (exclude from comparison)
+    pub mask_regions: Vec<MaskRegion>,
+}
+
+impl ScreenshotComparison {
+    /// Create a new screenshot comparison config
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set threshold for comparison
+    #[must_use]
+    pub const fn with_threshold(mut self, threshold: f64) -> Self {
+        self.threshold = threshold;
+        self
+    }
+
+    /// Set maximum number of differing pixels
+    #[must_use]
+    pub const fn with_max_diff_pixels(mut self, pixels: usize) -> Self {
+        self.max_diff_pixels = Some(pixels);
+        self
+    }
+
+    /// Set maximum ratio of differing pixels
+    #[must_use]
+    pub const fn with_max_diff_pixel_ratio(mut self, ratio: f64) -> Self {
+        self.max_diff_pixel_ratio = Some(ratio);
+        self
+    }
+
+    /// Add a mask region to exclude from comparison
+    #[must_use]
+    pub fn with_mask(mut self, mask: MaskRegion) -> Self {
+        self.mask_regions.push(mask);
+        self
+    }
+}
+
 /// Calculate perceptual color difference (weighted for human vision)
 ///
 /// Uses weighted RGB based on human perception:
@@ -801,5 +882,525 @@ mod tests {
         let eight_bit_from_16 = (sixteen_bit_value >> 8) as u8;
 
         assert_eq!(eight_bit_from_16, 255, "16-bit normalized to 8-bit");
+    }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Visual Regression Tests (Spec G.4 P0)
+    // =========================================================================
+
+    mod h0_visual_regression_tests {
+        use super::*;
+
+        #[test]
+        fn h0_visual_01_config_default_threshold() {
+            let config = VisualRegressionConfig::default();
+            assert!((config.threshold - 0.01).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn h0_visual_02_config_default_color_threshold() {
+            let config = VisualRegressionConfig::default();
+            assert_eq!(config.color_threshold, 10);
+        }
+
+        #[test]
+        fn h0_visual_03_config_default_baseline_dir() {
+            let config = VisualRegressionConfig::default();
+            assert_eq!(config.baseline_dir, "__baselines__");
+        }
+
+        #[test]
+        fn h0_visual_04_config_default_diff_dir() {
+            let config = VisualRegressionConfig::default();
+            assert_eq!(config.diff_dir, "__diffs__");
+        }
+
+        #[test]
+        fn h0_visual_05_config_default_update_baselines() {
+            let config = VisualRegressionConfig::default();
+            assert!(!config.update_baselines);
+        }
+
+        #[test]
+        fn h0_visual_06_config_with_threshold() {
+            let config = VisualRegressionConfig::default().with_threshold(0.05);
+            assert!((config.threshold - 0.05).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn h0_visual_07_config_with_color_threshold() {
+            let config = VisualRegressionConfig::default().with_color_threshold(25);
+            assert_eq!(config.color_threshold, 25);
+        }
+
+        #[test]
+        fn h0_visual_08_config_with_baseline_dir() {
+            let config = VisualRegressionConfig::default().with_baseline_dir("custom_baselines");
+            assert_eq!(config.baseline_dir, "custom_baselines");
+        }
+
+        #[test]
+        fn h0_visual_09_config_with_update_baselines() {
+            let config = VisualRegressionConfig::default().with_update_baselines(true);
+            assert!(config.update_baselines);
+        }
+
+        #[test]
+        fn h0_visual_10_tester_default() {
+            let tester = VisualRegressionTester::default();
+            assert!((tester.config.threshold - 0.01).abs() < f64::EPSILON);
+        }
+    }
+
+    mod h0_image_diff_result_tests {
+        use super::*;
+
+        #[test]
+        fn h0_visual_11_diff_result_is_identical_true() {
+            let result = ImageDiffResult {
+                matches: true,
+                diff_pixel_count: 0,
+                total_pixels: 100,
+                diff_percentage: 0.0,
+                max_color_diff: 0,
+                avg_color_diff: 0.0,
+                diff_image: None,
+            };
+            assert!(result.is_identical());
+        }
+
+        #[test]
+        fn h0_visual_12_diff_result_is_identical_false() {
+            let result = ImageDiffResult {
+                matches: true,
+                diff_pixel_count: 1,
+                total_pixels: 100,
+                diff_percentage: 1.0,
+                max_color_diff: 50,
+                avg_color_diff: 50.0,
+                diff_image: None,
+            };
+            assert!(!result.is_identical());
+        }
+
+        #[test]
+        fn h0_visual_13_diff_result_within_threshold_pass() {
+            let result = ImageDiffResult {
+                matches: true,
+                diff_pixel_count: 1,
+                total_pixels: 100,
+                diff_percentage: 1.0,
+                max_color_diff: 10,
+                avg_color_diff: 10.0,
+                diff_image: None,
+            };
+            assert!(result.within_threshold(0.02)); // 2% threshold
+        }
+
+        #[test]
+        fn h0_visual_14_diff_result_within_threshold_fail() {
+            let result = ImageDiffResult {
+                matches: false,
+                diff_pixel_count: 10,
+                total_pixels: 100,
+                diff_percentage: 10.0,
+                max_color_diff: 100,
+                avg_color_diff: 80.0,
+                diff_image: None,
+            };
+            assert!(!result.within_threshold(0.05)); // 5% threshold
+        }
+
+        #[test]
+        fn h0_visual_15_diff_result_percentage_calculation() {
+            let result = ImageDiffResult {
+                matches: false,
+                diff_pixel_count: 50,
+                total_pixels: 100,
+                diff_percentage: 50.0,
+                max_color_diff: 255,
+                avg_color_diff: 128.0,
+                diff_image: None,
+            };
+            assert!((result.diff_percentage - 50.0).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn h0_visual_16_diff_result_max_color_diff() {
+            let result = ImageDiffResult {
+                matches: false,
+                diff_pixel_count: 5,
+                total_pixels: 100,
+                diff_percentage: 5.0,
+                max_color_diff: 200,
+                avg_color_diff: 150.0,
+                diff_image: None,
+            };
+            assert_eq!(result.max_color_diff, 200);
+        }
+
+        #[test]
+        fn h0_visual_17_diff_result_avg_color_diff() {
+            let result = ImageDiffResult {
+                matches: false,
+                diff_pixel_count: 5,
+                total_pixels: 100,
+                diff_percentage: 5.0,
+                max_color_diff: 200,
+                avg_color_diff: 125.5,
+                diff_image: None,
+            };
+            assert!((result.avg_color_diff - 125.5).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn h0_visual_18_diff_result_with_diff_image() {
+            let result = ImageDiffResult {
+                matches: false,
+                diff_pixel_count: 10,
+                total_pixels: 100,
+                diff_percentage: 10.0,
+                max_color_diff: 255,
+                avg_color_diff: 200.0,
+                diff_image: Some(vec![1, 2, 3, 4]),
+            };
+            assert!(result.diff_image.is_some());
+        }
+
+        #[test]
+        fn h0_visual_19_diff_result_matches_field() {
+            let result = ImageDiffResult {
+                matches: true,
+                diff_pixel_count: 0,
+                total_pixels: 100,
+                diff_percentage: 0.0,
+                max_color_diff: 0,
+                avg_color_diff: 0.0,
+                diff_image: None,
+            };
+            assert!(result.matches);
+        }
+
+        #[test]
+        fn h0_visual_20_diff_result_total_pixels() {
+            let result = ImageDiffResult {
+                matches: true,
+                diff_pixel_count: 0,
+                total_pixels: 1920 * 1080,
+                diff_percentage: 0.0,
+                max_color_diff: 0,
+                avg_color_diff: 0.0,
+                diff_image: None,
+            };
+            assert_eq!(result.total_pixels, 1920 * 1080);
+        }
+    }
+
+    mod h0_image_comparison_tests {
+        use super::*;
+        use image::Rgba;
+
+        fn create_test_image(width: u32, height: u32, color: Rgba<u8>) -> Vec<u8> {
+            let mut img = image::RgbaImage::new(width, height);
+            for pixel in img.pixels_mut() {
+                *pixel = color;
+            }
+            let mut buffer = Vec::new();
+            let encoder = image::codecs::png::PngEncoder::new(&mut buffer);
+            encoder
+                .write_image(img.as_raw(), width, height, image::ExtendedColorType::Rgba8)
+                .unwrap();
+            buffer
+        }
+
+        #[test]
+        fn h0_visual_21_compare_identical_images() {
+            let tester = VisualRegressionTester::default();
+            let img = create_test_image(10, 10, Rgba([128, 128, 128, 255]));
+            let result = tester.compare_images(&img, &img).unwrap();
+            assert!(result.matches);
+            assert!(result.is_identical());
+        }
+
+        #[test]
+        fn h0_visual_22_compare_different_images() {
+            let tester = VisualRegressionTester::new(
+                VisualRegressionConfig::default()
+                    .with_threshold(0.0)
+                    .with_color_threshold(0),
+            );
+            let img1 = create_test_image(10, 10, Rgba([0, 0, 0, 255]));
+            let img2 = create_test_image(10, 10, Rgba([255, 255, 255, 255]));
+            let result = tester.compare_images(&img1, &img2).unwrap();
+            assert!(!result.matches);
+        }
+
+        #[test]
+        fn h0_visual_23_compare_within_color_threshold() {
+            let tester = VisualRegressionTester::new(
+                VisualRegressionConfig::default().with_color_threshold(50),
+            );
+            let img1 = create_test_image(10, 10, Rgba([100, 100, 100, 255]));
+            let img2 = create_test_image(10, 10, Rgba([110, 110, 110, 255])); // +10 diff
+            let result = tester.compare_images(&img1, &img2).unwrap();
+            assert!(result.matches);
+        }
+
+        #[test]
+        fn h0_visual_24_compare_exceeds_color_threshold() {
+            let tester = VisualRegressionTester::new(
+                VisualRegressionConfig::default()
+                    .with_color_threshold(5)
+                    .with_threshold(0.0),
+            );
+            let img1 = create_test_image(10, 10, Rgba([100, 100, 100, 255]));
+            let img2 = create_test_image(10, 10, Rgba([150, 150, 150, 255])); // +50 diff
+            let result = tester.compare_images(&img1, &img2).unwrap();
+            assert!(!result.matches);
+        }
+
+        #[test]
+        fn h0_visual_25_compare_within_pixel_threshold() {
+            let tester = VisualRegressionTester::new(
+                VisualRegressionConfig::default()
+                    .with_threshold(0.5) // 50% of pixels can differ
+                    .with_color_threshold(0),
+            );
+            // 10x10 = 100 pixels, allow up to 50 to differ
+            let mut img1 = image::RgbaImage::new(10, 10);
+            let mut img2 = image::RgbaImage::new(10, 10);
+            for (i, pixel) in img1.pixels_mut().enumerate() {
+                *pixel = if i < 70 {
+                    Rgba([0, 0, 0, 255])
+                } else {
+                    Rgba([255, 255, 255, 255])
+                };
+            }
+            for pixel in img2.pixels_mut() {
+                *pixel = Rgba([0, 0, 0, 255]);
+            }
+            let mut buf1 = Vec::new();
+            let mut buf2 = Vec::new();
+            image::codecs::png::PngEncoder::new(&mut buf1)
+                .write_image(img1.as_raw(), 10, 10, image::ExtendedColorType::Rgba8)
+                .unwrap();
+            image::codecs::png::PngEncoder::new(&mut buf2)
+                .write_image(img2.as_raw(), 10, 10, image::ExtendedColorType::Rgba8)
+                .unwrap();
+            let result = tester.compare_images(&buf1, &buf2).unwrap();
+            assert!(result.matches); // 30% differ, threshold is 50%
+        }
+
+        #[test]
+        fn h0_visual_26_compare_size_mismatch() {
+            let tester = VisualRegressionTester::default();
+            let img1 = create_test_image(10, 10, Rgba([128, 128, 128, 255]));
+            let img2 = create_test_image(20, 20, Rgba([128, 128, 128, 255]));
+            let result = tester.compare_images(&img1, &img2);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn h0_visual_27_compare_invalid_image() {
+            let tester = VisualRegressionTester::default();
+            let invalid = vec![0, 1, 2, 3];
+            let valid = create_test_image(10, 10, Rgba([128, 128, 128, 255]));
+            let result = tester.compare_images(&invalid, &valid);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn h0_visual_28_diff_image_generated() {
+            let tester = VisualRegressionTester::new(
+                VisualRegressionConfig::default()
+                    .with_threshold(0.0)
+                    .with_color_threshold(0),
+            );
+            let img1 = create_test_image(10, 10, Rgba([0, 0, 0, 255]));
+            let img2 = create_test_image(10, 10, Rgba([255, 0, 0, 255]));
+            let result = tester.compare_images(&img1, &img2).unwrap();
+            assert!(result.diff_image.is_some());
+        }
+
+        #[test]
+        fn h0_visual_29_tester_new_with_config() {
+            let config = VisualRegressionConfig::default().with_threshold(0.1);
+            let tester = VisualRegressionTester::new(config);
+            assert!((tester.config.threshold - 0.1).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn h0_visual_30_compare_red_channel_only_diff() {
+            let tester = VisualRegressionTester::new(
+                VisualRegressionConfig::default()
+                    .with_threshold(0.0)
+                    .with_color_threshold(0),
+            );
+            let img1 = create_test_image(10, 10, Rgba([100, 100, 100, 255]));
+            let img2 = create_test_image(10, 10, Rgba([200, 100, 100, 255])); // Only red differs
+            let result = tester.compare_images(&img1, &img2).unwrap();
+            assert!(!result.matches);
+            assert_eq!(result.max_color_diff, 100);
+        }
+    }
+
+    mod h0_screenshot_comparison_tests {
+        use super::*;
+
+        #[test]
+        fn h0_visual_31_screenshot_comparison_default() {
+            let comparison = ScreenshotComparison::default();
+            assert!((comparison.threshold - 0.0).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn h0_visual_32_screenshot_comparison_with_threshold() {
+            let comparison = ScreenshotComparison::new().with_threshold(0.05);
+            assert!((comparison.threshold - 0.05).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn h0_visual_33_screenshot_comparison_with_max_diff_pixels() {
+            let comparison = ScreenshotComparison::new().with_max_diff_pixels(100);
+            assert_eq!(comparison.max_diff_pixels, Some(100));
+        }
+
+        #[test]
+        fn h0_visual_34_screenshot_comparison_with_max_diff_pixel_ratio() {
+            let comparison = ScreenshotComparison::new().with_max_diff_pixel_ratio(0.1);
+            assert!((comparison.max_diff_pixel_ratio.unwrap() - 0.1).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn h0_visual_35_screenshot_comparison_with_mask() {
+            let mask = MaskRegion::new(10, 20, 100, 50);
+            let comparison = ScreenshotComparison::new().with_mask(mask);
+            assert_eq!(comparison.mask_regions.len(), 1);
+        }
+
+        #[test]
+        fn h0_visual_36_screenshot_comparison_multiple_masks() {
+            let comparison = ScreenshotComparison::new()
+                .with_mask(MaskRegion::new(0, 0, 50, 50))
+                .with_mask(MaskRegion::new(100, 100, 50, 50));
+            assert_eq!(comparison.mask_regions.len(), 2);
+        }
+
+        #[test]
+        fn h0_visual_37_mask_region_creation() {
+            let mask = MaskRegion::new(10, 20, 100, 50);
+            assert_eq!(mask.x, 10);
+            assert_eq!(mask.y, 20);
+            assert_eq!(mask.width, 100);
+            assert_eq!(mask.height, 50);
+        }
+
+        #[test]
+        fn h0_visual_38_mask_region_contains_inside() {
+            let mask = MaskRegion::new(0, 0, 100, 100);
+            assert!(mask.contains(50, 50));
+        }
+
+        #[test]
+        fn h0_visual_39_mask_region_contains_outside() {
+            let mask = MaskRegion::new(0, 0, 100, 100);
+            assert!(!mask.contains(150, 150));
+        }
+
+        #[test]
+        fn h0_visual_40_mask_region_contains_edge() {
+            let mask = MaskRegion::new(0, 0, 100, 100);
+            assert!(mask.contains(0, 0));
+            assert!(mask.contains(99, 99));
+        }
+    }
+
+    mod h0_additional_tests {
+        use super::*;
+
+        #[test]
+        fn h0_visual_41_config_clone() {
+            let config = VisualRegressionConfig::default().with_threshold(0.05);
+            let cloned = config;
+            assert!((cloned.threshold - 0.05).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn h0_visual_42_config_debug() {
+            let config = VisualRegressionConfig::default();
+            let debug = format!("{:?}", config);
+            assert!(debug.contains("VisualRegressionConfig"));
+        }
+
+        #[test]
+        fn h0_visual_43_diff_result_clone() {
+            let result = ImageDiffResult {
+                matches: true,
+                diff_pixel_count: 0,
+                total_pixels: 100,
+                diff_percentage: 0.0,
+                max_color_diff: 0,
+                avg_color_diff: 0.0,
+                diff_image: None,
+            };
+            let cloned = result;
+            assert!(cloned.matches);
+        }
+
+        #[test]
+        fn h0_visual_44_diff_result_debug() {
+            let result = ImageDiffResult {
+                matches: true,
+                diff_pixel_count: 0,
+                total_pixels: 100,
+                diff_percentage: 0.0,
+                max_color_diff: 0,
+                avg_color_diff: 0.0,
+                diff_image: None,
+            };
+            let debug = format!("{:?}", result);
+            assert!(debug.contains("ImageDiffResult"));
+        }
+
+        #[test]
+        fn h0_visual_45_tester_clone() {
+            let tester = VisualRegressionTester::default();
+            let cloned = tester.clone();
+            assert!((cloned.config.threshold - tester.config.threshold).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn h0_visual_46_tester_debug() {
+            let tester = VisualRegressionTester::default();
+            let debug = format!("{:?}", tester);
+            assert!(debug.contains("VisualRegressionTester"));
+        }
+
+        #[test]
+        fn h0_visual_47_screenshot_comparison_new() {
+            let comparison = ScreenshotComparison::new();
+            assert!(comparison.mask_regions.is_empty());
+        }
+
+        #[test]
+        fn h0_visual_48_screenshot_comparison_clone() {
+            let comparison = ScreenshotComparison::new().with_threshold(0.1);
+            let cloned = comparison;
+            assert!((cloned.threshold - 0.1).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn h0_visual_49_mask_region_clone() {
+            let mask = MaskRegion::new(10, 20, 30, 40);
+            let cloned = mask;
+            assert_eq!(cloned.x, 10);
+        }
+
+        #[test]
+        fn h0_visual_50_mask_region_debug() {
+            let mask = MaskRegion::new(10, 20, 30, 40);
+            let debug = format!("{:?}", mask);
+            assert!(debug.contains("MaskRegion"));
+        }
     }
 }

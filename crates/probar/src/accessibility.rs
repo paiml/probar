@@ -864,4 +864,528 @@ mod tests {
             assert!((config.min_contrast - 3.0).abs() < 0.01);
         }
     }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Accessibility Tests (Section 6.3 P1)
+    // =========================================================================
+
+    mod h0_color_tests {
+        use super::*;
+
+        #[test]
+        fn h0_a11y_01_color_new() {
+            let color = Color::new(128, 64, 32);
+            assert_eq!(color.r, 128);
+            assert_eq!(color.g, 64);
+            assert_eq!(color.b, 32);
+        }
+
+        #[test]
+        fn h0_a11y_02_color_from_hex_white() {
+            let color = Color::from_hex(0xFFFFFF);
+            assert_eq!(color.r, 255);
+            assert_eq!(color.g, 255);
+            assert_eq!(color.b, 255);
+        }
+
+        #[test]
+        fn h0_a11y_03_color_from_hex_black() {
+            let color = Color::from_hex(0x000000);
+            assert_eq!(color.r, 0);
+            assert_eq!(color.g, 0);
+            assert_eq!(color.b, 0);
+        }
+
+        #[test]
+        fn h0_a11y_04_color_from_hex_red() {
+            let color = Color::from_hex(0xFF0000);
+            assert_eq!(color.r, 255);
+            assert_eq!(color.g, 0);
+            assert_eq!(color.b, 0);
+        }
+
+        #[test]
+        fn h0_a11y_05_color_from_hex_green() {
+            let color = Color::from_hex(0x00FF00);
+            assert_eq!(color.r, 0);
+            assert_eq!(color.g, 255);
+            assert_eq!(color.b, 0);
+        }
+
+        #[test]
+        fn h0_a11y_06_color_from_hex_blue() {
+            let color = Color::from_hex(0x0000FF);
+            assert_eq!(color.r, 0);
+            assert_eq!(color.g, 0);
+            assert_eq!(color.b, 255);
+        }
+
+        #[test]
+        fn h0_a11y_07_color_relative_luminance_black() {
+            let black = Color::new(0, 0, 0);
+            assert!(black.relative_luminance() < 0.001);
+        }
+
+        #[test]
+        fn h0_a11y_08_color_relative_luminance_white() {
+            let white = Color::new(255, 255, 255);
+            assert!(white.relative_luminance() > 0.99);
+        }
+
+        #[test]
+        fn h0_a11y_09_color_contrast_ratio_max() {
+            let black = Color::new(0, 0, 0);
+            let white = Color::new(255, 255, 255);
+            let ratio = black.contrast_ratio(&white);
+            assert!((ratio - 21.0).abs() < 0.5);
+        }
+
+        #[test]
+        fn h0_a11y_10_color_contrast_ratio_min() {
+            let red = Color::new(255, 0, 0);
+            let ratio = red.contrast_ratio(&red);
+            assert!((ratio - 1.0).abs() < 0.01);
+        }
+    }
+
+    mod h0_wcag_tests {
+        use super::*;
+
+        #[test]
+        fn h0_a11y_11_meets_wcag_aa_normal_pass() {
+            let black = Color::new(0, 0, 0);
+            let white = Color::new(255, 255, 255);
+            assert!(black.meets_wcag_aa_normal(&white));
+        }
+
+        #[test]
+        fn h0_a11y_12_meets_wcag_aa_normal_fail() {
+            let light_gray = Color::new(200, 200, 200);
+            let white = Color::new(255, 255, 255);
+            assert!(!light_gray.meets_wcag_aa_normal(&white));
+        }
+
+        #[test]
+        fn h0_a11y_13_meets_wcag_aa_large_pass() {
+            let gray = Color::new(100, 100, 100);
+            let white = Color::new(255, 255, 255);
+            assert!(gray.meets_wcag_aa_large(&white));
+        }
+
+        #[test]
+        fn h0_a11y_14_meets_wcag_aa_ui_pass() {
+            let gray = Color::new(100, 100, 100);
+            let white = Color::new(255, 255, 255);
+            assert!(gray.meets_wcag_aa_ui(&white));
+        }
+
+        #[test]
+        fn h0_a11y_15_min_contrast_normal_constant() {
+            assert!((MIN_CONTRAST_NORMAL - 4.5).abs() < 0.01);
+        }
+
+        #[test]
+        fn h0_a11y_16_min_contrast_large_constant() {
+            assert!((MIN_CONTRAST_LARGE - 3.0).abs() < 0.01);
+        }
+
+        #[test]
+        fn h0_a11y_17_min_contrast_ui_constant() {
+            assert!((MIN_CONTRAST_UI - 3.0).abs() < 0.01);
+        }
+
+        #[test]
+        fn h0_a11y_18_color_equality() {
+            let color1 = Color::new(100, 100, 100);
+            let color2 = Color::new(100, 100, 100);
+            assert_eq!(color1, color2);
+        }
+
+        #[test]
+        fn h0_a11y_19_color_clone() {
+            let color = Color::new(50, 100, 150);
+            let cloned = color;
+            assert_eq!(cloned.r, 50);
+        }
+
+        #[test]
+        fn h0_a11y_20_color_debug() {
+            let color = Color::new(128, 128, 128);
+            let debug = format!("{:?}", color);
+            assert!(debug.contains("Color"));
+        }
+    }
+
+    mod h0_contrast_analysis_tests {
+        use super::*;
+
+        #[test]
+        fn h0_a11y_21_contrast_analysis_empty() {
+            let analysis = ContrastAnalysis::empty();
+            assert_eq!(analysis.pairs_analyzed, 0);
+        }
+
+        #[test]
+        fn h0_a11y_22_contrast_analysis_passes_wcag_empty() {
+            let analysis = ContrastAnalysis::empty();
+            assert!(analysis.passes_wcag_aa);
+        }
+
+        #[test]
+        fn h0_a11y_23_contrast_analysis_add_pair_count() {
+            let mut analysis = ContrastAnalysis::empty();
+            analysis.add_pair(Color::new(0, 0, 0), Color::new(255, 255, 255), "test");
+            assert_eq!(analysis.pairs_analyzed, 1);
+        }
+
+        #[test]
+        fn h0_a11y_24_contrast_analysis_add_failing_pair() {
+            let mut analysis = ContrastAnalysis::empty();
+            analysis.add_pair(Color::new(200, 200, 200), Color::new(255, 255, 255), "fail");
+            assert!(!analysis.passes_wcag_aa);
+        }
+
+        #[test]
+        fn h0_a11y_25_contrast_analysis_failing_pairs_list() {
+            let mut analysis = ContrastAnalysis::empty();
+            analysis.add_pair(Color::new(220, 220, 220), Color::new(255, 255, 255), "low");
+            assert_eq!(analysis.failing_pairs.len(), 1);
+        }
+
+        #[test]
+        fn h0_a11y_26_contrast_analysis_min_ratio() {
+            let mut analysis = ContrastAnalysis::empty();
+            analysis.add_pair(Color::new(0, 0, 0), Color::new(255, 255, 255), "high");
+            assert!(analysis.min_ratio > 20.0);
+        }
+
+        #[test]
+        fn h0_a11y_27_contrast_analysis_max_ratio() {
+            let mut analysis = ContrastAnalysis::empty();
+            analysis.add_pair(Color::new(0, 0, 0), Color::new(255, 255, 255), "high");
+            assert!(analysis.max_ratio > 20.0);
+        }
+
+        #[test]
+        fn h0_a11y_28_contrast_analysis_avg_ratio() {
+            let mut analysis = ContrastAnalysis::empty();
+            analysis.add_pair(Color::new(0, 0, 0), Color::new(255, 255, 255), "high");
+            assert!(analysis.avg_ratio > 20.0);
+        }
+
+        #[test]
+        fn h0_a11y_29_contrast_pair_context() {
+            let pair = ContrastPair {
+                foreground: Color::new(0, 0, 0),
+                background: Color::new(255, 255, 255),
+                ratio: 21.0,
+                context: "button text".to_string(),
+            };
+            assert_eq!(pair.context, "button text");
+        }
+
+        #[test]
+        fn h0_a11y_30_contrast_pair_ratio() {
+            let pair = ContrastPair {
+                foreground: Color::new(0, 0, 0),
+                background: Color::new(255, 255, 255),
+                ratio: 21.0,
+                context: "test".to_string(),
+            };
+            assert!((pair.ratio - 21.0).abs() < 0.01);
+        }
+    }
+
+    mod h0_audit_tests {
+        use super::*;
+
+        #[test]
+        fn h0_a11y_31_audit_new_score() {
+            let audit = AccessibilityAudit::new();
+            assert_eq!(audit.score, 100);
+        }
+
+        #[test]
+        fn h0_a11y_32_audit_new_passes() {
+            let audit = AccessibilityAudit::new();
+            assert!(audit.passes());
+        }
+
+        #[test]
+        fn h0_a11y_33_audit_default() {
+            let audit = AccessibilityAudit::default();
+            assert_eq!(audit.score, 100);
+        }
+
+        #[test]
+        fn h0_a11y_34_audit_add_critical_issue() {
+            let mut audit = AccessibilityAudit::new();
+            audit.add_issue(AccessibilityIssue::new("2.4.7", "No focus", Severity::Critical));
+            assert_eq!(audit.score, 70);
+        }
+
+        #[test]
+        fn h0_a11y_35_audit_add_major_issue() {
+            let mut audit = AccessibilityAudit::new();
+            audit.add_issue(AccessibilityIssue::new("1.4.3", "Low contrast", Severity::Major));
+            assert_eq!(audit.score, 80);
+        }
+
+        #[test]
+        fn h0_a11y_36_audit_add_minor_issue() {
+            let mut audit = AccessibilityAudit::new();
+            audit.add_issue(AccessibilityIssue::new("2.3.3", "Motion", Severity::Minor));
+            assert_eq!(audit.score, 90);
+        }
+
+        #[test]
+        fn h0_a11y_37_audit_add_info_issue() {
+            let mut audit = AccessibilityAudit::new();
+            audit.add_issue(AccessibilityIssue::new("1.1.1", "Info", Severity::Info));
+            assert_eq!(audit.score, 100);
+        }
+
+        #[test]
+        fn h0_a11y_38_audit_has_focus_indicators() {
+            let audit = AccessibilityAudit::new();
+            assert!(audit.has_focus_indicators);
+        }
+
+        #[test]
+        fn h0_a11y_39_audit_respects_reduced_motion() {
+            let audit = AccessibilityAudit::new();
+            assert!(audit.respects_reduced_motion);
+        }
+
+        #[test]
+        fn h0_a11y_40_audit_keyboard_issues_empty() {
+            let audit = AccessibilityAudit::new();
+            assert!(audit.keyboard_issues.is_empty());
+        }
+    }
+
+    mod h0_issue_tests {
+        use super::*;
+
+        #[test]
+        fn h0_a11y_41_issue_wcag_code() {
+            let issue = AccessibilityIssue::new("1.4.3", "test", Severity::Major);
+            assert_eq!(issue.wcag_code, "1.4.3");
+        }
+
+        #[test]
+        fn h0_a11y_42_issue_description() {
+            let issue = AccessibilityIssue::new("1.4.3", "Low contrast", Severity::Major);
+            assert_eq!(issue.description, "Low contrast");
+        }
+
+        #[test]
+        fn h0_a11y_43_issue_with_context() {
+            let issue = AccessibilityIssue::new("1.4.3", "test", Severity::Major)
+                .with_context("Submit button");
+            assert_eq!(issue.context, Some("Submit button".to_string()));
+        }
+
+        #[test]
+        fn h0_a11y_44_issue_with_fix() {
+            let issue = AccessibilityIssue::new("1.4.3", "test", Severity::Major)
+                .with_fix("Increase contrast");
+            assert_eq!(issue.fix_suggestion, Some("Increase contrast".to_string()));
+        }
+
+        #[test]
+        fn h0_a11y_45_severity_critical() {
+            let issue = AccessibilityIssue::new("2.4.7", "test", Severity::Critical);
+            assert!(matches!(issue.severity, Severity::Critical));
+        }
+
+        #[test]
+        fn h0_a11y_46_severity_major() {
+            let issue = AccessibilityIssue::new("1.4.3", "test", Severity::Major);
+            assert!(matches!(issue.severity, Severity::Major));
+        }
+
+        #[test]
+        fn h0_a11y_47_severity_minor() {
+            let issue = AccessibilityIssue::new("2.3.3", "test", Severity::Minor);
+            assert!(matches!(issue.severity, Severity::Minor));
+        }
+
+        #[test]
+        fn h0_a11y_48_severity_info() {
+            let issue = AccessibilityIssue::new("1.1.1", "test", Severity::Info);
+            assert!(matches!(issue.severity, Severity::Info));
+        }
+
+        #[test]
+        fn h0_a11y_49_keyboard_issue_struct() {
+            let issue = KeyboardIssue {
+                description: "Cannot tab to element".to_string(),
+                element: Some("button".to_string()),
+                wcag: "2.1.1".to_string(),
+            };
+            assert_eq!(issue.wcag, "2.1.1");
+        }
+
+        #[test]
+        fn h0_a11y_50_focus_config_default_values() {
+            let config = FocusConfig::default();
+            assert!((config.min_outline_width - 2.0).abs() < 0.001);
+            assert!((config.min_contrast - 3.0).abs() < 0.001);
+        }
+    }
+
+    mod h0_flash_detector_tests {
+        use super::*;
+
+        #[test]
+        fn h0_a11y_51_flash_detector_new() {
+            let detector = FlashDetector::new();
+            assert!((detector.max_flash_rate - 3.0).abs() < 0.01);
+        }
+
+        #[test]
+        fn h0_a11y_52_flash_detector_default_rate() {
+            let detector = FlashDetector::default();
+            assert!((detector.max_flash_rate - 3.0).abs() < 0.01);
+        }
+
+        #[test]
+        fn h0_a11y_53_flash_detector_default_red_intensity() {
+            let detector = FlashDetector::default();
+            assert!((detector.max_red_intensity - 0.8).abs() < 0.01);
+        }
+
+        #[test]
+        fn h0_a11y_54_flash_detector_default_area() {
+            let detector = FlashDetector::default();
+            assert!((detector.max_flash_area - 0.25).abs() < 0.01);
+        }
+
+        #[test]
+        fn h0_a11y_55_flash_result_safe() {
+            let detector = FlashDetector::new();
+            let result = detector.analyze(0.01, 0.1, 0.05, 1.0);
+            assert!(result.is_safe);
+        }
+
+        #[test]
+        fn h0_a11y_56_flash_result_unsafe_rate() {
+            let detector = FlashDetector::new();
+            let result = detector.analyze(0.2, 0.1, 0.1, 0.05); // 20 Hz
+            assert!(!result.is_safe);
+        }
+
+        #[test]
+        fn h0_a11y_57_flash_result_red_exceeded() {
+            let detector = FlashDetector::new();
+            let result = detector.analyze(0.1, 0.95, 0.1, 1.0);
+            assert!(result.red_flash_exceeded);
+        }
+
+        #[test]
+        fn h0_a11y_58_flash_result_area() {
+            let detector = FlashDetector::new();
+            let result = detector.analyze(0.1, 0.1, 0.3, 1.0);
+            assert!((result.flash_area - 0.3).abs() < 0.01);
+        }
+
+        #[test]
+        fn h0_a11y_59_flash_result_warning_present() {
+            let detector = FlashDetector::new();
+            let result = detector.analyze(0.2, 0.1, 0.1, 0.05);
+            assert!(result.warning.is_some());
+        }
+
+        #[test]
+        fn h0_a11y_60_flash_result_warning_none() {
+            let detector = FlashDetector::new();
+            let result = detector.analyze(0.01, 0.1, 0.05, 1.0);
+            assert!(result.warning.is_none());
+        }
+    }
+
+    mod h0_validator_tests {
+        use super::*;
+
+        #[test]
+        fn h0_a11y_61_validator_new() {
+            let validator = AccessibilityValidator::new();
+            assert!(validator.config.check_contrast);
+        }
+
+        #[test]
+        fn h0_a11y_62_validator_with_config() {
+            let config = AccessibilityConfig {
+                check_contrast: false,
+                ..Default::default()
+            };
+            let validator = AccessibilityValidator::with_config(config);
+            assert!(!validator.config.check_contrast);
+        }
+
+        #[test]
+        fn h0_a11y_63_validator_analyze_contrast_pass() {
+            let validator = AccessibilityValidator::new();
+            let result = validator.analyze_contrast(&[
+                (Color::new(0, 0, 0), Color::new(255, 255, 255), "text"),
+            ]);
+            assert!(result.passes_wcag_aa);
+        }
+
+        #[test]
+        fn h0_a11y_64_validator_analyze_contrast_fail() {
+            let validator = AccessibilityValidator::new();
+            let result = validator.analyze_contrast(&[
+                (Color::new(200, 200, 200), Color::new(255, 255, 255), "text"),
+            ]);
+            assert!(!result.passes_wcag_aa);
+        }
+
+        #[test]
+        fn h0_a11y_65_validator_check_reduced_motion_true() {
+            let validator = AccessibilityValidator::new();
+            assert!(validator.check_reduced_motion(true));
+        }
+
+        #[test]
+        fn h0_a11y_66_validator_check_reduced_motion_false() {
+            let validator = AccessibilityValidator::new();
+            assert!(!validator.check_reduced_motion(false));
+        }
+
+        #[test]
+        fn h0_a11y_67_validator_validate_focus_pass() {
+            let validator = AccessibilityValidator::new();
+            assert!(validator.validate_focus(true).is_ok());
+        }
+
+        #[test]
+        fn h0_a11y_68_validator_validate_focus_fail() {
+            let validator = AccessibilityValidator::new();
+            assert!(validator.validate_focus(false).is_err());
+        }
+
+        #[test]
+        fn h0_a11y_69_validator_audit_full_pass() {
+            let validator = AccessibilityValidator::new();
+            let audit = validator.audit(
+                &[(Color::new(0, 0, 0), Color::new(255, 255, 255), "text")],
+                true,
+                true,
+            );
+            assert!(audit.passes());
+        }
+
+        #[test]
+        fn h0_a11y_70_validator_audit_contrast_fail() {
+            let validator = AccessibilityValidator::new();
+            let audit = validator.audit(
+                &[(Color::new(200, 200, 200), Color::new(255, 255, 255), "text")],
+                true,
+                true,
+            );
+            assert!(!audit.contrast.passes_wcag_aa);
+        }
+    }
 }

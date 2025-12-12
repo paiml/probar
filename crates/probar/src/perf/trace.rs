@@ -2,9 +2,10 @@
 //!
 //! Collects and manages performance trace data.
 
-use super::span::{ActiveSpan, Span, SpanGuard, SpanId};
+use super::span::{ActiveSpan, SharedTracerState, Span, SpanGuard, TracerState};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 /// Trace configuration
@@ -61,15 +62,22 @@ impl TraceConfig {
     }
 }
 
-/// Performance tracer
+/// Performance tracer with interior mutability
 #[derive(Debug)]
 pub struct Tracer {
     config: TraceConfig,
     recording: bool,
-    trace_start: Option<Instant>,
-    active_spans: HashMap<SpanId, ActiveSpan>,
-    completed_spans: Vec<Span>,
-    current_span: Option<SpanId>,
+    state: SharedTracerState,
+}
+
+impl std::fmt::Debug for TracerState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TracerState")
+            .field("active_spans", &self.active_spans.len())
+            .field("completed_spans", &self.completed_spans.len())
+            .field("current_span", &self.current_span)
+            .finish()
+    }
 }
 
 impl Default for Tracer {
@@ -91,10 +99,7 @@ impl Tracer {
         Self {
             config,
             recording: false,
-            trace_start: None,
-            active_spans: HashMap::new(),
-            completed_spans: Vec::new(),
-            current_span: None,
+            state: Rc::new(RefCell::new(TracerState::new())),
         }
     }
 
@@ -113,82 +118,68 @@ impl Tracer {
     /// Start recording
     pub fn start(&mut self) {
         self.recording = true;
-        self.trace_start = Some(Instant::now());
-        self.active_spans.clear();
-        self.completed_spans.clear();
-        self.current_span = None;
+        let mut state = self.state.borrow_mut();
+        state.trace_start = Some(Instant::now());
+        state.active_spans.clear();
+        state.completed_spans.clear();
+        state.current_span = None;
     }
 
     /// Stop recording and return trace
     pub fn stop(&mut self) -> Trace {
         self.recording = false;
 
+        let mut state = self.state.borrow_mut();
+
         // Close any open spans
-        let now = self.elapsed_ns();
-        for (_id, mut active) in self.active_spans.drain() {
-            active.span.close(now);
-            self.completed_spans.push(active.span);
+        let now = state.elapsed_ns();
+        let active: Vec<_> = state.active_spans.drain().collect();
+        for (_id, mut active_span) in active {
+            active_span.span.close(now);
+            state.completed_spans.push(active_span.span);
         }
 
+        let duration = state.trace_start.map(|s| s.elapsed());
+
         Trace {
-            spans: std::mem::take(&mut self.completed_spans),
-            duration: self.trace_start.map(|s| s.elapsed()),
+            spans: std::mem::take(&mut state.completed_spans),
+            duration,
             config: self.config.clone(),
         }
     }
 
     /// Create a new span
-    pub fn span(&mut self, name: &str) -> SpanGuard<'_> {
-        let start_ns = self.elapsed_ns();
+    pub fn span(&self, name: &str) -> SpanGuard {
+        let mut state = self.state.borrow_mut();
+        let start_ns = state.elapsed_ns();
         let start_instant = Instant::now();
 
         let mut active = ActiveSpan::new(name, start_ns, start_instant);
 
         // Set parent
-        if let Some(parent_id) = self.current_span {
+        if let Some(parent_id) = state.current_span {
             active.span.parent = Some(parent_id);
         }
 
         let span_id = active.span.id;
-        self.active_spans.insert(span_id, active);
-        self.current_span = Some(span_id);
+        state.active_spans.insert(span_id, active);
+        state.current_span = Some(span_id);
 
-        SpanGuard::new(self, span_id)
-    }
+        drop(state); // Release borrow before creating guard
 
-    /// Close a span by ID
-    pub(crate) fn close_span(&mut self, span_id: SpanId) {
-        if let Some(mut active) = self.active_spans.remove(&span_id) {
-            let end_ns = self.elapsed_ns();
-            active.span.close(end_ns);
-
-            // Update current span to parent
-            self.current_span = active.span.parent;
-
-            // Store completed span
-            if self.completed_spans.len() < self.config.max_spans {
-                self.completed_spans.push(active.span);
-            }
-        }
-    }
-
-    /// Get elapsed nanoseconds since trace start
-    fn elapsed_ns(&self) -> u64 {
-        self.trace_start
-            .map(|start| start.elapsed().as_nanos() as u64)
-            .unwrap_or(0)
+        SpanGuard::new(Rc::clone(&self.state), span_id, self.config.max_spans)
     }
 
     /// Get current span count
     #[must_use]
     pub fn active_span_count(&self) -> usize {
-        self.active_spans.len()
+        self.state.borrow().active_spans.len()
     }
 
     /// Get completed span count
     #[must_use]
     pub fn completed_span_count(&self) -> usize {
-        self.completed_spans.len()
+        self.state.borrow().completed_spans.len()
     }
 }
 
@@ -336,9 +327,15 @@ mod tests {
         let mut tracer = Tracer::new();
         tracer.start();
 
-        let _s1 = tracer.span("a");
-        let _s2 = tracer.span("b");
-        let _s3 = tracer.span("a");
+        {
+            let _s1 = tracer.span("a");
+        }
+        {
+            let _s2 = tracer.span("b");
+        }
+        {
+            let _s3 = tracer.span("a");
+        }
 
         let trace = tracer.stop();
         assert_eq!(trace.spans_by_name("a").len(), 2);
@@ -352,9 +349,13 @@ mod tests {
 
         {
             let _outer = tracer.span("outer");
-            let _inner = tracer.span("inner");
+            {
+                let _inner = tracer.span("inner");
+            }
         }
-        let _other = tracer.span("other");
+        {
+            let _other = tracer.span("other");
+        }
 
         let trace = tracer.stop();
         let roots = trace.root_spans();

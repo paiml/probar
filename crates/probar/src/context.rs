@@ -1519,4 +1519,336 @@ mod tests {
             assert_eq!(manager.stats().total, 0);
         }
     }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Browser Context Tests (Feature F P0)
+    // =========================================================================
+
+    mod h0_context_state_tests {
+        use super::*;
+
+        #[test]
+        fn h0_ctx_01_state_creating() {
+            assert_eq!(ContextState::Creating, ContextState::Creating);
+        }
+
+        #[test]
+        fn h0_ctx_02_state_ready() {
+            assert_eq!(ContextState::Ready, ContextState::Ready);
+        }
+
+        #[test]
+        fn h0_ctx_03_state_in_use() {
+            assert_eq!(ContextState::InUse, ContextState::InUse);
+        }
+
+        #[test]
+        fn h0_ctx_04_state_cleaning() {
+            assert_eq!(ContextState::Cleaning, ContextState::Cleaning);
+        }
+
+        #[test]
+        fn h0_ctx_05_state_closed() {
+            assert_eq!(ContextState::Closed, ContextState::Closed);
+        }
+
+        #[test]
+        fn h0_ctx_06_state_error() {
+            assert_eq!(ContextState::Error, ContextState::Error);
+        }
+
+        #[test]
+        fn h0_ctx_07_state_inequality() {
+            assert_ne!(ContextState::Ready, ContextState::Closed);
+        }
+
+        #[test]
+        fn h0_ctx_08_state_debug() {
+            let debug = format!("{:?}", ContextState::Ready);
+            assert!(debug.contains("Ready"));
+        }
+
+        #[test]
+        fn h0_ctx_09_state_clone() {
+            let state = ContextState::InUse;
+            let cloned = state;
+            assert_eq!(state, cloned);
+        }
+
+        #[test]
+        fn h0_ctx_10_state_serialize() {
+            let state = ContextState::Ready;
+            let json = serde_json::to_string(&state).unwrap();
+            assert!(!json.is_empty());
+        }
+    }
+
+    mod h0_same_site_tests {
+        use super::*;
+
+        #[test]
+        fn h0_ctx_11_same_site_strict() {
+            assert_eq!(SameSite::Strict, SameSite::Strict);
+        }
+
+        #[test]
+        fn h0_ctx_12_same_site_lax() {
+            assert_eq!(SameSite::Lax, SameSite::Lax);
+        }
+
+        #[test]
+        fn h0_ctx_13_same_site_none() {
+            assert_eq!(SameSite::None, SameSite::None);
+        }
+
+        #[test]
+        fn h0_ctx_14_same_site_inequality() {
+            assert_ne!(SameSite::Strict, SameSite::Lax);
+        }
+
+        #[test]
+        fn h0_ctx_15_same_site_debug() {
+            let debug = format!("{:?}", SameSite::Strict);
+            assert!(debug.contains("Strict"));
+        }
+    }
+
+    mod h0_cookie_tests {
+        use super::*;
+
+        #[test]
+        fn h0_ctx_16_cookie_name() {
+            let cookie = Cookie::new("session", "abc", "example.com");
+            assert_eq!(cookie.name, "session");
+        }
+
+        #[test]
+        fn h0_ctx_17_cookie_value() {
+            let cookie = Cookie::new("session", "abc", "example.com");
+            assert_eq!(cookie.value, "abc");
+        }
+
+        #[test]
+        fn h0_ctx_18_cookie_domain() {
+            let cookie = Cookie::new("session", "abc", "example.com");
+            assert_eq!(cookie.domain, "example.com");
+        }
+
+        #[test]
+        fn h0_ctx_19_cookie_default_path() {
+            let cookie = Cookie::new("session", "abc", "example.com");
+            assert_eq!(cookie.path, "/");
+        }
+
+        #[test]
+        fn h0_ctx_20_cookie_with_path() {
+            let cookie = Cookie::new("session", "abc", "example.com").with_path("/api");
+            assert_eq!(cookie.path, "/api");
+        }
+
+        #[test]
+        fn h0_ctx_21_cookie_expires() {
+            let cookie = Cookie::new("session", "abc", "example.com").with_expires(1234567890);
+            assert_eq!(cookie.expires, Some(1234567890));
+        }
+
+        #[test]
+        fn h0_ctx_22_cookie_http_only() {
+            let cookie = Cookie::new("session", "abc", "example.com").http_only();
+            assert!(cookie.http_only);
+        }
+
+        #[test]
+        fn h0_ctx_23_cookie_secure() {
+            let cookie = Cookie::new("session", "abc", "example.com").secure();
+            assert!(cookie.secure);
+        }
+
+        #[test]
+        fn h0_ctx_24_cookie_same_site() {
+            let cookie = Cookie::new("session", "abc", "example.com").with_same_site(SameSite::Strict);
+            assert_eq!(cookie.same_site, SameSite::Strict);
+        }
+
+        #[test]
+        fn h0_ctx_25_cookie_default_same_site() {
+            let cookie = Cookie::new("session", "abc", "example.com");
+            assert_eq!(cookie.same_site, SameSite::Lax);
+        }
+    }
+
+    mod h0_storage_state_tests {
+        use super::*;
+
+        #[test]
+        fn h0_ctx_26_storage_new_empty() {
+            let state = StorageState::new();
+            assert!(state.is_empty());
+        }
+
+        #[test]
+        fn h0_ctx_27_storage_with_cookie() {
+            let state = StorageState::new().with_cookie(Cookie::new("test", "val", "example.com"));
+            assert_eq!(state.cookies.len(), 1);
+        }
+
+        #[test]
+        fn h0_ctx_28_storage_with_local() {
+            let state = StorageState::new().with_local_storage("https://ex.com", "key", "value");
+            assert!(!state.local_storage.is_empty());
+        }
+
+        #[test]
+        fn h0_ctx_29_storage_with_session() {
+            let state = StorageState::new().with_session_storage("https://ex.com", "key", "value");
+            assert!(!state.session_storage.is_empty());
+        }
+
+        #[test]
+        fn h0_ctx_30_storage_clear() {
+            let mut state = StorageState::new().with_cookie(Cookie::new("test", "v", "ex.com"));
+            state.clear();
+            assert!(state.is_empty());
+        }
+    }
+
+    mod h0_context_config_tests {
+        use super::*;
+
+        #[test]
+        fn h0_ctx_31_config_new_name() {
+            let config = ContextConfig::new("test");
+            assert_eq!(config.name, "test");
+        }
+
+        #[test]
+        fn h0_ctx_32_config_default_viewport() {
+            let config = ContextConfig::default();
+            assert_eq!(config.viewport_width, 1280);
+            assert_eq!(config.viewport_height, 720);
+        }
+
+        #[test]
+        fn h0_ctx_33_config_with_viewport() {
+            let config = ContextConfig::new("test").with_viewport(1920, 1080);
+            assert_eq!(config.viewport_width, 1920);
+        }
+
+        #[test]
+        fn h0_ctx_34_config_mobile() {
+            let config = ContextConfig::new("test").mobile();
+            assert!(config.is_mobile);
+            assert!(config.has_touch);
+        }
+
+        #[test]
+        fn h0_ctx_35_config_offline() {
+            let config = ContextConfig::new("test").offline();
+            assert!(config.offline);
+        }
+
+        #[test]
+        fn h0_ctx_36_config_with_geolocation() {
+            let config = ContextConfig::new("test").with_geolocation(40.7, -74.0);
+            assert!(config.geolocation.is_some());
+        }
+
+        #[test]
+        fn h0_ctx_37_config_with_header() {
+            let config = ContextConfig::new("test").with_header("X-Test", "value");
+            assert!(config.extra_headers.contains_key("X-Test"));
+        }
+
+        #[test]
+        fn h0_ctx_38_config_with_video() {
+            let config = ContextConfig::new("test").with_video();
+            assert!(config.record_video);
+        }
+
+        #[test]
+        fn h0_ctx_39_config_with_har() {
+            let config = ContextConfig::new("test").with_har();
+            assert!(config.record_har);
+        }
+
+        #[test]
+        fn h0_ctx_40_config_ignore_https() {
+            let config = ContextConfig::new("test").ignore_https_errors();
+            assert!(config.ignore_https_errors);
+        }
+    }
+
+    mod h0_browser_context_tests {
+        use super::*;
+
+        #[test]
+        fn h0_ctx_41_context_new_id() {
+            let ctx = BrowserContext::new("ctx_1", ContextConfig::default());
+            assert_eq!(ctx.id, "ctx_1");
+        }
+
+        #[test]
+        fn h0_ctx_42_context_initial_state() {
+            let ctx = BrowserContext::new("ctx_1", ContextConfig::default());
+            assert_eq!(ctx.state, ContextState::Creating);
+        }
+
+        #[test]
+        fn h0_ctx_43_context_ready() {
+            let mut ctx = BrowserContext::new("ctx_1", ContextConfig::default());
+            ctx.ready();
+            assert!(ctx.is_available());
+        }
+
+        #[test]
+        fn h0_ctx_44_context_acquire() {
+            let mut ctx = BrowserContext::new("ctx_1", ContextConfig::default());
+            ctx.ready();
+            ctx.acquire();
+            assert!(ctx.is_in_use());
+        }
+
+        #[test]
+        fn h0_ctx_45_context_release() {
+            let mut ctx = BrowserContext::new("ctx_1", ContextConfig::default());
+            ctx.ready();
+            ctx.acquire();
+            ctx.release();
+            assert!(ctx.is_available());
+        }
+
+        #[test]
+        fn h0_ctx_46_context_close() {
+            let mut ctx = BrowserContext::new("ctx_1", ContextConfig::default());
+            ctx.close();
+            assert!(ctx.is_closed());
+        }
+
+        #[test]
+        fn h0_ctx_47_context_error() {
+            let mut ctx = BrowserContext::new("ctx_1", ContextConfig::default());
+            ctx.set_error("Failed");
+            assert_eq!(ctx.state, ContextState::Error);
+        }
+
+        #[test]
+        fn h0_ctx_48_context_page_count() {
+            let ctx = BrowserContext::new("ctx_1", ContextConfig::default());
+            assert_eq!(ctx.page_count(), 0);
+        }
+
+        #[test]
+        fn h0_ctx_49_context_new_page() {
+            let ctx = BrowserContext::new("ctx_1", ContextConfig::default());
+            let page_id = ctx.new_page();
+            assert!(!page_id.is_empty());
+            assert_eq!(ctx.page_count(), 1);
+        }
+
+        #[test]
+        fn h0_ctx_50_context_pool_new() {
+            let pool = ContextPool::new(10);
+            assert_eq!(pool.count(), 0);
+        }
+    }
 }

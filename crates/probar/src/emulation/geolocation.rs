@@ -674,4 +674,384 @@ mod tests {
         let cloned = pos.clone();
         assert_eq!(pos, cloned);
     }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Geolocation Tests (G.3 P1)
+    // =========================================================================
+
+    mod h0_position_tests {
+        use super::*;
+
+        #[test]
+        fn h0_geo_01_position_new() {
+            let pos = GeolocationPosition::new(45.0, -90.0, 10.0);
+            assert!((pos.latitude - 45.0).abs() < 0.001);
+            assert!((pos.longitude - (-90.0)).abs() < 0.001);
+        }
+
+        #[test]
+        fn h0_geo_02_position_accuracy() {
+            let pos = GeolocationPosition::new(0.0, 0.0, 25.0);
+            assert!((pos.accuracy - 25.0).abs() < 0.001);
+        }
+
+        #[test]
+        fn h0_geo_03_position_no_altitude() {
+            let pos = GeolocationPosition::new(0.0, 0.0, 10.0);
+            assert!(pos.altitude.is_none());
+        }
+
+        #[test]
+        fn h0_geo_04_position_with_altitude() {
+            let pos = GeolocationPosition::new(0.0, 0.0, 10.0).with_altitude(500.0, 10.0);
+            assert_eq!(pos.altitude, Some(500.0));
+            assert_eq!(pos.altitude_accuracy, Some(10.0));
+        }
+
+        #[test]
+        fn h0_geo_05_position_no_heading() {
+            let pos = GeolocationPosition::new(0.0, 0.0, 10.0);
+            assert!(pos.heading.is_none());
+        }
+
+        #[test]
+        fn h0_geo_06_position_with_heading() {
+            let pos = GeolocationPosition::new(0.0, 0.0, 10.0).with_heading(180.0);
+            assert_eq!(pos.heading, Some(180.0));
+        }
+
+        #[test]
+        fn h0_geo_07_position_no_speed() {
+            let pos = GeolocationPosition::new(0.0, 0.0, 10.0);
+            assert!(pos.speed.is_none());
+        }
+
+        #[test]
+        fn h0_geo_08_position_with_speed() {
+            let pos = GeolocationPosition::new(0.0, 0.0, 10.0).with_speed(15.0);
+            assert_eq!(pos.speed, Some(15.0));
+        }
+
+        #[test]
+        fn h0_geo_09_position_boundary_latitude_max() {
+            let pos = GeolocationPosition::new(90.0, 0.0, 10.0);
+            assert!((pos.latitude - 90.0).abs() < 0.001);
+        }
+
+        #[test]
+        fn h0_geo_10_position_boundary_latitude_min() {
+            let pos = GeolocationPosition::new(-90.0, 0.0, 10.0);
+            assert!((pos.latitude - (-90.0)).abs() < 0.001);
+        }
+    }
+
+    mod h0_preset_location_tests {
+        use super::*;
+
+        #[test]
+        fn h0_geo_11_new_york_northern_hemisphere() {
+            let pos = GeolocationPosition::new_york();
+            assert!(pos.latitude > 0.0);
+        }
+
+        #[test]
+        fn h0_geo_12_new_york_western_hemisphere() {
+            let pos = GeolocationPosition::new_york();
+            assert!(pos.longitude < 0.0);
+        }
+
+        #[test]
+        fn h0_geo_13_tokyo_eastern_hemisphere() {
+            let pos = GeolocationPosition::tokyo();
+            assert!(pos.longitude > 0.0);
+        }
+
+        #[test]
+        fn h0_geo_14_london_near_prime_meridian() {
+            let pos = GeolocationPosition::london();
+            assert!(pos.longitude.abs() < 1.0);
+        }
+
+        #[test]
+        fn h0_geo_15_paris_europe() {
+            let pos = GeolocationPosition::paris();
+            assert!(pos.latitude > 45.0 && pos.latitude < 50.0);
+        }
+
+        #[test]
+        fn h0_geo_16_sydney_southern_hemisphere() {
+            let pos = GeolocationPosition::sydney();
+            assert!(pos.latitude < 0.0);
+        }
+
+        #[test]
+        fn h0_geo_17_san_francisco_west_coast() {
+            let pos = GeolocationPosition::san_francisco();
+            assert!(pos.longitude < -120.0);
+        }
+
+        #[test]
+        fn h0_geo_18_berlin_central_europe() {
+            let pos = GeolocationPosition::berlin();
+            assert!(pos.longitude > 10.0 && pos.longitude < 15.0);
+        }
+
+        #[test]
+        fn h0_geo_19_singapore_near_equator() {
+            let pos = GeolocationPosition::singapore();
+            assert!(pos.latitude.abs() < 5.0);
+        }
+
+        #[test]
+        fn h0_geo_20_sao_paulo_south_america() {
+            let pos = GeolocationPosition::sao_paulo();
+            assert!(pos.latitude < 0.0);
+            assert!(pos.longitude < 0.0);
+        }
+    }
+
+    mod h0_mock_tests {
+        use super::*;
+
+        #[test]
+        fn h0_geo_21_mock_new_enabled() {
+            let mock = GeolocationMock::new();
+            assert!(mock.is_enabled());
+        }
+
+        #[test]
+        fn h0_geo_22_mock_new_permission_granted() {
+            let mock = GeolocationMock::new();
+            assert!(mock.is_permission_granted());
+        }
+
+        #[test]
+        fn h0_geo_23_mock_default() {
+            let mock = GeolocationMock::default();
+            assert!(mock.is_enabled());
+        }
+
+        #[test]
+        fn h0_geo_24_mock_no_initial_position() {
+            let mock = GeolocationMock::new();
+            assert!(mock.get_current_position().is_err());
+        }
+
+        #[test]
+        fn h0_geo_25_mock_set_position() {
+            let mut mock = GeolocationMock::new();
+            mock.set_position(GeolocationPosition::new_york());
+            assert!(mock.get_current_position().is_ok());
+        }
+
+        #[test]
+        fn h0_geo_26_mock_set_preset_valid() {
+            let mut mock = GeolocationMock::new();
+            assert!(mock.set_preset("tokyo"));
+        }
+
+        #[test]
+        fn h0_geo_27_mock_set_preset_invalid() {
+            let mut mock = GeolocationMock::new();
+            assert!(!mock.set_preset("invalid_city"));
+        }
+
+        #[test]
+        fn h0_geo_28_mock_add_custom_preset() {
+            let mut mock = GeolocationMock::new();
+            mock.add_preset("custom", GeolocationPosition::new(10.0, 20.0, 5.0));
+            assert!(mock.set_preset("custom"));
+        }
+
+        #[test]
+        fn h0_geo_29_mock_list_presets() {
+            let mock = GeolocationMock::new();
+            let presets = mock.list_presets();
+            assert!(presets.len() >= 10);
+        }
+
+        #[test]
+        fn h0_geo_30_mock_get_preset() {
+            let mock = GeolocationMock::new();
+            assert!(mock.get_preset("london").is_some());
+        }
+    }
+
+    mod h0_mock_state_tests {
+        use super::*;
+
+        #[test]
+        fn h0_geo_31_mock_set_enabled() {
+            let mut mock = GeolocationMock::new();
+            mock.set_enabled(false);
+            assert!(!mock.is_enabled());
+        }
+
+        #[test]
+        fn h0_geo_32_mock_set_permission() {
+            let mut mock = GeolocationMock::new();
+            mock.set_permission(false);
+            assert!(!mock.is_permission_granted());
+        }
+
+        #[test]
+        fn h0_geo_33_mock_clear_position() {
+            let mut mock = GeolocationMock::new();
+            mock.set_position(GeolocationPosition::new_york());
+            mock.clear_position();
+            assert!(mock.get_current_position().is_err());
+        }
+
+        #[test]
+        fn h0_geo_34_mock_reset() {
+            let mut mock = GeolocationMock::new();
+            mock.set_enabled(false);
+            mock.set_permission(false);
+            mock.reset();
+            assert!(mock.is_enabled());
+            assert!(mock.is_permission_granted());
+        }
+
+        #[test]
+        fn h0_geo_35_mock_clone() {
+            let mut mock = GeolocationMock::new();
+            mock.set_position(GeolocationPosition::new_york());
+            let cloned = mock.clone();
+            assert!(cloned.get_current_position().is_ok());
+        }
+    }
+
+    mod h0_error_tests {
+        use super::*;
+
+        #[test]
+        fn h0_geo_36_error_permission_denied() {
+            let mut mock = GeolocationMock::new();
+            mock.set_position(GeolocationPosition::new_york());
+            mock.set_permission(false);
+            assert_eq!(
+                mock.get_current_position(),
+                Err(GeolocationError::PermissionDenied)
+            );
+        }
+
+        #[test]
+        fn h0_geo_37_error_position_unavailable() {
+            let mut mock = GeolocationMock::new();
+            mock.set_position(GeolocationPosition::new_york());
+            mock.set_enabled(false);
+            assert_eq!(
+                mock.get_current_position(),
+                Err(GeolocationError::PositionUnavailable)
+            );
+        }
+
+        #[test]
+        fn h0_geo_38_error_timeout_simulated() {
+            let mut mock = GeolocationMock::new();
+            mock.set_position(GeolocationPosition::new_york());
+            mock.simulate_error(GeolocationError::Timeout);
+            assert_eq!(mock.get_current_position(), Err(GeolocationError::Timeout));
+        }
+
+        #[test]
+        fn h0_geo_39_error_clear() {
+            let mut mock = GeolocationMock::new();
+            mock.set_position(GeolocationPosition::new_york());
+            mock.simulate_error(GeolocationError::Timeout);
+            mock.clear_error();
+            assert!(mock.get_current_position().is_ok());
+        }
+
+        #[test]
+        fn h0_geo_40_error_priority_over_state() {
+            let mut mock = GeolocationMock::new();
+            mock.set_position(GeolocationPosition::new_york());
+            mock.simulate_error(GeolocationError::Timeout);
+            // Error takes priority even with position set
+            assert_eq!(mock.get_current_position(), Err(GeolocationError::Timeout));
+        }
+    }
+
+    mod h0_position_equality_tests {
+        use super::*;
+
+        #[test]
+        fn h0_geo_41_position_equal() {
+            let p1 = GeolocationPosition::new(40.0, -74.0, 10.0);
+            let p2 = GeolocationPosition::new(40.0, -74.0, 10.0);
+            assert_eq!(p1, p2);
+        }
+
+        #[test]
+        fn h0_geo_42_position_not_equal_latitude() {
+            let p1 = GeolocationPosition::new(40.0, -74.0, 10.0);
+            let p2 = GeolocationPosition::new(41.0, -74.0, 10.0);
+            assert_ne!(p1, p2);
+        }
+
+        #[test]
+        fn h0_geo_43_position_not_equal_longitude() {
+            let p1 = GeolocationPosition::new(40.0, -74.0, 10.0);
+            let p2 = GeolocationPosition::new(40.0, -75.0, 10.0);
+            assert_ne!(p1, p2);
+        }
+
+        #[test]
+        fn h0_geo_44_error_equal() {
+            assert_eq!(
+                GeolocationError::PermissionDenied,
+                GeolocationError::PermissionDenied
+            );
+        }
+
+        #[test]
+        fn h0_geo_45_error_not_equal() {
+            assert_ne!(
+                GeolocationError::PermissionDenied,
+                GeolocationError::Timeout
+            );
+        }
+    }
+
+    mod h0_dubai_preset_tests {
+        use super::*;
+
+        #[test]
+        fn h0_geo_46_dubai_latitude() {
+            let pos = GeolocationPosition::dubai();
+            assert!(pos.latitude > 20.0 && pos.latitude < 30.0);
+        }
+
+        #[test]
+        fn h0_geo_47_dubai_longitude() {
+            let pos = GeolocationPosition::dubai();
+            assert!(pos.longitude > 50.0 && pos.longitude < 60.0);
+        }
+
+        #[test]
+        fn h0_geo_48_preset_accuracy() {
+            let pos = GeolocationPosition::new_york();
+            assert!((pos.accuracy - 10.0).abs() < 0.001);
+        }
+
+        #[test]
+        fn h0_geo_49_position_builder_complete() {
+            let pos = GeolocationPosition::new(45.0, -90.0, 5.0)
+                .with_altitude(100.0, 2.0)
+                .with_heading(45.0)
+                .with_speed(10.0);
+            assert!(pos.altitude.is_some());
+            assert!(pos.heading.is_some());
+            assert!(pos.speed.is_some());
+        }
+
+        #[test]
+        fn h0_geo_50_boundary_longitude() {
+            let pos1 = GeolocationPosition::new(0.0, 180.0, 10.0);
+            let pos2 = GeolocationPosition::new(0.0, -180.0, 10.0);
+            assert!((pos1.longitude - 180.0).abs() < 0.001);
+            assert!((pos2.longitude - (-180.0)).abs() < 0.001);
+        }
+    }
 }

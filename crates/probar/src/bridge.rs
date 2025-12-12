@@ -34,7 +34,7 @@ use std::collections::HashMap;
 
 /// Game state snapshot with delta encoding
 ///
-/// Per spec: Delta encoding achieves 94% overhead reduction (Lavoie [9])
+/// Per spec: Delta encoding achieves 94% overhead reduction (Lavoie \[9\])
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameStateSnapshot {
     /// Frame number when snapshot was taken
@@ -233,7 +233,7 @@ impl EntitySnapshot {
 
 /// Visual comparison result using perceptual hash
 ///
-/// Per Shamir [19]: pHash more robust than SHA-256 for game frame comparison
+/// Per Shamir \[19\]: pHash more robust than SHA-256 for game frame comparison
 #[derive(Debug, Clone)]
 pub struct VisualDiff {
     /// Perceptual similarity (0.0 to 1.0)
@@ -491,7 +491,7 @@ impl StateBridge {
 
     /// Compute perceptual hash for image
     ///
-    /// Per Shamir [19]: pHash is more robust than pixel comparison
+    /// Per Shamir \[19\]: pHash is more robust than pixel comparison
     #[must_use]
     pub fn compute_phash(image_data: &[u8]) -> u64 {
         // Simplified pHash implementation

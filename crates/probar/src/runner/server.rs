@@ -241,14 +241,31 @@ impl WasmRunner {
     /// Format a console message for terminal output
     #[must_use]
     pub fn format_console_message(&self, msg: &ConsoleMessage) -> String {
-        use chrono::{DateTime, Local};
-        let timestamp: DateTime<Local> = msg.timestamp.into();
-        format!(
-            "[{}] {} {}",
-            timestamp.format("%H:%M:%S"),
-            msg.level.prefix(),
-            msg.text
-        )
+        // Platform-independent timestamp formatting
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            use chrono::{DateTime, Local};
+            let timestamp: DateTime<Local> = msg.timestamp.into();
+            format!(
+                "[{}] {} {}",
+                timestamp.format("%H:%M:%S"),
+                msg.level.prefix(),
+                msg.text
+            )
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            // On WASM, use epoch seconds as timestamp
+            let secs = msg.timestamp.duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            format!(
+                "[{}] {} {}",
+                secs,
+                msg.level.prefix(),
+                msg.text
+            )
+        }
     }
 
     /// Get server URL

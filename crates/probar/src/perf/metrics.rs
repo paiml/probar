@@ -285,7 +285,8 @@ mod tests {
 
     #[test]
     fn test_frame_metrics_meets_target() {
-        let metrics = FrameMetrics::new(16.67);
+        // 16.0ms = 62.5 FPS, clearly above 60
+        let metrics = FrameMetrics::new(16.0);
         assert!(metrics.meets_target(60.0));
         assert!(!metrics.meets_target(120.0));
     }

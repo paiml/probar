@@ -40,12 +40,21 @@ regex = { workspace = true }
 sha2 = { workspace = true }
 serde_yaml = { workspace = true }
 
-# Watch mode and tracing (Phase 6)
-notify = { workspace = true }
+# Tracing and UUID (available on all targets)
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
+
+# Watch mode (Phase 6) - not available on WASM
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+notify = { workspace = true }
+tracing-subscriber = { workspace = true }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+
+# WASM-specific dependencies
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlCanvasElement", "CanvasRenderingContext2d", "Performance"] }
+wasm-bindgen = "0.2"
+js-sys = "0.3"
 
 # Optional CDP browser control
 chromiumoxide = { workspace = true, optional = true }

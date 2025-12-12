@@ -126,7 +126,7 @@ pub struct FrameResult {
 
 /// Delta-encoded state snapshot for efficient storage
 ///
-/// Per Lavoie [9]: Delta encoding achieves 94% overhead reduction
+/// Per Lavoie \[9\]: Delta encoding achieves 94% overhead reduction
 /// compared to full snapshots.
 #[derive(Debug, Clone)]
 pub struct StateDelta {

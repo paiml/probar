@@ -152,6 +152,8 @@ pub mod emulation;
 pub mod media;
 
 /// Watch Mode with Hot Reload (Feature 6)
+/// Note: Not available on WASM targets (requires filesystem access)
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(
     clippy::missing_errors_doc,
     clippy::must_use_candidate,
@@ -263,6 +265,62 @@ pub mod pixel_coverage;
 )]
 pub mod runner;
 
+/// Performance Benchmarking with Renacer Integration (Advanced Feature C)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown,
+    clippy::cast_precision_loss
+)]
+pub mod perf;
+
+/// Test Sharding for Distributed Execution (Feature G.5)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod shard;
+
+/// Clock Manipulation for Deterministic Tests (Feature G.6)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod clock;
+
+/// Dialog Handling for E2E Testing (Feature G.8)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod dialog;
+
+/// File Upload/Download Operations (Feature G.8)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod file_ops;
+
+/// HAR Recording Module (Spec: G.2 Network Interception)
+#[allow(
+    clippy::missing_docs_in_private_items,
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod har;
+
 pub use accessibility::{
     AccessibilityAudit, AccessibilityConfig, AccessibilityIssue, AccessibilityValidator, Color,
     ContrastAnalysis, ContrastPair, FlashDetector, FlashResult, FocusConfig, KeyboardIssue,
@@ -351,6 +409,7 @@ pub use wait::{
     wait_timeout, wait_until, FnCondition, LoadState, NavigationOptions, PageEvent, WaitCondition,
     WaitOptions, WaitResult, Waiter, DEFAULT_WAIT_TIMEOUT_MS, NETWORK_IDLE_THRESHOLD_MS,
 };
+#[cfg(not(target_arch = "wasm32"))]
 pub use watch::{
     FileChange, FileChangeKind, FileWatcher, FnWatchHandler, WatchBuilder, WatchConfig,
     WatchHandler, WatchStats,
@@ -358,6 +417,22 @@ pub use watch::{
 pub use websocket::{
     MessageDirection, MessageType, MockWebSocketResponse, WebSocketConnection, WebSocketMessage,
     WebSocketMock, WebSocketMonitor, WebSocketMonitorBuilder, WebSocketState,
+};
+pub use shard::{ShardConfig, ShardParseError, ShardReport, ShardedRunner};
+pub use clock::{
+    Clock, ClockController, ClockError, ClockOptions, ClockState, FakeClock, create_clock,
+};
+pub use dialog::{
+    AutoDialogBehavior, Dialog, DialogAction, DialogHandler, DialogHandlerBuilder, DialogType,
+    DialogExpectation,
+};
+pub use file_ops::{
+    Download, DownloadManager, DownloadState, FileChooser, FileInput, guess_mime_type,
+};
+pub use har::{
+    Har, HarBrowser, HarCache, HarContent, HarCookie, HarCreator, HarEntry, HarError, HarHeader,
+    HarLog, HarOptions, HarPlayer, HarPostData, HarPostParam, HarQueryParam, HarRecorder,
+    HarRequest, HarResponse, HarTimings, NotFoundBehavior,
 };
 
 /// Prelude for convenient imports
@@ -392,11 +467,18 @@ pub mod prelude {
         WaitCondition, WaitOptions, WaitResult, Waiter, DEFAULT_WAIT_TIMEOUT_MS,
         NETWORK_IDLE_THRESHOLD_MS,
     };
+    #[cfg(not(target_arch = "wasm32"))]
     pub use super::watch::*;
     pub use super::web::*;
     pub use super::websocket::*;
     pub use super::pixel_coverage::*;
     pub use super::runner::*;
+    pub use super::perf::*;
+    pub use super::shard::*;
+    pub use super::clock::*;
+    pub use super::dialog::*;
+    pub use super::file_ops::*;
+    pub use super::har::*;
 }
 
 /// Standard invariants for game testing

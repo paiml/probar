@@ -696,4 +696,365 @@ mod tests {
             assert!(names.contains(&"Desktop 4K"));
         }
     }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Device Emulation Tests (G.3 P1)
+    // =========================================================================
+
+    mod h0_viewport_tests {
+        use super::*;
+
+        #[test]
+        fn h0_device_01_viewport_new() {
+            let viewport = Viewport::new(1024, 768);
+            assert_eq!(viewport.width, 1024);
+            assert_eq!(viewport.height, 768);
+        }
+
+        #[test]
+        fn h0_device_02_viewport_default() {
+            let viewport = Viewport::default();
+            assert_eq!(viewport.width, 1920);
+            assert_eq!(viewport.height, 1080);
+        }
+
+        #[test]
+        fn h0_device_03_viewport_landscape_from_portrait() {
+            let portrait = Viewport::new(600, 800);
+            let landscape = portrait.landscape();
+            assert_eq!(landscape.width, 800);
+            assert_eq!(landscape.height, 600);
+        }
+
+        #[test]
+        fn h0_device_04_viewport_landscape_stays_landscape() {
+            let landscape = Viewport::new(800, 600);
+            let result = landscape.landscape();
+            assert_eq!(result.width, 800);
+        }
+
+        #[test]
+        fn h0_device_05_viewport_portrait_from_landscape() {
+            let landscape = Viewport::new(800, 600);
+            let portrait = landscape.portrait();
+            assert_eq!(portrait.width, 600);
+            assert_eq!(portrait.height, 800);
+        }
+
+        #[test]
+        fn h0_device_06_viewport_portrait_stays_portrait() {
+            let portrait = Viewport::new(600, 800);
+            let result = portrait.portrait();
+            assert_eq!(result.height, 800);
+        }
+
+        #[test]
+        fn h0_device_07_viewport_is_landscape() {
+            assert!(Viewport::new(1920, 1080).is_landscape());
+            assert!(!Viewport::new(1080, 1920).is_landscape());
+        }
+
+        #[test]
+        fn h0_device_08_viewport_is_portrait() {
+            assert!(Viewport::new(1080, 1920).is_portrait());
+            assert!(!Viewport::new(1920, 1080).is_portrait());
+        }
+
+        #[test]
+        fn h0_device_09_viewport_square() {
+            let square = Viewport::new(800, 800);
+            assert!(!square.is_landscape());
+            assert!(!square.is_portrait());
+        }
+
+        #[test]
+        fn h0_device_10_viewport_equality() {
+            let v1 = Viewport::new(800, 600);
+            let v2 = Viewport::new(800, 600);
+            assert_eq!(v1, v2);
+        }
+    }
+
+    mod h0_touch_mode_tests {
+        use super::*;
+
+        #[test]
+        fn h0_device_11_touch_mode_default() {
+            let touch = TouchMode::default();
+            assert_eq!(touch, TouchMode::None);
+        }
+
+        #[test]
+        fn h0_device_12_touch_mode_none_not_enabled() {
+            assert!(!TouchMode::None.is_enabled());
+        }
+
+        #[test]
+        fn h0_device_13_touch_mode_single_enabled() {
+            assert!(TouchMode::Single.is_enabled());
+        }
+
+        #[test]
+        fn h0_device_14_touch_mode_multi_enabled() {
+            assert!(TouchMode::Multi.is_enabled());
+        }
+
+        #[test]
+        fn h0_device_15_touch_mode_equality() {
+            assert_eq!(TouchMode::Single, TouchMode::Single);
+            assert_ne!(TouchMode::Single, TouchMode::Multi);
+        }
+    }
+
+    mod h0_device_descriptor_tests {
+        use super::*;
+
+        #[test]
+        fn h0_device_16_descriptor_new() {
+            let device = DeviceDescriptor::new("Test");
+            assert_eq!(device.name, "Test");
+        }
+
+        #[test]
+        fn h0_device_17_descriptor_default_viewport() {
+            let device = DeviceDescriptor::new("Test");
+            assert_eq!(device.viewport.width, 1920);
+        }
+
+        #[test]
+        fn h0_device_18_descriptor_default_not_mobile() {
+            let device = DeviceDescriptor::new("Test");
+            assert!(!device.is_mobile);
+        }
+
+        #[test]
+        fn h0_device_19_descriptor_default_has_hover() {
+            let device = DeviceDescriptor::new("Test");
+            assert!(device.has_hover);
+        }
+
+        #[test]
+        fn h0_device_20_descriptor_with_viewport() {
+            let viewport = Viewport::new(400, 800);
+            let device = DeviceDescriptor::new("Test").with_viewport(viewport);
+            assert_eq!(device.viewport.width, 400);
+        }
+
+        #[test]
+        fn h0_device_21_descriptor_with_viewport_size() {
+            let device = DeviceDescriptor::new("Test").with_viewport_size(390, 844);
+            assert_eq!(device.viewport.width, 390);
+            assert_eq!(device.viewport.height, 844);
+        }
+
+        #[test]
+        fn h0_device_22_descriptor_with_user_agent() {
+            let device = DeviceDescriptor::new("Test").with_user_agent("Mozilla/5.0");
+            assert_eq!(device.user_agent, "Mozilla/5.0");
+        }
+
+        #[test]
+        fn h0_device_23_descriptor_with_scale_factor() {
+            let device = DeviceDescriptor::new("Test").with_device_scale_factor(3.0);
+            assert!((device.device_scale_factor - 3.0).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn h0_device_24_descriptor_with_mobile() {
+            let device = DeviceDescriptor::new("Test").with_mobile(true);
+            assert!(device.is_mobile);
+        }
+
+        #[test]
+        fn h0_device_25_descriptor_with_touch() {
+            let device = DeviceDescriptor::new("Test").with_touch(TouchMode::Multi);
+            assert_eq!(device.touch, TouchMode::Multi);
+        }
+
+        #[test]
+        fn h0_device_26_descriptor_with_hover() {
+            let device = DeviceDescriptor::new("Test").with_hover(false);
+            assert!(!device.has_hover);
+        }
+
+        #[test]
+        fn h0_device_27_descriptor_builder_chain() {
+            let device = DeviceDescriptor::new("iPhone")
+                .with_viewport_size(390, 844)
+                .with_mobile(true)
+                .with_touch(TouchMode::Multi)
+                .with_hover(false);
+            assert!(device.is_mobile);
+            assert!(!device.has_hover);
+        }
+    }
+
+    mod h0_emulator_tests {
+        use super::*;
+
+        #[test]
+        fn h0_device_28_emulator_new_has_presets() {
+            let emulator = DeviceEmulator::new();
+            assert!(!emulator.preset_names().is_empty());
+        }
+
+        #[test]
+        fn h0_device_29_emulator_get_preset_exists() {
+            let emulator = DeviceEmulator::new();
+            assert!(emulator.get_preset("iPhone 14").is_some());
+        }
+
+        #[test]
+        fn h0_device_30_emulator_get_preset_not_exists() {
+            let emulator = DeviceEmulator::new();
+            assert!(emulator.get_preset("Unknown Device").is_none());
+        }
+
+        #[test]
+        fn h0_device_31_emulator_register_custom() {
+            let mut emulator = DeviceEmulator::new();
+            let custom = DeviceDescriptor::new("Custom Device");
+            emulator.register_preset(custom);
+            assert!(emulator.get_preset("Custom Device").is_some());
+        }
+
+        #[test]
+        fn h0_device_32_emulator_custom_device() {
+            let viewport = Viewport::new(500, 900);
+            let device = DeviceEmulator::custom(viewport, "Custom UA");
+            assert_eq!(device.name, "Custom");
+            assert_eq!(device.user_agent, "Custom UA");
+        }
+
+        #[test]
+        fn h0_device_33_emulator_preset_count() {
+            let emulator = DeviceEmulator::new();
+            assert!(emulator.preset_names().len() >= 11);
+        }
+    }
+
+    mod h0_preset_iphone_tests {
+        use super::*;
+
+        #[test]
+        fn h0_device_34_iphone_14_viewport() {
+            let device = DeviceEmulator::iphone_14();
+            assert_eq!(device.viewport.width, 390);
+            assert_eq!(device.viewport.height, 844);
+        }
+
+        #[test]
+        fn h0_device_35_iphone_14_is_mobile() {
+            let device = DeviceEmulator::iphone_14();
+            assert!(device.is_mobile);
+        }
+
+        #[test]
+        fn h0_device_36_iphone_14_touch_multi() {
+            let device = DeviceEmulator::iphone_14();
+            assert_eq!(device.touch, TouchMode::Multi);
+        }
+
+        #[test]
+        fn h0_device_37_iphone_14_no_hover() {
+            let device = DeviceEmulator::iphone_14();
+            assert!(!device.has_hover);
+        }
+
+        #[test]
+        fn h0_device_38_iphone_14_pro_viewport() {
+            let device = DeviceEmulator::iphone_14_pro();
+            assert_eq!(device.viewport.width, 393);
+        }
+
+        #[test]
+        fn h0_device_39_iphone_14_pro_max_viewport() {
+            let device = DeviceEmulator::iphone_14_pro_max();
+            assert_eq!(device.viewport.width, 430);
+        }
+    }
+
+    mod h0_preset_android_tests {
+        use super::*;
+
+        #[test]
+        fn h0_device_40_pixel_7_viewport() {
+            let device = DeviceEmulator::pixel_7();
+            assert_eq!(device.viewport.width, 412);
+        }
+
+        #[test]
+        fn h0_device_41_pixel_7_user_agent() {
+            let device = DeviceEmulator::pixel_7();
+            assert!(device.user_agent.contains("Android"));
+        }
+
+        #[test]
+        fn h0_device_42_pixel_7_pro_scale_factor() {
+            let device = DeviceEmulator::pixel_7_pro();
+            assert!((device.device_scale_factor - 3.5).abs() < 0.01);
+        }
+
+        #[test]
+        fn h0_device_43_samsung_galaxy_viewport() {
+            let device = DeviceEmulator::samsung_galaxy_s23();
+            assert_eq!(device.viewport.width, 360);
+        }
+
+        #[test]
+        fn h0_device_44_samsung_galaxy_mobile() {
+            let device = DeviceEmulator::samsung_galaxy_s23();
+            assert!(device.is_mobile);
+        }
+    }
+
+    mod h0_preset_tablet_tests {
+        use super::*;
+
+        #[test]
+        fn h0_device_45_ipad_pro_viewport() {
+            let device = DeviceEmulator::ipad_pro();
+            assert_eq!(device.viewport.width, 1024);
+            assert_eq!(device.viewport.height, 1366);
+        }
+
+        #[test]
+        fn h0_device_46_ipad_mini_viewport() {
+            let device = DeviceEmulator::ipad_mini();
+            assert_eq!(device.viewport.width, 768);
+        }
+
+        #[test]
+        fn h0_device_47_ipad_pro_scale_factor() {
+            let device = DeviceEmulator::ipad_pro();
+            assert!((device.device_scale_factor - 2.0).abs() < 0.01);
+        }
+    }
+
+    mod h0_preset_desktop_tests {
+        use super::*;
+
+        #[test]
+        fn h0_device_48_desktop_1080p() {
+            let device = DeviceEmulator::desktop_1080p();
+            assert_eq!(device.viewport.width, 1920);
+            assert_eq!(device.viewport.height, 1080);
+            assert!(!device.is_mobile);
+        }
+
+        #[test]
+        fn h0_device_49_desktop_1440p() {
+            let device = DeviceEmulator::desktop_1440p();
+            assert_eq!(device.viewport.width, 2560);
+            assert_eq!(device.viewport.height, 1440);
+        }
+
+        #[test]
+        fn h0_device_50_desktop_4k() {
+            let device = DeviceEmulator::desktop_4k();
+            assert_eq!(device.viewport.width, 3840);
+            assert_eq!(device.viewport.height, 2160);
+            assert!(device.has_hover);
+        }
+    }
 }

@@ -1523,4 +1523,364 @@ mod tests {
         }
         None
     }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Video Recorder Tests (Feature B P2)
+    // =========================================================================
+
+    mod h0_video_config_tests {
+        use super::*;
+
+        #[test]
+        fn h0_video_01_config_default_fps() {
+            let config = VideoConfig::default();
+            assert_eq!(config.fps, 30);
+        }
+
+        #[test]
+        fn h0_video_02_config_default_width() {
+            let config = VideoConfig::default();
+            assert_eq!(config.width, 1280);
+        }
+
+        #[test]
+        fn h0_video_03_config_default_height() {
+            let config = VideoConfig::default();
+            assert_eq!(config.height, 720);
+        }
+
+        #[test]
+        fn h0_video_04_config_default_bitrate() {
+            let config = VideoConfig::default();
+            assert_eq!(config.bitrate, 5000);
+        }
+
+        #[test]
+        fn h0_video_05_config_default_codec() {
+            let config = VideoConfig::default();
+            assert_eq!(config.codec, VideoCodec::Mjpeg);
+        }
+
+        #[test]
+        fn h0_video_06_config_default_max_duration() {
+            let config = VideoConfig::default();
+            assert_eq!(config.max_duration_secs, 300);
+        }
+
+        #[test]
+        fn h0_video_07_config_default_jpeg_quality() {
+            let config = VideoConfig::default();
+            assert_eq!(config.jpeg_quality, 85);
+        }
+
+        #[test]
+        fn h0_video_08_config_new_dimensions() {
+            let config = VideoConfig::new(1920, 1080);
+            assert_eq!(config.width, 1920);
+            assert_eq!(config.height, 1080);
+        }
+
+        #[test]
+        fn h0_video_09_config_with_fps() {
+            let config = VideoConfig::default().with_fps(60);
+            assert_eq!(config.fps, 60);
+        }
+
+        #[test]
+        fn h0_video_10_config_fps_clamp_min() {
+            let config = VideoConfig::default().with_fps(0);
+            assert_eq!(config.fps, 1);
+        }
+    }
+
+    mod h0_video_config_builder_tests {
+        use super::*;
+
+        #[test]
+        fn h0_video_11_config_fps_clamp_max() {
+            let config = VideoConfig::default().with_fps(100);
+            assert_eq!(config.fps, 60);
+        }
+
+        #[test]
+        fn h0_video_12_config_with_bitrate() {
+            let config = VideoConfig::default().with_bitrate(10000);
+            assert_eq!(config.bitrate, 10000);
+        }
+
+        #[test]
+        fn h0_video_13_config_with_codec_raw() {
+            let config = VideoConfig::default().with_codec(VideoCodec::Raw);
+            assert_eq!(config.codec, VideoCodec::Raw);
+        }
+
+        #[test]
+        fn h0_video_14_config_with_max_duration() {
+            let config = VideoConfig::default().with_max_duration(600);
+            assert_eq!(config.max_duration_secs, 600);
+        }
+
+        #[test]
+        fn h0_video_15_config_with_jpeg_quality() {
+            let config = VideoConfig::default().with_jpeg_quality(95);
+            assert_eq!(config.jpeg_quality, 95);
+        }
+
+        #[test]
+        fn h0_video_16_config_jpeg_clamp_min() {
+            let config = VideoConfig::default().with_jpeg_quality(0);
+            assert_eq!(config.jpeg_quality, 1);
+        }
+
+        #[test]
+        fn h0_video_17_config_jpeg_clamp_max() {
+            let config = VideoConfig::default().with_jpeg_quality(200);
+            assert_eq!(config.jpeg_quality, 100);
+        }
+
+        #[test]
+        fn h0_video_18_config_frame_duration_30fps() {
+            let config = VideoConfig::default().with_fps(30);
+            assert_eq!(config.frame_duration().as_millis(), 33);
+        }
+
+        #[test]
+        fn h0_video_19_config_frame_duration_60fps() {
+            let config = VideoConfig::default().with_fps(60);
+            assert_eq!(config.frame_duration().as_millis(), 16);
+        }
+
+        #[test]
+        fn h0_video_20_config_timescale_30fps() {
+            let config = VideoConfig::default().with_fps(30);
+            assert_eq!(config.timescale(), 3000);
+        }
+    }
+
+    mod h0_video_codec_tests {
+        use super::*;
+
+        #[test]
+        fn h0_video_21_codec_default_mjpeg() {
+            assert_eq!(VideoCodec::default(), VideoCodec::Mjpeg);
+        }
+
+        #[test]
+        fn h0_video_22_codec_equality_mjpeg() {
+            assert_eq!(VideoCodec::Mjpeg, VideoCodec::Mjpeg);
+        }
+
+        #[test]
+        fn h0_video_23_codec_equality_raw() {
+            assert_eq!(VideoCodec::Raw, VideoCodec::Raw);
+        }
+
+        #[test]
+        fn h0_video_24_codec_inequality() {
+            assert_ne!(VideoCodec::Mjpeg, VideoCodec::Raw);
+        }
+
+        #[test]
+        fn h0_video_25_codec_debug_mjpeg() {
+            let debug = format!("{:?}", VideoCodec::Mjpeg);
+            assert!(debug.contains("Mjpeg"));
+        }
+
+        #[test]
+        fn h0_video_26_codec_debug_raw() {
+            let debug = format!("{:?}", VideoCodec::Raw);
+            assert!(debug.contains("Raw"));
+        }
+
+        #[test]
+        fn h0_video_27_codec_clone() {
+            let codec = VideoCodec::Mjpeg;
+            let cloned = codec;
+            assert_eq!(codec, cloned);
+        }
+
+        #[test]
+        fn h0_video_28_codec_copy() {
+            let codec = VideoCodec::Raw;
+            let copied: VideoCodec = codec;
+            assert_eq!(codec, copied);
+        }
+    }
+
+    mod h0_recording_state_tests {
+        use super::*;
+
+        #[test]
+        fn h0_video_29_state_idle() {
+            assert_eq!(RecordingState::Idle, RecordingState::Idle);
+        }
+
+        #[test]
+        fn h0_video_30_state_recording() {
+            assert_eq!(RecordingState::Recording, RecordingState::Recording);
+        }
+
+        #[test]
+        fn h0_video_31_state_stopped() {
+            assert_eq!(RecordingState::Stopped, RecordingState::Stopped);
+        }
+
+        #[test]
+        fn h0_video_32_state_inequality() {
+            assert_ne!(RecordingState::Idle, RecordingState::Recording);
+            assert_ne!(RecordingState::Recording, RecordingState::Stopped);
+        }
+
+        #[test]
+        fn h0_video_33_state_debug() {
+            assert!(format!("{:?}", RecordingState::Idle).contains("Idle"));
+        }
+
+        #[test]
+        fn h0_video_34_state_copy() {
+            let state = RecordingState::Recording;
+            let copied: RecordingState = state;
+            assert_eq!(state, copied);
+        }
+    }
+
+    mod h0_recorder_tests {
+        use super::*;
+
+        #[test]
+        fn h0_video_35_recorder_new_idle() {
+            let recorder = VideoRecorder::new(VideoConfig::default());
+            assert_eq!(recorder.state(), RecordingState::Idle);
+        }
+
+        #[test]
+        fn h0_video_36_recorder_new_no_frames() {
+            let recorder = VideoRecorder::new(VideoConfig::default());
+            assert_eq!(recorder.frame_count(), 0);
+        }
+
+        #[test]
+        fn h0_video_37_recorder_start_recording() {
+            let mut recorder = VideoRecorder::new(VideoConfig::default());
+            recorder.start().unwrap();
+            assert_eq!(recorder.state(), RecordingState::Recording);
+        }
+
+        #[test]
+        fn h0_video_38_recorder_double_start_error() {
+            let mut recorder = VideoRecorder::new(VideoConfig::default());
+            recorder.start().unwrap();
+            assert!(recorder.start().is_err());
+        }
+
+        #[test]
+        fn h0_video_39_recorder_capture_without_start() {
+            let mut recorder = VideoRecorder::new(VideoConfig::new(10, 10));
+            let data = vec![255u8; 400];
+            assert!(recorder.capture_raw_frame(&data, 10, 10).is_err());
+        }
+
+        #[test]
+        fn h0_video_40_recorder_stop_without_start() {
+            let mut recorder = VideoRecorder::new(VideoConfig::default());
+            assert!(recorder.stop().is_err());
+        }
+    }
+
+    mod h0_recorder_frame_tests {
+        use super::*;
+
+        #[test]
+        fn h0_video_41_recorder_capture_frame() {
+            let mut recorder = VideoRecorder::new(VideoConfig::new(10, 10).with_fps(1));
+            recorder.start().unwrap();
+            let data = vec![255, 0, 0, 255].repeat(100);
+            recorder.capture_raw_frame(&data, 10, 10).unwrap();
+            assert_eq!(recorder.frame_count(), 1);
+        }
+
+        #[test]
+        fn h0_video_42_recorder_config_accessor() {
+            let config = VideoConfig::new(1920, 1080).with_fps(60);
+            let recorder = VideoRecorder::new(config);
+            assert_eq!(recorder.config().width, 1920);
+        }
+
+        #[test]
+        fn h0_video_43_recorder_invalid_dimensions() {
+            let mut recorder = VideoRecorder::new(VideoConfig::new(10, 10).with_fps(1));
+            recorder.start().unwrap();
+            let data = vec![255u8; 10]; // Too small
+            assert!(recorder.capture_raw_frame(&data, 10, 10).is_err());
+        }
+
+        #[test]
+        fn h0_video_44_recorder_debug() {
+            let recorder = VideoRecorder::new(VideoConfig::default());
+            let debug = format!("{:?}", recorder);
+            assert!(debug.contains("VideoRecorder"));
+        }
+    }
+
+    mod h0_encoded_frame_tests {
+        use super::*;
+
+        #[test]
+        fn h0_video_45_frame_data() {
+            let frame = EncodedFrame {
+                data: vec![1, 2, 3],
+                timestamp_ms: 0,
+                duration_ms: 33,
+            };
+            assert_eq!(frame.data.len(), 3);
+        }
+
+        #[test]
+        fn h0_video_46_frame_timestamp() {
+            let frame = EncodedFrame {
+                data: vec![],
+                timestamp_ms: 100,
+                duration_ms: 33,
+            };
+            assert_eq!(frame.timestamp_ms, 100);
+        }
+
+        #[test]
+        fn h0_video_47_frame_duration() {
+            let frame = EncodedFrame {
+                data: vec![],
+                timestamp_ms: 0,
+                duration_ms: 16,
+            };
+            assert_eq!(frame.duration_ms, 16);
+        }
+
+        #[test]
+        fn h0_video_48_frame_clone() {
+            let frame = EncodedFrame {
+                data: vec![1, 2, 3],
+                timestamp_ms: 50,
+                duration_ms: 33,
+            };
+            let cloned = frame;
+            assert_eq!(cloned.data, vec![1, 2, 3]);
+        }
+
+        #[test]
+        fn h0_video_49_frame_debug() {
+            let frame = EncodedFrame {
+                data: vec![],
+                timestamp_ms: 0,
+                duration_ms: 33,
+            };
+            let debug = format!("{:?}", frame);
+            assert!(debug.contains("EncodedFrame"));
+        }
+
+        #[test]
+        fn h0_video_50_config_timescale_60fps() {
+            let config = VideoConfig::default().with_fps(60);
+            assert_eq!(config.timescale(), 6000);
+        }
+    }
 }

@@ -2285,6 +2285,7 @@ dependencies = [
  "futures",
  "gif 0.13.3",
  "image",
+ "js-sys",
  "mp4",
  "notify",
  "png 0.17.16",
@@ -2302,7 +2303,9 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "wasm-bindgen",
  "wasmtime",
+ "web-sys",
 ]
 
 [[package]]

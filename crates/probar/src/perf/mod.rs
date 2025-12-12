@@ -3,6 +3,8 @@
 //! Unified performance tracing for WASM and TUI applications with
 //! Chrome Trace export, flame graph generation, and CI metrics.
 
+#![allow(clippy::redundant_pub_crate)]
+
 mod span;
 mod trace;
 mod metrics;
@@ -104,7 +106,9 @@ mod tests {
     fn h0_perf_07_chrome_trace_export() {
         let mut tracer = Tracer::new();
         tracer.start();
-        let _guard = tracer.span("test");
+        {
+            let _guard = tracer.span("test");
+        }
         let trace = tracer.stop();
 
         let chrome_trace = ChromeTrace::from_trace(&trace);
@@ -117,7 +121,9 @@ mod tests {
     fn h0_perf_08_ci_metrics_export() {
         let mut tracer = Tracer::new();
         tracer.start();
-        let _guard = tracer.span("test");
+        {
+            let _guard = tracer.span("test");
+        }
         let trace = tracer.stop();
 
         let ci_metrics = CiMetrics::from_trace(&trace);

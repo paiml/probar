@@ -266,6 +266,7 @@ pub trait HeatmapRenderer {
 }
 
 /// SVG heatmap export
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SvgHeatmap {
     width: u32,
@@ -273,6 +274,7 @@ pub struct SvgHeatmap {
     palette: ColorPalette,
 }
 
+#[allow(dead_code)]
 impl SvgHeatmap {
     /// Create new SVG exporter
     #[must_use]

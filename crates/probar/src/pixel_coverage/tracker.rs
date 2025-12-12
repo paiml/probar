@@ -263,7 +263,7 @@ impl PixelCoverageTracker {
             overall_coverage,
             covered_cells,
             total_cells,
-            min_coverage: if min_coverage == f32::MAX {
+            min_coverage: if !min_coverage.is_finite() || min_coverage > 1.0 {
                 0.0
             } else {
                 min_coverage

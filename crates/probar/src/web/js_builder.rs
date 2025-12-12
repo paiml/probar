@@ -127,6 +127,7 @@ w.exports.{entry}();
 }
 
 /// Extended JS builder for additional minimal functionality
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ExtendedJsBuilder {
     base: JsBuilder,
@@ -134,6 +135,7 @@ pub struct ExtendedJsBuilder {
     loading_indicator: bool,
 }
 
+#[allow(dead_code)]
 impl ExtendedJsBuilder {
     /// Create from base builder
     #[must_use]

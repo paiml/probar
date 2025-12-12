@@ -1161,4 +1161,334 @@ mod tests {
             assert!(result.is_ok());
         }
     }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Wait Mechanism Tests (G.1 Auto-waiting P0)
+    // =========================================================================
+
+    mod h0_constants_tests {
+        use super::*;
+
+        #[test]
+        fn h0_wait_01_default_timeout_ms() {
+            assert_eq!(DEFAULT_WAIT_TIMEOUT_MS, 30_000);
+        }
+
+        #[test]
+        fn h0_wait_02_default_poll_interval_ms() {
+            assert_eq!(DEFAULT_POLL_INTERVAL_MS, 50);
+        }
+
+        #[test]
+        fn h0_wait_03_network_idle_threshold_ms() {
+            assert_eq!(NETWORK_IDLE_THRESHOLD_MS, 500);
+        }
+    }
+
+    mod h0_load_state_tests {
+        use super::*;
+
+        #[test]
+        fn h0_wait_04_load_state_load_event() {
+            assert_eq!(LoadState::Load.event_name(), "load");
+        }
+
+        #[test]
+        fn h0_wait_05_load_state_dom_event() {
+            assert_eq!(LoadState::DomContentLoaded.event_name(), "DOMContentLoaded");
+        }
+
+        #[test]
+        fn h0_wait_06_load_state_network_event() {
+            assert_eq!(LoadState::NetworkIdle.event_name(), "networkidle");
+        }
+
+        #[test]
+        fn h0_wait_07_load_state_default() {
+            assert_eq!(LoadState::default(), LoadState::Load);
+        }
+
+        #[test]
+        fn h0_wait_08_load_state_timeout_load() {
+            assert_eq!(LoadState::Load.default_timeout_ms(), 30_000);
+        }
+
+        #[test]
+        fn h0_wait_09_load_state_timeout_network() {
+            assert_eq!(LoadState::NetworkIdle.default_timeout_ms(), 60_000);
+        }
+
+        #[test]
+        fn h0_wait_10_load_state_display() {
+            assert_eq!(format!("{}", LoadState::Load), "load");
+        }
+    }
+
+    mod h0_wait_options_tests {
+        use super::*;
+
+        #[test]
+        fn h0_wait_11_options_default_timeout() {
+            let opts = WaitOptions::default();
+            assert_eq!(opts.timeout_ms, 30_000);
+        }
+
+        #[test]
+        fn h0_wait_12_options_default_poll() {
+            let opts = WaitOptions::default();
+            assert_eq!(opts.poll_interval_ms, 50);
+        }
+
+        #[test]
+        fn h0_wait_13_options_default_state() {
+            let opts = WaitOptions::default();
+            assert_eq!(opts.wait_until, LoadState::Load);
+        }
+
+        #[test]
+        fn h0_wait_14_options_with_timeout() {
+            let opts = WaitOptions::new().with_timeout(5000);
+            assert_eq!(opts.timeout_ms, 5000);
+        }
+
+        #[test]
+        fn h0_wait_15_options_with_poll() {
+            let opts = WaitOptions::new().with_poll_interval(100);
+            assert_eq!(opts.poll_interval_ms, 100);
+        }
+
+        #[test]
+        fn h0_wait_16_options_with_state() {
+            let opts = WaitOptions::new().with_wait_until(LoadState::NetworkIdle);
+            assert_eq!(opts.wait_until, LoadState::NetworkIdle);
+        }
+
+        #[test]
+        fn h0_wait_17_options_timeout_duration() {
+            let opts = WaitOptions::new().with_timeout(1000);
+            assert_eq!(opts.timeout(), Duration::from_secs(1));
+        }
+
+        #[test]
+        fn h0_wait_18_options_poll_duration() {
+            let opts = WaitOptions::new().with_poll_interval(100);
+            assert_eq!(opts.poll_interval(), Duration::from_millis(100));
+        }
+
+        #[test]
+        fn h0_wait_19_options_clone() {
+            let opts = WaitOptions::new().with_timeout(1000);
+            let cloned = opts;
+            assert_eq!(cloned.timeout_ms, 1000);
+        }
+
+        #[test]
+        fn h0_wait_20_options_debug() {
+            let opts = WaitOptions::default();
+            let debug = format!("{:?}", opts);
+            assert!(debug.contains("WaitOptions"));
+        }
+    }
+
+    mod h0_navigation_options_tests {
+        use super::*;
+
+        #[test]
+        fn h0_wait_21_nav_default_timeout() {
+            let opts = NavigationOptions::default();
+            assert_eq!(opts.timeout_ms, 30_000);
+        }
+
+        #[test]
+        fn h0_wait_22_nav_default_state() {
+            let opts = NavigationOptions::default();
+            assert_eq!(opts.wait_until, LoadState::Load);
+        }
+
+        #[test]
+        fn h0_wait_23_nav_default_no_pattern() {
+            let opts = NavigationOptions::default();
+            assert!(opts.url_pattern.is_none());
+        }
+
+        #[test]
+        fn h0_wait_24_nav_with_timeout() {
+            let opts = NavigationOptions::new().with_timeout(5000);
+            assert_eq!(opts.timeout_ms, 5000);
+        }
+
+        #[test]
+        fn h0_wait_25_nav_with_state() {
+            let opts = NavigationOptions::new().with_wait_until(LoadState::DomContentLoaded);
+            assert_eq!(opts.wait_until, LoadState::DomContentLoaded);
+        }
+
+        #[test]
+        fn h0_wait_26_nav_with_url() {
+            let opts = NavigationOptions::new().with_url(UrlPattern::Contains("test".into()));
+            assert!(opts.url_pattern.is_some());
+        }
+
+        #[test]
+        fn h0_wait_27_nav_clone() {
+            let opts = NavigationOptions::new().with_timeout(1000);
+            let cloned = opts;
+            assert_eq!(cloned.timeout_ms, 1000);
+        }
+
+        #[test]
+        fn h0_wait_28_nav_debug() {
+            let opts = NavigationOptions::default();
+            let debug = format!("{:?}", opts);
+            assert!(debug.contains("NavigationOptions"));
+        }
+    }
+
+    mod h0_page_event_tests {
+        use super::*;
+
+        #[test]
+        fn h0_wait_29_event_close() {
+            assert_eq!(PageEvent::Close.as_str(), "close");
+        }
+
+        #[test]
+        fn h0_wait_30_event_console() {
+            assert_eq!(PageEvent::Console.as_str(), "console");
+        }
+
+        #[test]
+        fn h0_wait_31_event_crash() {
+            assert_eq!(PageEvent::Crash.as_str(), "crash");
+        }
+
+        #[test]
+        fn h0_wait_32_event_dialog() {
+            assert_eq!(PageEvent::Dialog.as_str(), "dialog");
+        }
+
+        #[test]
+        fn h0_wait_33_event_download() {
+            assert_eq!(PageEvent::Download.as_str(), "download");
+        }
+
+        #[test]
+        fn h0_wait_34_event_display() {
+            assert_eq!(format!("{}", PageEvent::Request), "request");
+        }
+
+        #[test]
+        fn h0_wait_35_event_equality() {
+            assert_eq!(PageEvent::Load, PageEvent::Load);
+            assert_ne!(PageEvent::Load, PageEvent::Close);
+        }
+
+        #[test]
+        fn h0_wait_36_event_clone() {
+            let event = PageEvent::Response;
+            let cloned = event;
+            assert_eq!(cloned, PageEvent::Response);
+        }
+    }
+
+    mod h0_wait_result_tests {
+        use super::*;
+
+        #[test]
+        fn h0_wait_37_result_success_flag() {
+            let result = WaitResult::success(Duration::from_millis(100), "test");
+            assert!(result.success);
+        }
+
+        #[test]
+        fn h0_wait_38_result_success_elapsed() {
+            let result = WaitResult::success(Duration::from_millis(500), "test");
+            assert_eq!(result.elapsed, Duration::from_millis(500));
+        }
+
+        #[test]
+        fn h0_wait_39_result_timeout_flag() {
+            let result = WaitResult::timeout(Duration::from_secs(30), "test");
+            assert!(!result.success);
+        }
+
+        #[test]
+        fn h0_wait_40_result_waited_for() {
+            let result = WaitResult::success(Duration::ZERO, "my condition");
+            assert_eq!(result.waited_for, "my condition");
+        }
+
+        #[test]
+        fn h0_wait_41_result_clone() {
+            let result = WaitResult::success(Duration::from_millis(100), "test");
+            let cloned = result;
+            assert!(cloned.success);
+        }
+
+        #[test]
+        fn h0_wait_42_result_debug() {
+            let result = WaitResult::success(Duration::ZERO, "test");
+            let debug = format!("{:?}", result);
+            assert!(debug.contains("WaitResult"));
+        }
+    }
+
+    mod h0_waiter_tests {
+        use super::*;
+
+        #[test]
+        fn h0_wait_43_waiter_new() {
+            let waiter = Waiter::new();
+            assert!(waiter.current_url.is_none());
+        }
+
+        #[test]
+        fn h0_wait_44_waiter_set_url() {
+            let mut waiter = Waiter::new();
+            waiter.set_url("https://test.com");
+            assert_eq!(waiter.current_url, Some("https://test.com".to_string()));
+        }
+
+        #[test]
+        fn h0_wait_45_waiter_set_load_state() {
+            let mut waiter = Waiter::new();
+            waiter.set_load_state(LoadState::NetworkIdle);
+            assert_eq!(waiter.load_state, LoadState::NetworkIdle);
+        }
+
+        #[test]
+        fn h0_wait_46_waiter_record_event() {
+            let mut waiter = Waiter::new();
+            waiter.record_event(PageEvent::Load);
+            assert_eq!(waiter.events.len(), 1);
+        }
+
+        #[test]
+        fn h0_wait_47_waiter_clear_events() {
+            let mut waiter = Waiter::new();
+            waiter.record_event(PageEvent::Load);
+            waiter.clear_events();
+            assert!(waiter.events.is_empty());
+        }
+
+        #[test]
+        fn h0_wait_48_waiter_pending_requests() {
+            let mut waiter = Waiter::new();
+            waiter.set_pending_requests(5);
+            assert_eq!(waiter.pending_requests, 5);
+        }
+
+        #[test]
+        fn h0_wait_49_waiter_default() {
+            let waiter = Waiter::default();
+            assert_eq!(waiter.pending_requests, 0);
+        }
+
+        #[test]
+        fn h0_wait_50_waiter_with_options() {
+            let options = WaitOptions::new().with_timeout(5000);
+            let waiter = Waiter::with_options(options);
+            assert_eq!(waiter.options.timeout_ms, 5000);
+        }
+    }
 }

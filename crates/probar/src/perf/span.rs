@@ -3,8 +3,10 @@
 //! Hierarchical span-based performance measurement.
 
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 static NEXT_SPAN_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -110,16 +112,58 @@ impl Span {
     }
 }
 
-/// RAII guard for automatic span closure
-pub struct SpanGuard<'a> {
-    tracer: &'a mut super::trace::Tracer,
-    span_id: SpanId,
+/// Internal tracer state for RefCell-based interior mutability
+pub(crate) struct TracerState {
+    pub active_spans: std::collections::HashMap<SpanId, ActiveSpan>,
+    pub completed_spans: Vec<Span>,
+    pub current_span: Option<SpanId>,
+    pub trace_start: Option<Instant>,
 }
 
-impl<'a> SpanGuard<'a> {
+impl TracerState {
+    pub fn new() -> Self {
+        Self {
+            active_spans: std::collections::HashMap::new(),
+            completed_spans: Vec::new(),
+            current_span: None,
+            trace_start: None,
+        }
+    }
+
+    pub fn elapsed_ns(&self) -> u64 {
+        self.trace_start
+            .map(|start| start.elapsed().as_nanos() as u64)
+            .unwrap_or(0)
+    }
+}
+
+/// Shared reference to tracer state
+pub(crate) type SharedTracerState = Rc<RefCell<TracerState>>;
+
+/// RAII guard for automatic span closure
+pub struct SpanGuard {
+    state: SharedTracerState,
+    span_id: SpanId,
+    max_spans: usize,
+}
+
+impl std::fmt::Debug for SpanGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SpanGuard")
+            .field("span_id", &self.span_id)
+            .field("max_spans", &self.max_spans)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SpanGuard {
     /// Create a new span guard
-    pub(crate) fn new(tracer: &'a mut super::trace::Tracer, span_id: SpanId) -> Self {
-        Self { tracer, span_id }
+    pub(crate) fn new(state: SharedTracerState, span_id: SpanId, max_spans: usize) -> Self {
+        Self {
+            state,
+            span_id,
+            max_spans,
+        }
     }
 
     /// Get the span ID
@@ -129,9 +173,21 @@ impl<'a> SpanGuard<'a> {
     }
 }
 
-impl Drop for SpanGuard<'_> {
+impl Drop for SpanGuard {
     fn drop(&mut self) {
-        self.tracer.close_span(self.span_id);
+        let mut state = self.state.borrow_mut();
+        if let Some(mut active) = state.active_spans.remove(&self.span_id) {
+            let end_ns = state.elapsed_ns();
+            active.span.close(end_ns);
+
+            // Update current span to parent
+            state.current_span = active.span.parent;
+
+            // Store completed span
+            if state.completed_spans.len() < self.max_spans {
+                state.completed_spans.push(active.span);
+            }
+        }
     }
 }
 
@@ -139,6 +195,7 @@ impl Drop for SpanGuard<'_> {
 #[derive(Debug)]
 pub(crate) struct ActiveSpan {
     pub span: Span,
+    #[allow(dead_code)]
     pub start_instant: Instant,
 }
 

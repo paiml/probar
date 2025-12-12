@@ -837,4 +837,386 @@ mod tests {
             assert!(debug.contains("Page"));
         }
     }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Browser Tests (Feature F P0)
+    // =========================================================================
+
+    mod h0_browser_config_tests {
+        use super::*;
+
+        #[test]
+        fn h0_browser_01_config_default_headless() {
+            let config = BrowserConfig::default();
+            assert!(config.headless);
+        }
+
+        #[test]
+        fn h0_browser_02_config_default_viewport_width() {
+            let config = BrowserConfig::default();
+            assert_eq!(config.viewport_width, 800);
+        }
+
+        #[test]
+        fn h0_browser_03_config_default_viewport_height() {
+            let config = BrowserConfig::default();
+            assert_eq!(config.viewport_height, 600);
+        }
+
+        #[test]
+        fn h0_browser_04_config_default_no_chromium_path() {
+            let config = BrowserConfig::default();
+            assert!(config.chromium_path.is_none());
+        }
+
+        #[test]
+        fn h0_browser_05_config_default_debug_port() {
+            let config = BrowserConfig::default();
+            assert_eq!(config.debug_port, 0);
+        }
+
+        #[test]
+        fn h0_browser_06_config_default_no_user_agent() {
+            let config = BrowserConfig::default();
+            assert!(config.user_agent.is_none());
+        }
+
+        #[test]
+        fn h0_browser_07_config_default_devtools_off() {
+            let config = BrowserConfig::default();
+            assert!(!config.devtools);
+        }
+
+        #[test]
+        fn h0_browser_08_config_default_sandbox_on() {
+            let config = BrowserConfig::default();
+            assert!(config.sandbox);
+        }
+
+        #[test]
+        fn h0_browser_09_config_with_viewport() {
+            let config = BrowserConfig::default().with_viewport(1920, 1080);
+            assert_eq!(config.viewport_width, 1920);
+            assert_eq!(config.viewport_height, 1080);
+        }
+
+        #[test]
+        fn h0_browser_10_config_with_headless_false() {
+            let config = BrowserConfig::default().with_headless(false);
+            assert!(!config.headless);
+        }
+    }
+
+    mod h0_browser_config_builder_tests {
+        use super::*;
+
+        #[test]
+        fn h0_browser_11_config_with_chromium_path() {
+            let config = BrowserConfig::default().with_chromium_path("/path/to/chromium");
+            assert_eq!(config.chromium_path, Some("/path/to/chromium".to_string()));
+        }
+
+        #[test]
+        fn h0_browser_12_config_with_user_agent() {
+            let config = BrowserConfig::default().with_user_agent("Test UA");
+            assert_eq!(config.user_agent, Some("Test UA".to_string()));
+        }
+
+        #[test]
+        fn h0_browser_13_config_with_no_sandbox() {
+            let config = BrowserConfig::default().with_no_sandbox();
+            assert!(!config.sandbox);
+        }
+
+        #[test]
+        fn h0_browser_14_config_builder_chain() {
+            let config = BrowserConfig::default()
+                .with_viewport(1024, 768)
+                .with_headless(false)
+                .with_no_sandbox()
+                .with_user_agent("Custom");
+            assert_eq!(config.viewport_width, 1024);
+            assert!(!config.headless);
+            assert!(!config.sandbox);
+            assert_eq!(config.user_agent, Some("Custom".to_string()));
+        }
+
+        #[test]
+        fn h0_browser_15_config_clone() {
+            let config = BrowserConfig::default().with_viewport(800, 600);
+            let cloned = config;
+            assert_eq!(cloned.viewport_width, 800);
+        }
+
+        #[test]
+        fn h0_browser_16_config_string_conversion() {
+            let config = BrowserConfig::default().with_chromium_path(String::from("/usr/bin/chrome"));
+            assert!(config.chromium_path.is_some());
+        }
+
+        #[test]
+        fn h0_browser_17_config_small_viewport() {
+            let config = BrowserConfig::default().with_viewport(320, 240);
+            assert_eq!(config.viewport_width, 320);
+            assert_eq!(config.viewport_height, 240);
+        }
+
+        #[test]
+        fn h0_browser_18_config_large_viewport() {
+            let config = BrowserConfig::default().with_viewport(3840, 2160);
+            assert_eq!(config.viewport_width, 3840);
+        }
+
+        #[test]
+        fn h0_browser_19_config_debug_format() {
+            let config = BrowserConfig::default();
+            let debug = format!("{:?}", config);
+            assert!(debug.contains("headless"));
+        }
+
+        #[test]
+        fn h0_browser_20_config_user_agent_unicode() {
+            let config = BrowserConfig::default().with_user_agent("UA/テスト");
+            assert_eq!(config.user_agent, Some("UA/テスト".to_string()));
+        }
+    }
+
+    #[cfg(not(feature = "browser"))]
+    mod h0_mock_browser_tests {
+        use super::*;
+
+        #[test]
+        fn h0_browser_21_launch() {
+            let config = BrowserConfig::default();
+            let browser = Browser::launch(config);
+            assert!(browser.is_ok());
+        }
+
+        #[test]
+        fn h0_browser_22_launch_config_preserved() {
+            let config = BrowserConfig::default().with_viewport(1024, 768);
+            let browser = Browser::launch(config).unwrap();
+            assert_eq!(browser.config().viewport_width, 1024);
+        }
+
+        #[test]
+        fn h0_browser_23_new_page() {
+            let browser = Browser::launch(BrowserConfig::default()).unwrap();
+            let page = browser.new_page();
+            assert!(page.is_ok());
+        }
+
+        #[test]
+        fn h0_browser_24_new_page_dimensions() {
+            let config = BrowserConfig::default().with_viewport(1280, 720);
+            let browser = Browser::launch(config).unwrap();
+            let page = browser.new_page().unwrap();
+            assert_eq!(page.width, 1280);
+            assert_eq!(page.height, 720);
+        }
+
+        #[test]
+        fn h0_browser_25_debug_format() {
+            let browser = Browser::launch(BrowserConfig::default()).unwrap();
+            let debug = format!("{:?}", browser);
+            assert!(debug.contains("Browser"));
+        }
+    }
+
+    #[cfg(not(feature = "browser"))]
+    mod h0_mock_page_tests {
+        use super::*;
+
+        #[test]
+        fn h0_browser_26_page_new() {
+            let page = Page::new(800, 600);
+            assert_eq!(page.width, 800);
+        }
+
+        #[test]
+        fn h0_browser_27_page_initial_url() {
+            let page = Page::new(800, 600);
+            assert_eq!(page.url, "about:blank");
+        }
+
+        #[test]
+        fn h0_browser_28_page_initial_wasm_not_ready() {
+            let page = Page::new(800, 600);
+            assert!(!page.wasm_ready);
+        }
+
+        #[test]
+        fn h0_browser_29_page_goto() {
+            let mut page = Page::new(800, 600);
+            let result = page.goto("http://localhost:8080");
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn h0_browser_30_page_goto_updates_url() {
+            let mut page = Page::new(800, 600);
+            page.goto("http://test.com").unwrap();
+            assert_eq!(page.current_url(), "http://test.com");
+        }
+
+        #[test]
+        fn h0_browser_31_page_wait_for_wasm() {
+            let mut page = Page::new(800, 600);
+            let result = page.wait_for_wasm_ready();
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn h0_browser_32_page_wasm_ready_after_wait() {
+            let mut page = Page::new(800, 600);
+            page.wait_for_wasm_ready().unwrap();
+            assert!(page.is_wasm_ready());
+        }
+
+        #[test]
+        fn h0_browser_33_page_eval_wasm_fails() {
+            let page = Page::new(800, 600);
+            let result: Result<i32, _> = page.eval_wasm("1 + 1");
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn h0_browser_34_page_touch_tap() {
+            let page = Page::new(800, 600);
+            let touch = crate::Touch {
+                x: 50.0,
+                y: 50.0,
+                action: crate::TouchAction::Tap,
+            };
+            assert!(page.touch(touch).is_ok());
+        }
+
+        #[test]
+        fn h0_browser_35_page_screenshot_empty() {
+            let page = Page::new(800, 600);
+            let screenshot = page.screenshot().unwrap();
+            assert!(screenshot.is_empty());
+        }
+    }
+
+    #[cfg(not(feature = "browser"))]
+    mod h0_mock_page_advanced_tests {
+        use super::*;
+
+        #[test]
+        fn h0_browser_36_page_touch_swipe() {
+            let page = Page::new(800, 600);
+            let touch = crate::Touch {
+                x: 100.0,
+                y: 100.0,
+                action: crate::TouchAction::Swipe {
+                    end_x: 200.0,
+                    end_y: 200.0,
+                    duration_ms: 100,
+                },
+            };
+            assert!(page.touch(touch).is_ok());
+        }
+
+        #[test]
+        fn h0_browser_37_page_touch_hold() {
+            let page = Page::new(800, 600);
+            let touch = crate::Touch {
+                x: 100.0,
+                y: 100.0,
+                action: crate::TouchAction::Hold { duration_ms: 500 },
+            };
+            assert!(page.touch(touch).is_ok());
+        }
+
+        #[test]
+        fn h0_browser_38_page_debug() {
+            let page = Page::new(800, 600);
+            let debug = format!("{:?}", page);
+            assert!(debug.contains("Page"));
+        }
+
+        #[test]
+        fn h0_browser_39_page_current_url_method() {
+            let page = Page::new(800, 600);
+            assert_eq!(page.current_url(), "about:blank");
+        }
+
+        #[test]
+        fn h0_browser_40_page_is_wasm_ready_method() {
+            let page = Page::new(800, 600);
+            assert!(!page.is_wasm_ready());
+        }
+
+        #[test]
+        fn h0_browser_41_page_multiple_goto() {
+            let mut page = Page::new(800, 600);
+            page.goto("http://first.com").unwrap();
+            page.goto("http://second.com").unwrap();
+            assert_eq!(page.current_url(), "http://second.com");
+        }
+
+        #[test]
+        fn h0_browser_42_page_zero_dimensions() {
+            let page = Page::new(0, 0);
+            assert_eq!(page.width, 0);
+            assert_eq!(page.height, 0);
+        }
+
+        #[test]
+        fn h0_browser_43_page_large_dimensions() {
+            let page = Page::new(7680, 4320);
+            assert_eq!(page.width, 7680);
+        }
+
+        #[test]
+        fn h0_browser_44_config_overwrite_viewport() {
+            let config = BrowserConfig::default()
+                .with_viewport(800, 600)
+                .with_viewport(1024, 768);
+            assert_eq!(config.viewport_width, 1024);
+        }
+
+        #[test]
+        fn h0_browser_45_config_overwrite_headless() {
+            let config = BrowserConfig::default()
+                .with_headless(false)
+                .with_headless(true);
+            assert!(config.headless);
+        }
+    }
+
+    mod h0_browser_edge_cases {
+        use super::*;
+
+        #[test]
+        fn h0_browser_46_config_empty_chromium_path() {
+            let config = BrowserConfig::default().with_chromium_path("");
+            assert_eq!(config.chromium_path, Some(String::new()));
+        }
+
+        #[test]
+        fn h0_browser_47_config_empty_user_agent() {
+            let config = BrowserConfig::default().with_user_agent("");
+            assert_eq!(config.user_agent, Some(String::new()));
+        }
+
+        #[test]
+        fn h0_browser_48_config_viewport_square() {
+            let config = BrowserConfig::default().with_viewport(1000, 1000);
+            assert_eq!(config.viewport_width, config.viewport_height);
+        }
+
+        #[test]
+        fn h0_browser_49_config_viewport_portrait() {
+            let config = BrowserConfig::default().with_viewport(600, 800);
+            assert!(config.viewport_height > config.viewport_width);
+        }
+
+        #[test]
+        fn h0_browser_50_config_viewport_landscape() {
+            let config = BrowserConfig::default().with_viewport(1920, 1080);
+            assert!(config.viewport_width > config.viewport_height);
+        }
+    }
 }

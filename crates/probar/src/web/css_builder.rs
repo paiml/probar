@@ -142,6 +142,7 @@ impl CssBuilder {
 
     /// Add dark mode support
     #[must_use]
+    #[allow(clippy::literal_string_with_formatting_args)]
     pub fn dark_mode(mut self, background: &str, foreground: &str) -> Self {
         self.rules.push(
             CssRule::new("@media (prefers-color-scheme: dark) { :root }")
@@ -182,8 +183,9 @@ impl CssBuilder {
 }
 
 /// Pre-built CSS presets
+#[allow(dead_code)]
 pub mod presets {
-    use super::*;
+    use super::{CssBuilder, CssRule};
 
     /// WASM application preset - fullscreen canvas with no scrollbars
     #[must_use]
@@ -236,7 +238,7 @@ pub mod presets {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::wildcard_imports)]
 mod tests {
     use super::*;
 

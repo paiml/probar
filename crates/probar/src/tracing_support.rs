@@ -986,4 +986,474 @@ mod tests {
             assert_eq!(archive.events.len(), 3);
         }
     }
+
+    // =========================================================================
+    // H₀ EXTREME TDD: Tracing Support Tests (G.7 P1)
+    // =========================================================================
+
+    mod h0_tracing_config_tests {
+        use super::*;
+
+        #[test]
+        fn h0_trace_01_config_default_capture_screenshots() {
+            let config = TracingConfig::default();
+            assert!(config.capture_screenshots);
+        }
+
+        #[test]
+        fn h0_trace_02_config_default_capture_network() {
+            let config = TracingConfig::default();
+            assert!(config.capture_network);
+        }
+
+        #[test]
+        fn h0_trace_03_config_default_capture_console() {
+            let config = TracingConfig::default();
+            assert!(config.capture_console);
+        }
+
+        #[test]
+        fn h0_trace_04_config_default_capture_performance() {
+            let config = TracingConfig::default();
+            assert!(config.capture_performance);
+        }
+
+        #[test]
+        fn h0_trace_05_config_default_max_events() {
+            let config = TracingConfig::default();
+            assert_eq!(config.max_events, 10000);
+        }
+
+        #[test]
+        fn h0_trace_06_config_default_include_timestamps() {
+            let config = TracingConfig::default();
+            assert!(config.include_timestamps);
+        }
+
+        #[test]
+        fn h0_trace_07_config_capture_none() {
+            let config = TracingConfig::new().capture_none();
+            assert!(!config.capture_screenshots);
+            assert!(!config.capture_network);
+            assert!(!config.capture_console);
+            assert!(!config.capture_performance);
+        }
+
+        #[test]
+        fn h0_trace_08_config_capture_all() {
+            let config = TracingConfig::new().capture_none().capture_all();
+            assert!(config.capture_screenshots);
+            assert!(config.capture_network);
+        }
+
+        #[test]
+        fn h0_trace_09_config_with_max_events() {
+            let config = TracingConfig::new().with_max_events(500);
+            assert_eq!(config.max_events, 500);
+        }
+
+        #[test]
+        fn h0_trace_10_config_new() {
+            let config = TracingConfig::new();
+            assert!(config.capture_screenshots);
+        }
+    }
+
+    mod h0_span_status_tests {
+        use super::*;
+
+        #[test]
+        fn h0_trace_11_span_status_running() {
+            let span = TracedSpan::new("test", 0);
+            assert_eq!(span.status, SpanStatus::Running);
+        }
+
+        #[test]
+        fn h0_trace_12_span_status_ok_after_end() {
+            let mut span = TracedSpan::new("test", 0);
+            span.end(100);
+            assert_eq!(span.status, SpanStatus::Ok);
+        }
+
+        #[test]
+        fn h0_trace_13_span_status_error() {
+            let mut span = TracedSpan::new("test", 0);
+            span.mark_error("Failed");
+            assert_eq!(span.status, SpanStatus::Error);
+        }
+
+        #[test]
+        fn h0_trace_14_span_new_name() {
+            let span = TracedSpan::new("my_span", 0);
+            assert_eq!(span.name, "my_span");
+        }
+
+        #[test]
+        fn h0_trace_15_span_new_start_ms() {
+            let span = TracedSpan::new("test", 250);
+            assert_eq!(span.start_ms, 250);
+        }
+
+        #[test]
+        fn h0_trace_16_span_with_parent() {
+            let span = TracedSpan::new("child", 0).with_parent("parent_123");
+            assert_eq!(span.parent_id, Some("parent_123".to_string()));
+        }
+
+        #[test]
+        fn h0_trace_17_span_add_attribute() {
+            let mut span = TracedSpan::new("test", 0);
+            span.add_attribute("action", "click");
+            assert_eq!(span.attributes.get("action"), Some(&"click".to_string()));
+        }
+
+        #[test]
+        fn h0_trace_18_span_end_duration() {
+            let mut span = TracedSpan::new("test", 100);
+            span.end(300);
+            assert_eq!(span.duration_ms, Some(200));
+        }
+
+        #[test]
+        fn h0_trace_19_span_is_complete_false() {
+            let span = TracedSpan::new("test", 0);
+            assert!(!span.is_complete());
+        }
+
+        #[test]
+        fn h0_trace_20_span_is_complete_true() {
+            let mut span = TracedSpan::new("test", 0);
+            span.end(100);
+            assert!(span.is_complete());
+        }
+    }
+
+    mod h0_traced_event_tests {
+        use super::*;
+
+        #[test]
+        fn h0_trace_21_event_new_name() {
+            let event = TracedEvent::new("test_event", EventCategory::Test, 0);
+            assert_eq!(event.name, "test_event");
+        }
+
+        #[test]
+        fn h0_trace_22_event_new_category() {
+            let event = TracedEvent::new("test", EventCategory::Network, 0);
+            assert_eq!(event.category, EventCategory::Network);
+        }
+
+        #[test]
+        fn h0_trace_23_event_new_timestamp() {
+            let event = TracedEvent::new("test", EventCategory::Test, 500);
+            assert_eq!(event.timestamp_ms, 500);
+        }
+
+        #[test]
+        fn h0_trace_24_event_default_level() {
+            let event = TracedEvent::new("test", EventCategory::Test, 0);
+            assert_eq!(event.level, EventLevel::Info);
+        }
+
+        #[test]
+        fn h0_trace_25_event_with_message() {
+            let event = TracedEvent::new("test", EventCategory::Test, 0)
+                .with_message("Hello world");
+            assert_eq!(event.message, "Hello world");
+        }
+
+        #[test]
+        fn h0_trace_26_event_with_level() {
+            let event = TracedEvent::new("test", EventCategory::Test, 0)
+                .with_level(EventLevel::Error);
+            assert_eq!(event.level, EventLevel::Error);
+        }
+
+        #[test]
+        fn h0_trace_27_event_add_attribute() {
+            let mut event = TracedEvent::new("test", EventCategory::Test, 0);
+            event.add_attribute("count", serde_json::json!(42));
+            assert!(event.attributes.contains_key("count"));
+        }
+
+        #[test]
+        fn h0_trace_28_event_category_interaction() {
+            let event = TracedEvent::new("click", EventCategory::Interaction, 0);
+            assert_eq!(event.category, EventCategory::Interaction);
+        }
+
+        #[test]
+        fn h0_trace_29_event_category_console() {
+            let event = TracedEvent::new("log", EventCategory::Console, 0);
+            assert_eq!(event.category, EventCategory::Console);
+        }
+
+        #[test]
+        fn h0_trace_30_event_level_ordering() {
+            assert!(EventLevel::Trace < EventLevel::Debug);
+            assert!(EventLevel::Debug < EventLevel::Info);
+            assert!(EventLevel::Info < EventLevel::Warn);
+            assert!(EventLevel::Warn < EventLevel::Error);
+        }
+    }
+
+    mod h0_network_event_tests {
+        use super::*;
+
+        #[test]
+        fn h0_trace_31_network_event_new_url() {
+            let event = NetworkEvent::new("https://api.example.com", "POST", 0);
+            assert_eq!(event.url, "https://api.example.com");
+        }
+
+        #[test]
+        fn h0_trace_32_network_event_new_method() {
+            let event = NetworkEvent::new("https://example.com", "PUT", 0);
+            assert_eq!(event.method, "PUT");
+        }
+
+        #[test]
+        fn h0_trace_33_network_event_complete() {
+            let mut event = NetworkEvent::new("https://example.com", "GET", 0);
+            event.complete(201, 250);
+            assert_eq!(event.status, Some(201));
+            assert_eq!(event.duration_ms, Some(250));
+        }
+
+        #[test]
+        fn h0_trace_34_network_event_fail() {
+            let mut event = NetworkEvent::new("https://example.com", "GET", 0);
+            event.fail("Timeout");
+            assert!(event.failed);
+            assert_eq!(event.error, Some("Timeout".to_string()));
+        }
+
+        #[test]
+        fn h0_trace_35_network_event_not_failed_initially() {
+            let event = NetworkEvent::new("https://example.com", "GET", 0);
+            assert!(!event.failed);
+        }
+
+        #[test]
+        fn h0_trace_36_console_level_log() {
+            let msg = ConsoleMessage {
+                timestamp_ms: 0,
+                level: ConsoleLevel::Log,
+                text: "test".to_string(),
+                source: None,
+                line: None,
+            };
+            assert_eq!(msg.level, ConsoleLevel::Log);
+        }
+
+        #[test]
+        fn h0_trace_37_console_level_warn() {
+            let msg = ConsoleMessage {
+                timestamp_ms: 0,
+                level: ConsoleLevel::Warn,
+                text: "warning".to_string(),
+                source: None,
+                line: None,
+            };
+            assert_eq!(msg.level, ConsoleLevel::Warn);
+        }
+
+        #[test]
+        fn h0_trace_38_console_level_error() {
+            let msg = ConsoleMessage {
+                timestamp_ms: 0,
+                level: ConsoleLevel::Error,
+                text: "error".to_string(),
+                source: None,
+                line: None,
+            };
+            assert_eq!(msg.level, ConsoleLevel::Error);
+        }
+
+        #[test]
+        fn h0_trace_39_console_message_source() {
+            let msg = ConsoleMessage {
+                timestamp_ms: 0,
+                level: ConsoleLevel::Log,
+                text: "test".to_string(),
+                source: Some("main.js".to_string()),
+                line: Some(42),
+            };
+            assert_eq!(msg.source, Some("main.js".to_string()));
+            assert_eq!(msg.line, Some(42));
+        }
+
+        #[test]
+        fn h0_trace_40_trace_metadata_new() {
+            let metadata = TraceMetadata::new("my_test");
+            assert_eq!(metadata.test_name, "my_test");
+            assert!(!metadata.trace_id.is_empty());
+        }
+    }
+
+    mod h0_execution_tracer_tests {
+        use super::*;
+
+        #[test]
+        fn h0_trace_41_tracer_new_not_running() {
+            let tracer = ExecutionTracer::new("test", TracingConfig::default());
+            assert!(!tracer.is_running());
+        }
+
+        #[test]
+        fn h0_trace_42_tracer_start_running() {
+            let mut tracer = ExecutionTracer::new("test", TracingConfig::default());
+            tracer.start();
+            assert!(tracer.is_running());
+        }
+
+        #[test]
+        fn h0_trace_43_tracer_stop_not_running() {
+            let mut tracer = ExecutionTracer::new("test", TracingConfig::default());
+            tracer.start();
+            let _ = tracer.stop();
+            assert!(!tracer.is_running());
+        }
+
+        #[test]
+        fn h0_trace_44_tracer_span_count_initial() {
+            let tracer = ExecutionTracer::new("test", TracingConfig::default());
+            assert_eq!(tracer.span_count(), 0);
+        }
+
+        #[test]
+        fn h0_trace_45_tracer_event_count_initial() {
+            let tracer = ExecutionTracer::new("test", TracingConfig::default());
+            assert_eq!(tracer.event_count(), 0);
+        }
+
+        #[test]
+        fn h0_trace_46_tracer_start_span() {
+            let mut tracer = ExecutionTracer::new("test", TracingConfig::default());
+            tracer.start();
+            let span_id = tracer.start_span("action");
+            assert!(!span_id.is_empty());
+            assert_eq!(tracer.span_count(), 1);
+        }
+
+        #[test]
+        fn h0_trace_47_tracer_info_event() {
+            let mut tracer = ExecutionTracer::new("test", TracingConfig::default());
+            tracer.start();
+            tracer.info("test", "Info message");
+            assert_eq!(tracer.event_count(), 1);
+        }
+
+        #[test]
+        fn h0_trace_48_tracer_warn_event() {
+            let mut tracer = ExecutionTracer::new("test", TracingConfig::default());
+            tracer.start();
+            tracer.warn("test", "Warning message");
+            let archive = tracer.stop();
+            assert_eq!(archive.events[0].level, EventLevel::Warn);
+        }
+
+        #[test]
+        fn h0_trace_49_tracer_error_event() {
+            let mut tracer = ExecutionTracer::new("test", TracingConfig::default());
+            tracer.start();
+            tracer.error("test", "Error message");
+            let archive = tracer.stop();
+            assert_eq!(archive.events[0].level, EventLevel::Error);
+        }
+
+        #[test]
+        fn h0_trace_50_tracer_archive_metadata() {
+            let mut tracer = ExecutionTracer::new("my_test", TracingConfig::default());
+            tracer.start();
+            let archive = tracer.stop();
+            assert_eq!(archive.metadata.test_name, "my_test");
+            assert!(archive.metadata.duration_ms.is_some());
+        }
+    }
+
+    mod h0_archive_tests {
+        use super::*;
+
+        #[test]
+        fn h0_trace_51_archive_new_empty() {
+            let archive = TraceArchive::new(TraceMetadata::new("test"));
+            assert!(archive.spans.is_empty());
+            assert!(archive.events.is_empty());
+            assert!(archive.network_events.is_empty());
+            assert!(archive.console_messages.is_empty());
+        }
+
+        #[test]
+        fn h0_trace_52_archive_spans_by_name() {
+            let mut archive = TraceArchive::new(TraceMetadata::new("test"));
+            archive.spans.push(TracedSpan::new("click", 0));
+            archive.spans.push(TracedSpan::new("click", 100));
+            let clicks = archive.spans_by_name("click");
+            assert_eq!(clicks.len(), 2);
+        }
+
+        #[test]
+        fn h0_trace_53_archive_events_by_category() {
+            let mut archive = TraceArchive::new(TraceMetadata::new("test"));
+            archive.events.push(TracedEvent::new("e1", EventCategory::Network, 0));
+            archive.events.push(TracedEvent::new("e2", EventCategory::Network, 50));
+            let network = archive.events_by_category(EventCategory::Network);
+            assert_eq!(network.len(), 2);
+        }
+
+        #[test]
+        fn h0_trace_54_archive_failed_requests() {
+            let mut archive = TraceArchive::new(TraceMetadata::new("test"));
+            let mut failed = NetworkEvent::new("https://fail.com", "GET", 0);
+            failed.fail("404");
+            archive.network_events.push(failed);
+            assert_eq!(archive.failed_requests().len(), 1);
+        }
+
+        #[test]
+        fn h0_trace_55_archive_error_spans() {
+            let mut archive = TraceArchive::new(TraceMetadata::new("test"));
+            let mut error_span = TracedSpan::new("err", 0);
+            error_span.mark_error("Failed");
+            archive.spans.push(error_span);
+            assert_eq!(archive.error_spans().len(), 1);
+        }
+
+        #[test]
+        fn h0_trace_56_event_category_screenshot() {
+            let event = TracedEvent::new("capture", EventCategory::Screenshot, 0);
+            assert_eq!(event.category, EventCategory::Screenshot);
+        }
+
+        #[test]
+        fn h0_trace_57_event_category_performance() {
+            let event = TracedEvent::new("metric", EventCategory::Performance, 0);
+            assert_eq!(event.category, EventCategory::Performance);
+        }
+
+        #[test]
+        fn h0_trace_58_event_category_assertion() {
+            let event = TracedEvent::new("assert", EventCategory::Assertion, 0);
+            assert_eq!(event.category, EventCategory::Assertion);
+        }
+
+        #[test]
+        fn h0_trace_59_event_category_custom() {
+            let event = TracedEvent::new("custom", EventCategory::Custom, 0);
+            assert_eq!(event.category, EventCategory::Custom);
+        }
+
+        #[test]
+        fn h0_trace_60_console_level_debug() {
+            let msg = ConsoleMessage {
+                timestamp_ms: 0,
+                level: ConsoleLevel::Debug,
+                text: "debug".to_string(),
+                source: None,
+                line: None,
+            };
+            assert_eq!(msg.level, ConsoleLevel::Debug);
+        }
+    }
 }

@@ -242,6 +242,7 @@ impl BuildCoordinator {
 }
 
 /// Format file size for display
+#[allow(dead_code)]
 #[must_use]
 pub fn format_size(bytes: u64) -> String {
     if bytes < 1024 {
