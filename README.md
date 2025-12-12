@@ -22,6 +22,9 @@
   <a href="https://paiml.github.io/probar/">
     <img src="https://img.shields.io/badge/book-mdbook-blue" alt="Book">
   </a>
+  <a href="https://codecov.io/gh/paiml/probar">
+    <img src="https://codecov.io/gh/paiml/probar/branch/main/graph/badge.svg" alt="Coverage">
+  </a>
 </p>
 
 ---
@@ -32,9 +35,32 @@
 - **TUI Applications** - Terminal interfaces built with ratatui/crossterm
 - **Headless Testing** - Fast CI/CD without browser overhead
 
-## Features
+## Key Features
+
+### GUI Coverage Tracking
+
+Probar introduces **GUI Coverage** - a new paradigm for measuring UI test completeness:
+
+```rust
+use probar::gui_coverage;
+
+// Define what needs testing (one line!)
+let mut gui = gui_coverage! {
+    buttons: ["start", "pause", "quit"],
+    screens: ["title", "playing", "game_over"]
+};
+
+// Record interactions during tests
+gui.click("start");
+gui.visit("title");
+
+// Get coverage - one line!
+println!("{}", gui.summary());  // "GUI: 33% (1/3 elements, 1/3 screens)"
+assert!(gui.meets(80.0));       // Fail if below 80%
+```
 
 ### Playwright-Compatible API
+
 ```rust
 // Familiar Playwright-style locators and assertions
 let button = page.locator("button").with_text("Start Game");
@@ -53,59 +79,45 @@ expect(&score).to_have_text("100").await?;
 
 ### Core Capabilities
 
-- **Browser Automation**: Chrome DevTools Protocol (CDP) via chromiumoxide
-- **WASM Runtime Testing**: Logic-only testing via wasmtime (no browser overhead)
-- **TUI Testing**: Frame capture and assertion for terminal UIs
-- **Visual Regression**: Image comparison for UI stability
-- **Accessibility Auditing**: WCAG compliance checking
-- **Deterministic Replay**: Record and replay sessions with seed control
-- **Monte Carlo Fuzzing**: Random input generation with invariant checking
-- **100% UX Coverage**: Provable UI element and interaction coverage
+| Feature | Description |
+|---------|-------------|
+| **Browser Automation** | Chrome DevTools Protocol (CDP) via chromiumoxide |
+| **WASM Runtime Testing** | Logic-only testing via wasmtime (no browser overhead) |
+| **TUI Testing** | Frame capture and assertion for terminal UIs |
+| **GUI Coverage** | Provable UI element and interaction coverage |
+| **Visual Regression** | Image comparison for UI stability |
+| **Accessibility Auditing** | WCAG compliance checking |
+| **Deterministic Replay** | Record and replay sessions with seed control |
+| **Monte Carlo Fuzzing** | Random input generation with invariant checking |
 
 ## Quick Start
 
 ```rust
 use probar::prelude::*;
 
-// Browser-based testing (requires `browser` feature)
-#[cfg(feature = "browser")]
-async fn test_game_start() -> ProbarResult<()> {
-    let config = BrowserConfig::default().with_viewport(800, 600);
-    let browser = Browser::launch(config).await?;
-    let mut page = browser.new_page().await?;
+#[test]
+fn test_calculator_gui() {
+    // Create driver (works for TUI or WASM)
+    let mut driver = WasmDriver::new();
 
-    page.goto("http://localhost:8080/game").await?;
-    page.wait_for_wasm_ready().await?;
+    // Track GUI coverage
+    let mut gui = gui_coverage! {
+        buttons: ["btn-7", "btn-times", "btn-6", "btn-equals"],
+        screens: ["calculator"]
+    };
 
-    // Playwright-style locators
-    let start_button = Locator::new("button").with_text("Start Game");
-    start_button.click()?;
+    // Test: 7 × 6 = 42
+    driver.type_input("7 * 6");
+    gui.click("btn-7");
+    gui.click("btn-times");
+    gui.click("btn-6");
 
-    // Smart assertions
-    let score = Locator::new("[data-testid='score']");
-    expect(score).to_have_text("0").validate("0")?;
+    driver.click_equals();
+    gui.click("btn-equals");
+    gui.visit("calculator");
 
-    Ok(())
-}
-
-// Logic-only testing (requires `runtime` feature)
-#[cfg(feature = "runtime")]
-fn test_physics() -> ProbarResult<()> {
-    let config = RuntimeConfig::default()
-        .with_wasm_path("target/wasm32-unknown-unknown/release/game.wasm");
-
-    let mut runtime = WasmRuntime::new(config)?;
-
-    // Advance simulation
-    for _ in 0..60 {
-        runtime.step()?;
-    }
-
-    // Query game state
-    let entities = runtime.entities()?;
-    assert!(!entities.is_empty());
-
-    Ok(())
+    assert_eq!(driver.get_result(), "42");
+    assert!(gui.is_complete());  // 100% GUI coverage!
 }
 ```
 
@@ -114,18 +126,14 @@ fn test_physics() -> ProbarResult<()> {
 Add Probar to your `Cargo.toml`:
 
 ```toml
-[dependencies]
+[dev-dependencies]
 probar = "0.1"
 
-# Optional: Enable browser automation
-[dependencies.probar]
-version = "0.1"
-features = ["browser"]
+# With TUI testing (default)
+probar = { version = "0.1", features = ["tui"] }
 
-# Optional: Enable WASM runtime testing
-[dependencies.probar]
-version = "0.1"
-features = ["runtime"]
+# With browser automation
+probar = { version = "0.1", features = ["browser"] }
 ```
 
 Or install the CLI:
@@ -140,62 +148,109 @@ cargo install probar-cli
 
 ```bash
 # Run all tests
-probar test
-
-# Run tests with filter
-probar test --filter "game::*"
+cargo test
 
 # Run with coverage
-probar test --coverage
+cargo llvm-cov --html
 
-# Watch mode for development
-probar test --watch
+# Watch mode
+cargo watch -x test
 ```
 
-### Recording Test Sessions
+### GUI Coverage Example
 
 ```bash
-# Record as GIF
-probar record my_test --gif
-
-# Record as MP4
-probar record my_test --mp4 --fps 30
+# Run the GUI coverage example
+cargo run --example gui_coverage
 ```
 
-### Generating Reports
+Output:
+```
+=== GUI Coverage Example ===
+
+1. Using gui_coverage! macro (simplest)...
+   GUI: 50% (1/3 elements, 2/3 screens)
+
+2. Calculator preset (20 buttons + 2 screens)...
+   GUI: 60% (14/20 elements, 1/2 screens)
+
+3. Achieving 100% coverage...
+   GUI: 100% (3/3 elements, 1/1 screens)
+   Complete? true
+```
+
+### Showcase Calculator
+
+The repository includes a full showcase calculator demonstrating 100% test coverage:
 
 ```bash
-# HTML coverage report
-probar report --html -o coverage.html
+# Run GUI coverage report
+cargo run -p showcase-calculator --example gui_coverage_report
 
-# LCOV format
-probar report --lcov -o coverage.lcov
+# Run TUI version
+cargo run -p showcase-calculator --example calculator_tui
+
+# View WASM version
+cd crates/showcase-calculator/www && python3 -m http.server 8080
+# Open http://localhost:8080
 ```
 
 ## Feature Flags
 
 | Feature | Description | Dependencies |
 |---------|-------------|--------------|
+| `tui` | TUI testing support (default) | ratatui, crossterm |
 | `browser` | CDP browser automation | chromiumoxide, tokio |
 | `runtime` | WASM runtime testing | wasmtime |
 | `derive` | Type-safe derive macros | probar-derive |
-| `tui` | TUI testing support (default) | ratatui, crossterm |
 
-## Toyota Way Principles
+## Probar Principles
 
-Probar is built on Toyota Production System principles:
+Probar is built on pragmatic testing principles:
 
-- **Poka-Yoke** (Mistake-Proofing): Type-safe selectors prevent runtime errors
-- **Muda** (Waste Elimination): Zero-copy memory views for efficiency
-- **Jidoka** (Autonomation): Fail-fast with configurable error handling
-- **Genchi Genbutsu** (Go and See): Abstract drivers allow swapping implementations
-- **Heijunka** (Level Loading): Superblock scheduling for consistent performance
+| Principle | Description |
+|-----------|-------------|
+| **Error Prevention** | Type-safe selectors prevent runtime errors |
+| **Efficiency** | Zero-copy memory views minimize overhead |
+| **Fail-Fast** | Immediate feedback on test failures |
+| **Balanced Testing** | Even coverage across all UI elements |
+| **Continuous Improvement** | Mutation testing for test quality |
 
 ## Documentation
 
-- [Book Chapter](book/src/probar/why-probar.md)
-- [WASM Testing Spec](docs/specifications/probar-wasm-testing-spec.md)
-- [Coverage Tooling Spec](docs/specifications/probar-wasm-coverage-tooling.md)
+- **[Book](https://paiml.github.io/probar/)** - Comprehensive guide
+- **[API Docs](https://docs.rs/probar)** - Rust documentation
+- **[GUI Coverage Guide](book/src/probar/ux-coverage.md)** - GUI coverage tutorial
+- **[Examples](crates/probar/examples/)** - 20+ runnable examples
+
+## Examples
+
+| Example | Description |
+|---------|-------------|
+| `gui_coverage` | GUI coverage tracking |
+| `soft_assertions` | Collect multiple failures |
+| `retry_assertions` | Retry with backoff |
+| `pong_simulation` | Game simulation testing |
+| `accessibility_demo` | WCAG compliance |
+| `watch_mode` | Hot-reload testing |
+
+Run any example:
+```bash
+cargo run --example <name>
+```
+
+## Project Structure
+
+```
+probar/
+├── crates/
+│   ├── probar/              # Core library
+│   ├── probar-cli/          # Command-line interface
+│   ├── probar-derive/       # Derive macros
+│   └── showcase-calculator/ # 100% coverage demo
+├── book/                    # mdBook documentation
+└── docs/                    # Specifications
+```
 
 ## Contributing
 
@@ -217,10 +272,20 @@ cargo build
 cargo test
 ```
 
-### Code of Conduct
+### Quality Gates
 
-This project follows the [Rust Code of Conduct](https://www.rust-lang.org/policies/code-of-conduct).
+```bash
+make lint      # Clippy checks
+make test      # All tests
+make coverage  # Coverage report
+```
 
 ## License
 
 MIT OR Apache-2.0
+
+---
+
+<p align="center">
+  <strong>Probar</strong> - by <a href="https://paiml.com">Pragmatic AI Labs</a>
+</p>

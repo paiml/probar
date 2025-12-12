@@ -371,3 +371,12 @@ help: ## Show this help
 	@echo "  make doc            - Generate rustdoc"
 	@echo "  make clean          - Clean build artifacts"
 	@echo "  make help           - Show this help"
+
+# ============================================================================
+# SIMPLE COVERAGE (one command, one number)
+# ============================================================================
+
+coverage-gui: ## Show GUI coverage (TUI + WASM) - one number
+	@echo "📊 GUI Test Coverage"
+	@echo "===================="
+	@cargo llvm-cov --package showcase-calculator --features tui --summary-only 2>/dev/null | grep TOTAL | awk '{print "Coverage: " $$10}'

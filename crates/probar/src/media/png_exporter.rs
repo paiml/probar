@@ -893,7 +893,12 @@ mod tests {
                 alpha in 0.0f32..=1.0
             ) {
                 let result = blend_channel(base, overlay, alpha);
-                prop_assert!(result <= 255);
+                // Verify the blending is bounded (result is u8, so always <= 255)
+                // Instead verify the blend is within expected range
+                let expected_min = base.min(overlay);
+                let expected_max = base.max(overlay);
+                prop_assert!(result >= expected_min || alpha < 1.0);
+                prop_assert!(result <= expected_max || alpha > 0.0);
             }
         }
     }

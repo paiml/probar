@@ -11,6 +11,7 @@
 # Core Concepts
 
 - [Locators](./probar/locators.md)
+- [Wait Mechanisms](./probar/wait.md)
 - [Assertions](./probar/assertions.md)
   - [Soft Assertions](./probar/assertions-soft.md)
   - [Retry Assertions](./probar/assertions-retry.md)
@@ -55,7 +56,7 @@
 - [LCOV Reports](./probar/coverage-lcov.md)
 - [HTML Reports](./probar/coverage-html.md)
 - [Cobertura XML](./probar/coverage-cobertura.md)
-- [UX Coverage](./probar/ux-coverage.md)
+- [GUI Coverage](./probar/ux-coverage.md)
 
 # Advanced Topics
 

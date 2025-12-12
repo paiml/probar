@@ -918,6 +918,7 @@ impl VideoRecorder {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -1179,6 +1180,323 @@ mod tests {
 
             // Check for moov box
             assert!(find_box(&video, b"moov").is_some());
+        }
+    }
+
+    mod save_tests {
+        use super::*;
+        use tempfile::TempDir;
+
+        #[test]
+        fn test_save_without_stop_error() {
+            let config = VideoConfig::new(10, 10);
+            let recorder = VideoRecorder::new(config);
+            let temp_dir = TempDir::new().unwrap();
+            let path = temp_dir.path().join("test.mp4");
+
+            let result = recorder.save(&path);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_save_after_stop() {
+            let config = VideoConfig::new(10, 10).with_fps(1);
+            let mut recorder = VideoRecorder::new(config);
+
+            recorder.start().unwrap();
+            let data = vec![255, 0, 0, 255].repeat(100);
+            recorder.capture_raw_frame(&data, 10, 10).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(1100));
+            recorder.capture_raw_frame(&data, 10, 10).unwrap();
+            recorder.stop().unwrap();
+
+            let temp_dir = TempDir::new().unwrap();
+            let path = temp_dir.path().join("test.mp4");
+            recorder.save(&path).unwrap();
+
+            assert!(path.exists());
+            let saved_data = std::fs::read(&path).unwrap();
+            assert!(!saved_data.is_empty());
+        }
+    }
+
+    mod frame_rate_tests {
+        use super::*;
+
+        #[test]
+        fn test_frame_skipping() {
+            let config = VideoConfig::new(10, 10).with_fps(1);
+            let mut recorder = VideoRecorder::new(config);
+
+            recorder.start().unwrap();
+            let data = vec![255, 0, 0, 255].repeat(100);
+
+            // Capture multiple frames rapidly - should be rate limited
+            for _ in 0..5 {
+                recorder.capture_raw_frame(&data, 10, 10).unwrap();
+            }
+
+            // Should only have captured 1 frame due to rate limiting
+            assert_eq!(recorder.frame_count(), 1);
+        }
+    }
+
+    mod resize_tests {
+        use super::*;
+
+        #[test]
+        fn test_resize_frame() {
+            let config = VideoConfig::new(20, 20).with_fps(1);
+            let mut recorder = VideoRecorder::new(config);
+
+            recorder.start().unwrap();
+
+            // Capture a 10x10 frame when config expects 20x20
+            let data = vec![255, 0, 0, 255].repeat(100);
+            recorder.capture_raw_frame(&data, 10, 10).unwrap();
+
+            assert_eq!(recorder.frame_count(), 1);
+        }
+    }
+
+    mod invalid_frame_tests {
+        use super::*;
+
+        #[test]
+        fn test_invalid_raw_frame_dimensions() {
+            let config = VideoConfig::new(10, 10).with_fps(1);
+            let mut recorder = VideoRecorder::new(config);
+
+            recorder.start().unwrap();
+
+            // Data doesn't match dimensions (too small)
+            let data = vec![255u8; 10];
+            let result = recorder.capture_raw_frame(&data, 10, 10);
+            assert!(result.is_err());
+        }
+    }
+
+    mod codec_tests {
+        use super::*;
+
+        #[test]
+        fn test_raw_codec() {
+            let config = VideoConfig::new(10, 10)
+                .with_fps(1)
+                .with_codec(VideoCodec::Raw);
+            let mut recorder = VideoRecorder::new(config);
+
+            recorder.start().unwrap();
+            let data = vec![255, 0, 0, 255].repeat(100);
+            recorder.capture_raw_frame(&data, 10, 10).unwrap();
+
+            // Frame count should still be 1
+            assert_eq!(recorder.frame_count(), 1);
+        }
+
+        #[test]
+        fn test_codec_debug() {
+            assert!(format!("{:?}", VideoCodec::Mjpeg).contains("Mjpeg"));
+            assert!(format!("{:?}", VideoCodec::Raw).contains("Raw"));
+        }
+
+        #[test]
+        fn test_codec_clone() {
+            let codec = VideoCodec::Mjpeg;
+            let cloned = codec;
+            assert_eq!(codec, cloned);
+        }
+    }
+
+    mod recording_state_debug {
+        use super::*;
+
+        #[test]
+        fn test_state_debug() {
+            assert!(format!("{:?}", RecordingState::Idle).contains("Idle"));
+            assert!(format!("{:?}", RecordingState::Recording).contains("Recording"));
+            assert!(format!("{:?}", RecordingState::Stopped).contains("Stopped"));
+        }
+
+        #[test]
+        fn test_state_clone() {
+            let state = RecordingState::Recording;
+            let cloned = state;
+            assert_eq!(state, cloned);
+        }
+    }
+
+    mod debug_tests {
+        use super::*;
+
+        #[test]
+        fn test_video_recorder_debug() {
+            let config = VideoConfig::new(10, 10);
+            let recorder = VideoRecorder::new(config);
+            let debug = format!("{:?}", recorder);
+            assert!(debug.contains("VideoRecorder"));
+        }
+
+        #[test]
+        fn test_video_config_debug() {
+            let config = VideoConfig::default();
+            let debug = format!("{:?}", config);
+            assert!(debug.contains("VideoConfig"));
+        }
+
+        #[test]
+        fn test_encoded_frame_debug() {
+            let frame = EncodedFrame {
+                data: vec![1, 2, 3],
+                timestamp_ms: 100,
+                duration_ms: 33,
+            };
+            let debug = format!("{:?}", frame);
+            assert!(debug.contains("EncodedFrame"));
+        }
+    }
+
+    mod screenshot_tests {
+        use super::*;
+        use crate::driver::Screenshot;
+        use std::time::SystemTime;
+
+        fn create_minimal_png(width: u32, height: u32) -> Vec<u8> {
+            // Create a minimal valid PNG image
+            let data = vec![255u8; (width * height * 4) as usize]; // RGBA
+            let img = image::RgbaImage::from_raw(width, height, data).unwrap();
+
+            let mut buffer = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgba8(img)
+                .write_to(&mut buffer, image::ImageFormat::Png)
+                .unwrap();
+            buffer.into_inner()
+        }
+
+        #[test]
+        fn test_capture_frame_with_screenshot() {
+            let config = VideoConfig::new(10, 10).with_fps(1);
+            let mut recorder = VideoRecorder::new(config);
+
+            recorder.start().unwrap();
+
+            let screenshot = Screenshot {
+                data: create_minimal_png(10, 10),
+                width: 10,
+                height: 10,
+                device_pixel_ratio: 1.0,
+                timestamp: SystemTime::now(),
+            };
+
+            recorder.capture_frame(&screenshot).unwrap();
+            assert_eq!(recorder.frame_count(), 1);
+        }
+
+        #[test]
+        fn test_capture_frame_resize() {
+            let config = VideoConfig::new(20, 20).with_fps(1); // Different size
+            let mut recorder = VideoRecorder::new(config);
+
+            recorder.start().unwrap();
+
+            let screenshot = Screenshot {
+                data: create_minimal_png(10, 10), // 10x10 PNG, recorder expects 20x20
+                width: 10,
+                height: 10,
+                device_pixel_ratio: 1.0,
+                timestamp: SystemTime::now(),
+            };
+
+            recorder.capture_frame(&screenshot).unwrap();
+            assert_eq!(recorder.frame_count(), 1);
+        }
+
+        #[test]
+        fn test_capture_frame_not_started() {
+            let config = VideoConfig::new(10, 10);
+            let mut recorder = VideoRecorder::new(config);
+
+            let screenshot = Screenshot {
+                data: create_minimal_png(10, 10),
+                width: 10,
+                height: 10,
+                device_pixel_ratio: 1.0,
+                timestamp: SystemTime::now(),
+            };
+
+            let result = recorder.capture_frame(&screenshot);
+            assert!(result.is_err());
+        }
+    }
+
+    mod mp4_box_tests {
+        use super::*;
+
+        #[test]
+        fn test_multiple_frames_mp4() {
+            let config = VideoConfig::new(10, 10).with_fps(30);
+            let mut recorder = VideoRecorder::new(config);
+
+            recorder.start().unwrap();
+            let data = vec![255, 0, 0, 255].repeat(100);
+            recorder.capture_raw_frame(&data, 10, 10).unwrap();
+
+            // Wait and capture more frames
+            std::thread::sleep(std::time::Duration::from_millis(40));
+            recorder.capture_raw_frame(&data, 10, 10).unwrap();
+
+            std::thread::sleep(std::time::Duration::from_millis(40));
+            recorder.capture_raw_frame(&data, 10, 10).unwrap();
+
+            let video = recorder.stop().unwrap();
+
+            // Verify all MP4 boxes exist
+            assert!(find_box(&video, b"ftyp").is_some());
+            assert!(find_box(&video, b"mdat").is_some());
+            assert!(find_box(&video, b"moov").is_some());
+        }
+
+        #[test]
+        fn test_calculate_duration() {
+            let config = VideoConfig::new(10, 10).with_fps(30);
+            let mut recorder = VideoRecorder::new(config);
+
+            recorder.start().unwrap();
+            let data = vec![255, 0, 0, 255].repeat(100);
+            recorder.capture_raw_frame(&data, 10, 10).unwrap();
+
+            // Verify frame count affects duration calculation
+            assert_eq!(recorder.frame_count(), 1);
+        }
+    }
+
+    mod config_clone_tests {
+        use super::*;
+
+        #[test]
+        fn test_video_config_clone() {
+            let config = VideoConfig::new(1920, 1080)
+                .with_fps(60)
+                .with_bitrate(10000);
+            let cloned = config.clone();
+
+            assert_eq!(config.width, cloned.width);
+            assert_eq!(config.height, cloned.height);
+            assert_eq!(config.fps, cloned.fps);
+            assert_eq!(config.bitrate, cloned.bitrate);
+        }
+
+        #[test]
+        fn test_encoded_frame_clone() {
+            let frame = EncodedFrame {
+                data: vec![1, 2, 3],
+                timestamp_ms: 100,
+                duration_ms: 33,
+            };
+            let cloned = frame.clone();
+
+            assert_eq!(frame.data, cloned.data);
+            assert_eq!(frame.timestamp_ms, cloned.timestamp_ms);
         }
     }
 

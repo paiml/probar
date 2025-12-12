@@ -422,7 +422,7 @@ pub fn probar_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Extract the `name` attribute from `#[probar(name = "...")]`
 fn extract_name_attribute(attrs: &[Attribute]) -> Option<String> {
-    attrs.iter().find_map(|attr| extract_name_from_attr(attr))
+    attrs.iter().find_map(extract_name_from_attr)
 }
 
 /// Helper to extract name from a single attribute
@@ -435,7 +435,10 @@ fn extract_name_from_attr(attr: &Attribute) -> Option<String> {
     if !nv.path.is_ident("name") {
         return None;
     }
-    let syn::Expr::Lit(syn::ExprLit { lit: Lit::Str(s), .. }) = &nv.value else {
+    let syn::Expr::Lit(syn::ExprLit {
+        lit: Lit::Str(s), ..
+    }) = &nv.value
+    else {
         return None;
     };
     Some(s.value())
@@ -499,8 +502,12 @@ fn parse_selector_attributes(attrs: &[Attribute]) -> (Vec<String>, Vec<String>) 
 /// Extract items from a bracketed list in token string starting at offset
 fn extract_list_items(tokens: &str, offset: usize) -> Vec<String> {
     let rest = &tokens[offset..];
-    let Some(start) = rest.find('[') else { return vec![] };
-    let Some(end) = rest.find(']') else { return vec![] };
+    let Some(start) = rest.find('[') else {
+        return vec![];
+    };
+    let Some(end) = rest.find(']') else {
+        return vec![];
+    };
 
     rest[start + 1..end]
         .split(',')
@@ -576,6 +583,16 @@ mod tests {
     }
 
     #[test]
+    fn test_to_snake_case_edge_cases() {
+        assert_eq!(to_snake_case(""), "");
+        assert_eq!(to_snake_case("A"), "a");
+        assert_eq!(to_snake_case("AB"), "ab");
+        assert_eq!(to_snake_case("abc"), "abc");
+        assert_eq!(to_snake_case("ABc"), "abc");
+        assert_eq!(to_snake_case("AbC"), "ab_c");
+    }
+
+    #[test]
     fn test_generate_type_id() {
         let id1 = generate_type_id("player");
         let id2 = generate_type_id("enemy");
@@ -593,4 +610,101 @@ mod tests {
             assert_eq!(generate_type_id("test_component"), expected);
         }
     }
+
+    #[test]
+    fn test_generate_type_id_empty() {
+        let id = generate_type_id("");
+        assert_ne!(id, 0);
+    }
+
+    #[test]
+    fn test_generate_type_id_unicode() {
+        let id1 = generate_type_id("プレイヤー");
+        let id2 = generate_type_id("敵");
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_extract_list_items() {
+        let tokens = "probar(entities = [Player, Enemy])";
+        let items = extract_list_items(tokens, 0);
+        assert_eq!(items, vec!["Player", "Enemy"]);
+    }
+
+    #[test]
+    fn test_extract_list_items_with_offset() {
+        let tokens = "probar(entities = [Player], components = [Position, Health])";
+        let offset = tokens.find(']').map(|i| i + 1).unwrap_or(0);
+        let items = extract_list_items(tokens, offset);
+        assert_eq!(items, vec!["Position", "Health"]);
+    }
+
+    #[test]
+    fn test_extract_list_items_empty() {
+        let tokens = "probar(entities = [])";
+        let items = extract_list_items(tokens, 0);
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_extract_list_items_no_brackets() {
+        let tokens = "probar(name = \"test\")";
+        let items = extract_list_items(tokens, 0);
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_extract_list_items_single() {
+        let tokens = "probar(entities = [Player])";
+        let items = extract_list_items(tokens, 0);
+        assert_eq!(items, vec!["Player"]);
+    }
+
+    #[test]
+    fn test_extract_list_items_whitespace() {
+        let tokens = "probar(entities = [ Player , Enemy , Boss ])";
+        let items = extract_list_items(tokens, 0);
+        assert_eq!(items, vec!["Player", "Enemy", "Boss"]);
+    }
+
+    #[test]
+    fn test_to_snake_case_numbers() {
+        assert_eq!(to_snake_case("Test123"), "test123");
+        assert_eq!(to_snake_case("Item2D"), "item2_d");
+    }
+
+    #[test]
+    fn test_to_snake_case_underscores() {
+        assert_eq!(to_snake_case("already_snake"), "already_snake");
+        assert_eq!(to_snake_case("Mixed_Case"), "mixed__case");
+    }
+
+    #[test]
+    fn test_generate_type_id_special_chars() {
+        let id1 = generate_type_id("test-name");
+        let id2 = generate_type_id("test_name");
+        let id3 = generate_type_id("test.name");
+        // All should be different
+        assert_ne!(id1, id2);
+        assert_ne!(id2, id3);
+        assert_ne!(id1, id3);
+    }
+
+    #[test]
+    fn test_extract_list_items_complex() {
+        let tokens = "probar(entities = [A, B, C], other = value)";
+        let items = extract_list_items(tokens, 0);
+        assert_eq!(items, vec!["A", "B", "C"]);
+    }
+
+    #[test]
+    fn test_extract_list_items_nested_offset() {
+        let tokens = "first = [X], second = [Y, Z]";
+        let offset = tokens.find("second").unwrap_or(0);
+        let items = extract_list_items(tokens, offset);
+        assert_eq!(items, vec!["Y", "Z"]);
+    }
+
+    // Note: parse_timeout_attr tests cannot be run outside proc macro context
+    // The function is tested implicitly through integration tests using the #[probar_test] attribute
 }

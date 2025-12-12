@@ -334,5 +334,86 @@ mod tests {
             let results = runner.run(Some("game::*")).unwrap();
             assert_eq!(results.total(), 0);
         }
+
+        #[test]
+        fn test_runner_with_config() {
+            let config = CliConfig::default();
+            let runner = TestRunner::new(config);
+            // Just verify it constructs and reporter is accessible
+            let _reporter = runner.reporter();
+        }
+    }
+
+    mod test_result_additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_with_output() {
+            let result =
+                TestResult::pass("test", Duration::from_millis(10)).with_output("Some output text");
+            assert_eq!(result.output, "Some output text");
+        }
+
+        #[test]
+        fn test_debug() {
+            let result = TestResult::pass("test", Duration::from_millis(10));
+            let debug = format!("{result:?}");
+            assert!(debug.contains("TestResult"));
+        }
+
+        #[test]
+        fn test_clone() {
+            let result = TestResult::fail("test", "error", Duration::from_millis(10));
+            let cloned = result.clone();
+            assert_eq!(result.name, cloned.name);
+            assert_eq!(result.error, cloned.error);
+        }
+
+        #[test]
+        fn test_serialize() {
+            let result = TestResult::pass("test", Duration::from_millis(10));
+            let json = serde_json::to_string(&result).unwrap();
+            assert!(json.contains("test"));
+        }
+    }
+
+    mod test_results_additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_default() {
+            let results = TestResults::default();
+            assert!(results.results.is_empty());
+        }
+
+        #[test]
+        fn test_duration_tracking() {
+            let mut results = TestResults::new();
+            results.duration = Duration::from_secs(5);
+            assert_eq!(results.duration.as_secs(), 5);
+        }
+
+        #[test]
+        fn test_serialize() {
+            let mut results = TestResults::new();
+            results.add(TestResult::pass("test1", Duration::from_millis(10)));
+            let json = serde_json::to_string(&results).unwrap();
+            assert!(json.contains("test1"));
+        }
+
+        #[test]
+        fn test_debug() {
+            let results = TestResults::new();
+            let debug = format!("{results:?}");
+            assert!(debug.contains("TestResults"));
+        }
+
+        #[test]
+        fn test_clone() {
+            let mut results = TestResults::new();
+            results.add(TestResult::pass("test", Duration::from_millis(10)));
+            let cloned = results.clone();
+            assert_eq!(results.total(), cloned.total());
+        }
     }
 }

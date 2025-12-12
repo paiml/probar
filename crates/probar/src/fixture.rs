@@ -555,6 +555,7 @@ impl std::fmt::Debug for FixtureScope {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -575,11 +576,6 @@ mod tests {
                 teardown_called: Arc::new(AtomicBool::new(false)),
                 priority: 0,
             }
-        }
-
-        fn with_priority(mut self, priority: i32) -> Self {
-            self.priority = priority;
-            self
         }
     }
 
@@ -819,33 +815,33 @@ mod tests {
     mod priority_tests {
         use super::*;
 
+        #[derive(Debug)]
+        struct OrderedFixture {
+            expected_order: u32,
+            priority: i32,
+            order_counter: Arc<AtomicU32>,
+        }
+
+        impl Fixture for OrderedFixture {
+            fn setup(&mut self) -> ProbarResult<()> {
+                let actual = self.order_counter.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(actual, self.expected_order, "Wrong setup order");
+                Ok(())
+            }
+
+            fn teardown(&mut self) -> ProbarResult<()> {
+                Ok(())
+            }
+
+            fn priority(&self) -> i32 {
+                self.priority
+            }
+        }
+
         #[test]
         fn test_priority_order() {
             // Use a counter to track setup order
             let order = Arc::new(AtomicU32::new(0));
-
-            #[derive(Debug)]
-            struct OrderedFixture {
-                expected_order: u32,
-                priority: i32,
-                order_counter: Arc<AtomicU32>,
-            }
-
-            impl Fixture for OrderedFixture {
-                fn setup(&mut self) -> ProbarResult<()> {
-                    let actual = self.order_counter.fetch_add(1, Ordering::SeqCst);
-                    assert_eq!(actual, self.expected_order, "Wrong setup order");
-                    Ok(())
-                }
-
-                fn teardown(&mut self) -> ProbarResult<()> {
-                    Ok(())
-                }
-
-                fn priority(&self) -> i32 {
-                    self.priority
-                }
-            }
 
             let mut manager = FixtureManager::new();
 
@@ -856,9 +852,9 @@ mod tests {
                 order_counter: order.clone(),
             });
             manager.register(SimpleFixture::new("middle").with_priority(0).with_setup({
-                let order = order.clone();
+                let order_ref = order;
                 move || {
-                    let actual = order.fetch_add(1, Ordering::SeqCst);
+                    let actual = order_ref.fetch_add(1, Ordering::SeqCst);
                     assert_eq!(actual, 1, "Wrong setup order for middle");
                     Ok(())
                 }
@@ -897,6 +893,65 @@ mod tests {
 
             fixture.setup().expect("Setup should succeed");
             assert!(called.load(Ordering::SeqCst));
+        }
+
+        #[test]
+        fn test_get_mut_fixture() {
+            let mut manager = FixtureManager::new();
+            manager.register(SimpleFixture::new("test"));
+
+            let fixture = manager.get_mut::<SimpleFixture>();
+            assert!(fixture.is_some());
+            assert_eq!(fixture.unwrap().name(), "test");
+        }
+
+        #[test]
+        fn test_get_mut_unregistered() {
+            let mut manager = FixtureManager::new();
+            let fixture = manager.get_mut::<TestFixture>();
+            assert!(fixture.is_none());
+        }
+
+        #[test]
+        fn test_setup_already_setup() {
+            let mut manager = FixtureManager::new();
+            manager.register(TestFixture::new());
+            manager.setup::<TestFixture>().unwrap();
+
+            // Setup again should be a no-op
+            let result = manager.setup::<TestFixture>();
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_setup_unregistered() {
+            let mut manager = FixtureManager::new();
+            let result = manager.setup::<TestFixture>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_teardown_unregistered() {
+            let mut manager = FixtureManager::new();
+            let result = manager.teardown::<TestFixture>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_teardown_not_setup() {
+            let mut manager = FixtureManager::new();
+            manager.register(TestFixture::new());
+
+            // Teardown without setup should be a no-op
+            let result = manager.teardown::<TestFixture>();
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_manager_debug() {
+            let manager = FixtureManager::new();
+            let debug = format!("{:?}", manager);
+            assert!(debug.contains("FixtureManager"));
         }
 
         #[test]
@@ -981,6 +1036,92 @@ mod tests {
             let retrieved = scope.get::<TestFixture>();
             assert!(retrieved.is_some());
             assert!(Arc::ptr_eq(&retrieved.unwrap().setup_called, &setup_called));
+        }
+    }
+
+    mod additional_fixture_tests {
+        use super::*;
+
+        #[test]
+        fn test_fixture_default_name() {
+            let fixture = TestFixture::new();
+            let name = fixture.name();
+            assert!(name.contains("TestFixture"));
+        }
+
+        #[test]
+        fn test_fixture_default_priority() {
+            #[derive(Debug)]
+            struct DefaultPriorityFixture;
+
+            impl Fixture for DefaultPriorityFixture {
+                fn setup(&mut self) -> ProbarResult<()> {
+                    Ok(())
+                }
+                fn teardown(&mut self) -> ProbarResult<()> {
+                    Ok(())
+                }
+            }
+
+            let fixture = DefaultPriorityFixture;
+            assert_eq!(fixture.priority(), 0);
+        }
+
+        #[test]
+        fn test_fixture_state_debug() {
+            let state = FixtureState::SetUp;
+            let debug = format!("{:?}", state);
+            assert!(debug.contains("SetUp"));
+        }
+
+        #[test]
+        fn test_fixture_state_clone() {
+            let state = FixtureState::Failed;
+            let cloned = state;
+            assert_eq!(state, cloned);
+        }
+
+        #[test]
+        fn test_simple_fixture_default_callbacks() {
+            let mut fixture = SimpleFixture::new("test");
+            // Should not fail even without callbacks
+            assert!(fixture.setup().is_ok());
+            assert!(fixture.teardown().is_ok());
+        }
+
+        #[test]
+        fn test_manager_default() {
+            let manager = FixtureManager::default();
+            assert_eq!(manager.count(), 0);
+        }
+
+        #[test]
+        fn test_unregister_nonexistent() {
+            let mut manager = FixtureManager::new();
+            assert!(!manager.unregister::<TestFixture>());
+        }
+
+        #[test]
+        fn test_teardown_already_torn_down() {
+            let mut manager = FixtureManager::new();
+            manager.register(TestFixture::new());
+            manager.setup_all().unwrap();
+            manager.teardown_all().unwrap();
+
+            // Teardown again should be a no-op
+            let result = manager.teardown_all();
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_builder_multiple_fixtures() {
+            let manager = FixtureBuilder::new()
+                .with_fixture(SimpleFixture::new("first"))
+                .with_fixture(SimpleFixture::new("second"))
+                .build();
+
+            // Only one SimpleFixture since they share the same TypeId
+            assert_eq!(manager.count(), 1);
         }
     }
 }

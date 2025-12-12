@@ -676,3 +676,165 @@ pub use cdp::{Browser, Page};
 
 #[cfg(not(feature = "browser"))]
 pub use mock::{Browser, Page};
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    mod browser_config_tests {
+        use super::*;
+
+        #[test]
+        fn test_default() {
+            let config = BrowserConfig::default();
+            assert!(config.headless);
+            assert_eq!(config.viewport_width, 800);
+            assert_eq!(config.viewport_height, 600);
+            assert!(config.chromium_path.is_none());
+            assert_eq!(config.debug_port, 0);
+            assert!(config.user_agent.is_none());
+            assert!(!config.devtools);
+            assert!(config.sandbox);
+        }
+
+        #[test]
+        fn test_with_viewport() {
+            let config = BrowserConfig::default().with_viewport(1920, 1080);
+            assert_eq!(config.viewport_width, 1920);
+            assert_eq!(config.viewport_height, 1080);
+        }
+
+        #[test]
+        fn test_with_headless() {
+            let config = BrowserConfig::default().with_headless(false);
+            assert!(!config.headless);
+        }
+
+        #[test]
+        fn test_with_chromium_path() {
+            let config = BrowserConfig::default().with_chromium_path("/usr/bin/chromium");
+            assert_eq!(config.chromium_path, Some("/usr/bin/chromium".to_string()));
+        }
+
+        #[test]
+        fn test_with_user_agent() {
+            let config = BrowserConfig::default().with_user_agent("Custom UA");
+            assert_eq!(config.user_agent, Some("Custom UA".to_string()));
+        }
+
+        #[test]
+        fn test_with_no_sandbox() {
+            let config = BrowserConfig::default().with_no_sandbox();
+            assert!(!config.sandbox);
+        }
+
+        #[test]
+        fn test_clone() {
+            let config = BrowserConfig::default()
+                .with_viewport(1024, 768)
+                .with_headless(false);
+            let cloned = config.clone();
+            assert_eq!(config.viewport_width, cloned.viewport_width);
+            assert_eq!(config.headless, cloned.headless);
+        }
+
+        #[test]
+        fn test_debug() {
+            let config = BrowserConfig::default();
+            let debug = format!("{:?}", config);
+            assert!(debug.contains("BrowserConfig"));
+            assert!(debug.contains("headless"));
+        }
+    }
+
+    #[cfg(not(feature = "browser"))]
+    mod mock_browser_tests {
+        use super::*;
+
+        #[test]
+        fn test_browser_launch() {
+            let config = BrowserConfig::default();
+            let browser = Browser::launch(config).unwrap();
+            assert_eq!(browser.config().viewport_width, 800);
+        }
+
+        #[test]
+        fn test_browser_new_page() {
+            let config = BrowserConfig::default().with_viewport(1024, 768);
+            let browser = Browser::launch(config).unwrap();
+            let page = browser.new_page().unwrap();
+            assert_eq!(page.width, 1024);
+            assert_eq!(page.height, 768);
+        }
+
+        #[test]
+        fn test_browser_debug() {
+            let config = BrowserConfig::default();
+            let browser = Browser::launch(config).unwrap();
+            let debug = format!("{:?}", browser);
+            assert!(debug.contains("Browser"));
+        }
+    }
+
+    #[cfg(not(feature = "browser"))]
+    mod mock_page_tests {
+        use super::*;
+
+        #[test]
+        fn test_page_new() {
+            let page = Page::new(800, 600);
+            assert_eq!(page.width, 800);
+            assert_eq!(page.height, 600);
+            assert_eq!(page.url, "about:blank");
+            assert!(!page.wasm_ready);
+        }
+
+        #[test]
+        fn test_page_goto() {
+            let mut page = Page::new(800, 600);
+            page.goto("https://example.com").unwrap();
+            assert_eq!(page.current_url(), "https://example.com");
+        }
+
+        #[test]
+        fn test_page_wait_for_wasm_ready() {
+            let mut page = Page::new(800, 600);
+            assert!(!page.is_wasm_ready());
+            page.wait_for_wasm_ready().unwrap();
+            assert!(page.is_wasm_ready());
+        }
+
+        #[test]
+        fn test_page_eval_wasm_error() {
+            let page = Page::new(800, 600);
+            let result: Result<String, _> = page.eval_wasm("test");
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_page_touch() {
+            let page = Page::new(800, 600);
+            let touch = crate::Touch {
+                x: 100.0,
+                y: 100.0,
+                action: crate::TouchAction::Tap,
+            };
+            page.touch(touch).unwrap();
+        }
+
+        #[test]
+        fn test_page_screenshot() {
+            let page = Page::new(800, 600);
+            let screenshot = page.screenshot().unwrap();
+            assert!(screenshot.is_empty()); // Mock returns empty
+        }
+
+        #[test]
+        fn test_page_debug() {
+            let page = Page::new(800, 600);
+            let debug = format!("{:?}", page);
+            assert!(debug.contains("Page"));
+        }
+    }
+}

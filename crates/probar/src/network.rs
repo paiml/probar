@@ -15,6 +15,74 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+// =============================================================================
+// PMAT-006: Network Features (Playwright Parity)
+// =============================================================================
+
+/// Reasons for aborting a network request
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AbortReason {
+    /// Request failed
+    Failed,
+    /// Request was aborted
+    Aborted,
+    /// Request timed out
+    TimedOut,
+    /// Access was denied
+    AccessDenied,
+    /// Connection was closed
+    ConnectionClosed,
+    /// Connection failed to establish
+    ConnectionFailed,
+    /// Connection was refused
+    ConnectionRefused,
+    /// Connection was reset
+    ConnectionReset,
+    /// Internet is disconnected
+    InternetDisconnected,
+    /// DNS name could not be resolved
+    NameNotResolved,
+    /// Request was blocked by client
+    BlockedByClient,
+}
+
+impl AbortReason {
+    /// Get the error message for this abort reason
+    #[must_use]
+    pub const fn message(&self) -> &'static str {
+        match self {
+            Self::Failed => "net::ERR_FAILED",
+            Self::Aborted => "net::ERR_ABORTED",
+            Self::TimedOut => "net::ERR_TIMED_OUT",
+            Self::AccessDenied => "net::ERR_ACCESS_DENIED",
+            Self::ConnectionClosed => "net::ERR_CONNECTION_CLOSED",
+            Self::ConnectionFailed => "net::ERR_CONNECTION_FAILED",
+            Self::ConnectionRefused => "net::ERR_CONNECTION_REFUSED",
+            Self::ConnectionReset => "net::ERR_CONNECTION_RESET",
+            Self::InternetDisconnected => "net::ERR_INTERNET_DISCONNECTED",
+            Self::NameNotResolved => "net::ERR_NAME_NOT_RESOLVED",
+            Self::BlockedByClient => "net::ERR_BLOCKED_BY_CLIENT",
+        }
+    }
+}
+
+/// Action to take when a route matches
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RouteAction {
+    /// Respond with a mock response
+    Respond(MockResponse),
+    /// Abort the request
+    Abort(AbortReason),
+    /// Continue the request (let it pass through)
+    Continue,
+}
+
+impl Default for RouteAction {
+    fn default() -> Self {
+        Self::Continue
+    }
+}
+
 /// HTTP methods for request matching
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum HttpMethod {
@@ -607,6 +675,92 @@ impl NetworkInterception {
     pub fn clear_routes(&mut self) {
         self.routes.clear();
     }
+
+    // =========================================================================
+    // PMAT-006: Network Abort & Wait Features (Playwright Parity)
+    // =========================================================================
+
+    /// Abort requests matching a pattern with a specific reason
+    ///
+    /// Per Playwright: `page.route('**/api/*', route => route.abort())`
+    pub fn abort(&mut self, pattern: &str, reason: AbortReason) {
+        let abort_response = MockResponse::new()
+            .with_status(0)
+            .with_body(reason.message().as_bytes().to_vec());
+        self.routes.push(Route::new(
+            UrlPattern::Contains(pattern.to_string()),
+            HttpMethod::Any,
+            abort_response,
+        ));
+    }
+
+    /// Abort requests matching a pattern (default reason: Aborted)
+    pub fn abort_pattern(&mut self, pattern: UrlPattern, reason: AbortReason) {
+        let abort_response = MockResponse::new()
+            .with_status(0)
+            .with_body(reason.message().as_bytes().to_vec());
+        self.routes
+            .push(Route::new(pattern, HttpMethod::Any, abort_response));
+    }
+
+    /// Wait for a request matching a pattern (synchronous check)
+    ///
+    /// Per Playwright: `page.waitForRequest(url)`
+    #[must_use]
+    pub fn find_request(&self, pattern: &UrlPattern) -> Option<CapturedRequest> {
+        self.requests_matching(pattern).into_iter().next()
+    }
+
+    /// Wait for a response matching a pattern (returns the response from route)
+    ///
+    /// Per Playwright: `page.waitForResponse(url)`
+    #[must_use]
+    pub fn find_response_for(&self, pattern: &UrlPattern) -> Option<MockResponse> {
+        for route in &self.routes {
+            if route.pattern.matches(&pattern.to_string()) || route.match_count > 0 {
+                return Some(route.response.clone());
+            }
+        }
+        None
+    }
+
+    /// Check if a request was aborted
+    #[must_use]
+    pub fn was_aborted(&self, pattern: &UrlPattern) -> bool {
+        for route in &self.routes {
+            if route.match_count > 0 && route.response.status == 0 {
+                if let UrlPattern::Contains(p) = &route.pattern {
+                    if pattern.matches(p) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Get captured responses (mock responses that were returned)
+    #[must_use]
+    pub fn captured_responses(&self) -> Vec<MockResponse> {
+        self.routes
+            .iter()
+            .filter(|r| r.match_count > 0)
+            .map(|r| r.response.clone())
+            .collect()
+    }
+}
+
+impl std::fmt::Display for UrlPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Exact(s)
+            | Self::Prefix(s)
+            | Self::Contains(s)
+            | Self::Regex(s)
+            | Self::Glob(s) => write!(f, "{}", s),
+            Self::Any => write!(f, "*"),
+        }
+    }
 }
 
 /// Builder for creating network interception
@@ -665,6 +819,7 @@ impl NetworkInterceptionBuilder {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -1111,6 +1266,198 @@ mod tests {
             let interception = NetworkInterceptionBuilder::new().route(route).build();
 
             assert_eq!(interception.route_count(), 1);
+        }
+    }
+
+    // =========================================================================
+    // PMAT-006: Network Abort & Wait Tests
+    // =========================================================================
+
+    mod abort_tests {
+        use super::*;
+
+        #[test]
+        fn test_abort_reason_messages() {
+            assert_eq!(AbortReason::Failed.message(), "net::ERR_FAILED");
+            assert_eq!(AbortReason::Aborted.message(), "net::ERR_ABORTED");
+            assert_eq!(AbortReason::TimedOut.message(), "net::ERR_TIMED_OUT");
+            assert_eq!(
+                AbortReason::AccessDenied.message(),
+                "net::ERR_ACCESS_DENIED"
+            );
+            assert_eq!(
+                AbortReason::ConnectionClosed.message(),
+                "net::ERR_CONNECTION_CLOSED"
+            );
+            assert_eq!(
+                AbortReason::ConnectionFailed.message(),
+                "net::ERR_CONNECTION_FAILED"
+            );
+            assert_eq!(
+                AbortReason::ConnectionRefused.message(),
+                "net::ERR_CONNECTION_REFUSED"
+            );
+            assert_eq!(
+                AbortReason::ConnectionReset.message(),
+                "net::ERR_CONNECTION_RESET"
+            );
+            assert_eq!(
+                AbortReason::InternetDisconnected.message(),
+                "net::ERR_INTERNET_DISCONNECTED"
+            );
+            assert_eq!(
+                AbortReason::NameNotResolved.message(),
+                "net::ERR_NAME_NOT_RESOLVED"
+            );
+            assert_eq!(
+                AbortReason::BlockedByClient.message(),
+                "net::ERR_BLOCKED_BY_CLIENT"
+            );
+        }
+
+        #[test]
+        fn test_abort_request() {
+            let mut interception = NetworkInterception::new();
+            interception.abort("/api/blocked", AbortReason::BlockedByClient);
+            interception.start();
+
+            let response = interception.handle_request(
+                "https://example.com/api/blocked/resource",
+                HttpMethod::Get,
+                HashMap::new(),
+                None,
+            );
+
+            assert!(response.is_some());
+            let resp = response.unwrap();
+            assert_eq!(resp.status, 0); // Aborted requests have status 0
+            assert!(String::from_utf8_lossy(&resp.body).contains("ERR_BLOCKED_BY_CLIENT"));
+        }
+
+        #[test]
+        fn test_abort_pattern() {
+            let mut interception = NetworkInterception::new();
+            interception.abort_pattern(
+                UrlPattern::Prefix("https://blocked.com".to_string()),
+                AbortReason::AccessDenied,
+            );
+            interception.start();
+
+            let response = interception.handle_request(
+                "https://blocked.com/any/path",
+                HttpMethod::Get,
+                HashMap::new(),
+                None,
+            );
+
+            assert!(response.is_some());
+            assert_eq!(response.unwrap().status, 0);
+        }
+
+        #[test]
+        fn test_route_action_default() {
+            let action: RouteAction = Default::default();
+            assert!(matches!(action, RouteAction::Continue));
+        }
+
+        #[test]
+        fn test_route_action_respond() {
+            let action = RouteAction::Respond(MockResponse::text("test"));
+            if let RouteAction::Respond(resp) = action {
+                assert_eq!(resp.body_string(), "test");
+            } else {
+                panic!("Expected Respond action");
+            }
+        }
+
+        #[test]
+        fn test_route_action_abort() {
+            let action = RouteAction::Abort(AbortReason::TimedOut);
+            if let RouteAction::Abort(reason) = action {
+                assert_eq!(reason, AbortReason::TimedOut);
+            } else {
+                panic!("Expected Abort action");
+            }
+        }
+    }
+
+    mod wait_tests {
+        use super::*;
+
+        #[test]
+        fn test_find_request() {
+            let mut interception = NetworkInterception::new().capture_all();
+            interception.start();
+
+            interception.handle_request(
+                "https://api.example.com/users/123",
+                HttpMethod::Get,
+                HashMap::new(),
+                None,
+            );
+
+            let request = interception.find_request(&UrlPattern::Contains("users".to_string()));
+            assert!(request.is_some());
+            assert!(request.unwrap().url.contains("users"));
+
+            let not_found = interception.find_request(&UrlPattern::Contains("posts".to_string()));
+            assert!(not_found.is_none());
+        }
+
+        #[test]
+        fn test_find_response_for() {
+            let mut interception = NetworkInterception::new();
+            interception.get("/api/users", MockResponse::text("user data"));
+            interception.start();
+
+            // Trigger the route
+            interception.handle_request(
+                "https://example.com/api/users",
+                HttpMethod::Get,
+                HashMap::new(),
+                None,
+            );
+
+            // Response should be found for matched routes
+            let resp = interception.find_response_for(&UrlPattern::Contains("users".to_string()));
+            assert!(resp.is_some());
+        }
+
+        #[test]
+        fn test_captured_responses() {
+            let mut interception = NetworkInterception::new();
+            interception.get("/api/users", MockResponse::text("users"));
+            interception.post("/api/posts", MockResponse::text("posts"));
+            interception.start();
+
+            // Only trigger one route
+            interception.handle_request(
+                "https://example.com/api/users",
+                HttpMethod::Get,
+                HashMap::new(),
+                None,
+            );
+
+            let responses = interception.captured_responses();
+            assert_eq!(responses.len(), 1);
+            assert_eq!(responses[0].body_string(), "users");
+        }
+
+        #[test]
+        fn test_url_pattern_to_string() {
+            let exact = UrlPattern::Exact("https://example.com".to_string());
+            let prefix = UrlPattern::Prefix("https://".to_string());
+            let contains = UrlPattern::Contains("api".to_string());
+            let regex = UrlPattern::Regex(r"\d+".to_string());
+            let glob = UrlPattern::Glob("**/api/*".to_string());
+            let any = UrlPattern::Any;
+
+            assert_eq!(exact.to_string(), "https://example.com");
+            assert_eq!(prefix.to_string(), "https://");
+            assert_eq!(contains.to_string(), "api");
+            assert_eq!(regex.to_string(), r"\d+");
+            assert_eq!(glob.to_string(), "**/api/*");
+            assert_eq!(any.to_string(), "*");
         }
     }
 }

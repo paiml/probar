@@ -5,12 +5,32 @@
 //!
 //! ## EXTREME TDD: Tests written FIRST per spec
 //!
-//! ## Toyota Way Application
+//! ## Probar Principles
 //!
-//! - **Poka-Yoke**: Type-safe coverage tracking prevents blind spots
-//! - **Muda**: Efficient hit counting without overhead
-//! - **Genchi Genbutsu**: Coverage reflects actual user journeys
-//! - **Heijunka**: Even distribution of test coverage
+//! - **Error Prevention**: Type-safe coverage tracking prevents blind spots
+//! - **Efficiency**: Efficient hit counting without overhead
+//! - **User Journey Tracking**: Coverage reflects actual user journeys
+//! - **Balanced Testing**: Even distribution of test coverage
+//!
+//! ## Simple Usage
+//!
+//! ```rust
+//! use probar::gui_coverage;
+//! use probar::ux_coverage::*;
+//!
+//! // Define your GUI elements once
+//! let mut tracker = gui_coverage! {
+//!     buttons: ["start", "pause", "restart"],
+//!     screens: ["title", "playing", "game_over"]
+//! };
+//!
+//! // Record interactions during tests
+//! tracker.click("start");
+//! tracker.visit("title");
+//!
+//! // Get simple coverage report
+//! println!("{}", tracker.summary()); // "GUI: 33% (2/6 elements)"
+//! ```
 
 use crate::result::{ProbarError, ProbarResult};
 use serde::{Deserialize, Serialize};
@@ -471,6 +491,87 @@ impl UxCoverageTracker {
     pub fn assert_complete(&self) -> ProbarResult<()> {
         self.assert_coverage(1.0)
     }
+
+    // =========================================================================
+    // SIMPLE CONVENIENCE API - Trivial GUI coverage tracking
+    // =========================================================================
+
+    /// Simple click recording - just pass the button ID
+    ///
+    /// # Example
+    /// ```rust
+    /// # use probar::ux_coverage::UxCoverageTracker;
+    /// let mut tracker = UxCoverageTracker::new();
+    /// tracker.register_button("submit");
+    /// tracker.click("submit");
+    /// assert!(tracker.is_complete());
+    /// ```
+    pub fn click(&mut self, id: &str) {
+        let element = ElementId::new("button", id);
+        self.record_interaction(&element, InteractionType::Click);
+    }
+
+    /// Simple input recording - records focus, input, and blur
+    pub fn input(&mut self, id: &str) {
+        let element = ElementId::new("input", id);
+        self.record_interaction(&element, InteractionType::Focus);
+        self.record_interaction(&element, InteractionType::Input);
+        self.record_interaction(&element, InteractionType::Blur);
+    }
+
+    /// Simple state/screen visit recording
+    pub fn visit(&mut self, screen: &str) {
+        self.record_state(StateId::new("screen", screen));
+    }
+
+    /// Simple modal visit recording
+    pub fn visit_modal(&mut self, modal: &str) {
+        self.record_state(StateId::new("modal", modal));
+    }
+
+    /// Get a simple one-line summary
+    ///
+    /// Returns: `"GUI: 85% (17/20 elements, 4/5 screens)"`
+    #[must_use]
+    pub fn summary(&self) -> String {
+        let report = self.generate_report();
+        if report.total_states == 0 {
+            format!(
+                "GUI: {:.0}% ({}/{} elements)",
+                report.element_coverage * 100.0,
+                report.covered_elements,
+                report.total_elements
+            )
+        } else if report.total_elements == 0 {
+            format!(
+                "GUI: {:.0}% ({}/{} screens)",
+                report.state_coverage * 100.0,
+                report.covered_states,
+                report.total_states
+            )
+        } else {
+            format!(
+                "GUI: {:.0}% ({}/{} elements, {}/{} screens)",
+                report.overall_coverage * 100.0,
+                report.covered_elements,
+                report.total_elements,
+                report.covered_states,
+                report.total_states
+            )
+        }
+    }
+
+    /// Get coverage as a simple percentage (0-100)
+    #[must_use]
+    pub fn percent(&self) -> f64 {
+        self.overall_coverage() * 100.0
+    }
+
+    /// Check if coverage meets a threshold (as percentage 0-100)
+    #[must_use]
+    pub fn meets(&self, threshold_percent: f64) -> bool {
+        self.percent() >= threshold_percent
+    }
 }
 
 /// UX Coverage Report
@@ -602,6 +703,110 @@ impl UxCoverageBuilder {
     pub fn build(self) -> UxCoverageTracker {
         self.tracker
     }
+}
+
+// =============================================================================
+// MACRO: gui_coverage! - The simplest way to define GUI coverage requirements
+// =============================================================================
+
+/// Create a GUI coverage tracker with minimal boilerplate
+///
+/// # Example
+///
+/// ```rust
+/// use probar::gui_coverage;
+///
+/// // Define what needs to be tested
+/// let mut gui = gui_coverage! {
+///     buttons: ["start", "pause", "quit"],
+///     inputs: ["username", "password"],
+///     screens: ["login", "main", "settings"]
+/// };
+///
+/// // During tests, record interactions
+/// gui.click("start");
+/// gui.input("username");
+/// gui.visit("login");
+///
+/// // Check coverage
+/// println!("{}", gui.summary());  // "GUI: 33% (3/9 elements, 1/3 screens)"
+/// assert!(gui.meets(30.0));       // At least 30% covered
+/// ```
+#[macro_export]
+macro_rules! gui_coverage {
+    // Full syntax with all options
+    {
+        $(buttons: [$($btn:expr),* $(,)?])?
+        $(, inputs: [$($inp:expr),* $(,)?])?
+        $(, screens: [$($scr:expr),* $(,)?])?
+        $(, modals: [$($mod:expr),* $(,)?])?
+        $(,)?
+    } => {{
+        let mut builder = $crate::ux_coverage::UxCoverageBuilder::new();
+        $($(
+            builder = builder.button($btn);
+        )*)?
+        $($(
+            builder = builder.input($inp);
+        )*)?
+        $($(
+            builder = builder.screen($scr);
+        )*)?
+        $($(
+            builder = builder.modal($mod);
+        )*)?
+        builder.build()
+    }};
+}
+
+/// Shorthand for a calculator-style GUI (common pattern)
+///
+/// Creates a tracker with:
+/// - Digit buttons (0-9)
+/// - Operator buttons (+, -, *, /, =, C)
+/// - Display and input screens
+#[must_use]
+pub fn calculator_coverage() -> UxCoverageTracker {
+    UxCoverageBuilder::new()
+        // Digit buttons
+        .button("btn-0")
+        .button("btn-1")
+        .button("btn-2")
+        .button("btn-3")
+        .button("btn-4")
+        .button("btn-5")
+        .button("btn-6")
+        .button("btn-7")
+        .button("btn-8")
+        .button("btn-9")
+        // Operator buttons
+        .button("btn-plus")
+        .button("btn-minus")
+        .button("btn-times")
+        .button("btn-divide")
+        .button("btn-equals")
+        .button("btn-clear")
+        .button("btn-decimal")
+        .button("btn-power")
+        .button("btn-open-paren")
+        .button("btn-close-paren")
+        // Screens
+        .screen("calculator")
+        .screen("history")
+        .build()
+}
+
+/// Shorthand for a simple game GUI
+#[must_use]
+pub fn game_coverage(buttons: &[&str], screens: &[&str]) -> UxCoverageTracker {
+    let mut builder = UxCoverageBuilder::new();
+    for btn in buttons {
+        builder = builder.button(btn);
+    }
+    for screen in screens {
+        builder = builder.screen(screen);
+    }
+    builder.build()
 }
 
 #[cfg(test)]
@@ -902,6 +1107,161 @@ mod tests {
         }
     }
 
+    mod additional_tracker_tests {
+        use super::*;
+
+        #[test]
+        fn test_register_input() {
+            let mut tracker = UxCoverageTracker::new();
+            tracker.register_input("username");
+
+            // Input should expect focus, input, blur
+            assert_eq!(tracker.elements.len(), 1);
+        }
+
+        #[test]
+        fn test_register_clickable() {
+            let mut tracker = UxCoverageTracker::new();
+            tracker.register_clickable("link", "home");
+
+            assert_eq!(tracker.elements.len(), 1);
+        }
+
+        #[test]
+        fn test_register_modal() {
+            let mut tracker = UxCoverageTracker::new();
+            tracker.register_modal("confirm_dialog");
+
+            assert!(tracker
+                .expected_states
+                .contains(&StateId::new("modal", "confirm_dialog")));
+        }
+
+        #[test]
+        fn test_mark_visible_reachable() {
+            let element = ElementId::new("button", "test");
+            let mut coverage = ElementCoverage::new(element);
+
+            assert!(!coverage.was_visible);
+            assert!(!coverage.was_reachable);
+
+            coverage.mark_visible();
+            assert!(coverage.was_visible);
+
+            coverage.mark_reachable();
+            assert!(coverage.was_reachable);
+        }
+
+        #[test]
+        fn test_tracker_debug() {
+            let tracker = UxCoverageTracker::new();
+            let debug = format!("{:?}", tracker);
+            assert!(debug.contains("UxCoverageTracker"));
+        }
+    }
+
+    mod interaction_type_display_tests {
+        use super::*;
+
+        #[test]
+        fn test_all_interaction_displays() {
+            assert_eq!(format!("{}", InteractionType::Click), "click");
+            assert_eq!(format!("{}", InteractionType::Focus), "focus");
+            assert_eq!(format!("{}", InteractionType::Blur), "blur");
+            assert_eq!(format!("{}", InteractionType::Input), "input");
+            assert_eq!(format!("{}", InteractionType::Hover), "hover");
+            assert_eq!(format!("{}", InteractionType::Scroll), "scroll");
+            assert_eq!(format!("{}", InteractionType::DragStart), "drag_start");
+            assert_eq!(format!("{}", InteractionType::DragEnd), "drag_end");
+            assert_eq!(
+                format!("{}", InteractionType::KeyPress("Enter".to_string())),
+                "keypress:Enter"
+            );
+            assert_eq!(
+                format!("{}", InteractionType::Custom("swipe".to_string())),
+                "custom:swipe"
+            );
+        }
+    }
+
+    mod state_id_tests {
+        use super::*;
+
+        #[test]
+        fn test_display() {
+            let state = StateId::new("screen", "home");
+            assert_eq!(format!("{}", state), "screen:home");
+        }
+
+        #[test]
+        fn test_equality() {
+            let state1 = StateId::new("screen", "home");
+            let state2 = StateId::new("screen", "home");
+            let state3 = StateId::new("screen", "settings");
+
+            assert_eq!(state1, state2);
+            assert_ne!(state1, state3);
+        }
+    }
+
+    mod element_coverage_additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_coverage_ratio_empty() {
+            let element = ElementId::new("button", "test");
+            let coverage = ElementCoverage::new(element);
+
+            // Empty expected means 100% coverage
+            assert!((coverage.coverage_ratio() - 1.0).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn test_is_fully_covered_empty() {
+            let element = ElementId::new("button", "test");
+            let coverage = ElementCoverage::new(element);
+
+            assert!(coverage.is_fully_covered());
+        }
+
+        #[test]
+        fn test_debug() {
+            let element = ElementId::new("button", "test");
+            let coverage = ElementCoverage::new(element);
+            let debug = format!("{:?}", coverage);
+            assert!(debug.contains("ElementCoverage"));
+        }
+    }
+
+    mod tracked_interaction_tests {
+        use super::*;
+
+        #[test]
+        fn test_tracked_interaction() {
+            let interaction = TrackedInteraction {
+                element: ElementId::new("button", "submit"),
+                interaction: InteractionType::Click,
+                count: 5,
+            };
+
+            assert_eq!(interaction.count, 5);
+            let debug = format!("{:?}", interaction);
+            assert!(debug.contains("TrackedInteraction"));
+        }
+    }
+
+    mod report_tests {
+        use super::*;
+
+        #[test]
+        fn test_report_debug() {
+            let tracker = UxCoverageTracker::new();
+            let report = tracker.generate_report();
+            let debug = format!("{:?}", report);
+            assert!(debug.contains("UxCoverageReport"));
+        }
+    }
+
     mod pong_game_coverage_tests {
         use super::*;
 
@@ -964,6 +1324,151 @@ mod tests {
             assert!(!report.is_complete);
             assert!((report.element_coverage - 0.5).abs() < f64::EPSILON);
             assert!((report.state_coverage - 0.5).abs() < f64::EPSILON);
+        }
+    }
+
+    // =========================================================================
+    // Tests for SIMPLE CONVENIENCE API
+    // =========================================================================
+
+    mod simple_api_tests {
+        use super::*;
+
+        #[test]
+        fn test_click_convenience() {
+            let mut tracker = UxCoverageTracker::new();
+            tracker.register_button("submit");
+            tracker.click("submit");
+            assert!(tracker.is_complete());
+        }
+
+        #[test]
+        fn test_input_convenience() {
+            let mut tracker = UxCoverageTracker::new();
+            tracker.register_input("username");
+            tracker.input("username");
+            assert!(tracker.is_complete());
+        }
+
+        #[test]
+        fn test_visit_convenience() {
+            let mut tracker = UxCoverageTracker::new();
+            tracker.register_screen("home");
+            tracker.visit("home");
+            assert!(tracker.is_complete());
+        }
+
+        #[test]
+        fn test_visit_modal_convenience() {
+            let mut tracker = UxCoverageTracker::new();
+            tracker.register_modal("confirm");
+            tracker.visit_modal("confirm");
+            assert!(tracker.is_complete());
+        }
+
+        #[test]
+        fn test_summary_elements_only() {
+            let mut tracker = UxCoverageTracker::new();
+            tracker.register_button("a");
+            tracker.register_button("b");
+            tracker.click("a");
+            assert_eq!(tracker.summary(), "GUI: 50% (1/2 elements)");
+        }
+
+        #[test]
+        fn test_summary_screens_only() {
+            let mut tracker = UxCoverageTracker::new();
+            tracker.register_screen("home");
+            tracker.register_screen("settings");
+            tracker.visit("home");
+            assert_eq!(tracker.summary(), "GUI: 50% (1/2 screens)");
+        }
+
+        #[test]
+        fn test_summary_both() {
+            let mut tracker = UxCoverageTracker::new();
+            tracker.register_button("btn");
+            tracker.register_screen("home");
+            tracker.click("btn");
+            // 100% elements, 0% screens = 50% overall
+            assert_eq!(tracker.summary(), "GUI: 50% (1/1 elements, 0/1 screens)");
+        }
+
+        #[test]
+        fn test_percent() {
+            let mut tracker = UxCoverageTracker::new();
+            tracker.register_button("a");
+            tracker.register_button("b");
+            tracker.click("a");
+            assert!((tracker.percent() - 50.0).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn test_meets_threshold() {
+            let mut tracker = UxCoverageTracker::new();
+            tracker.register_button("a");
+            tracker.register_button("b");
+            tracker.click("a");
+            assert!(tracker.meets(50.0));
+            assert!(!tracker.meets(51.0));
+        }
+
+        #[test]
+        fn test_calculator_coverage_preset() {
+            let tracker = calculator_coverage();
+            // Should have 20 buttons + 2 screens
+            assert_eq!(tracker.elements.len(), 20);
+            assert_eq!(tracker.expected_states.len(), 2);
+        }
+
+        #[test]
+        fn test_game_coverage_helper() {
+            let tracker = game_coverage(
+                &["start", "pause", "quit"],
+                &["title", "playing", "game_over"],
+            );
+            assert_eq!(tracker.elements.len(), 3);
+            assert_eq!(tracker.expected_states.len(), 3);
+        }
+    }
+
+    mod macro_tests {
+        #[allow(unused_imports)]
+        use super::*;
+
+        #[test]
+        fn test_gui_coverage_macro_buttons_only() {
+            let tracker = crate::gui_coverage! {
+                buttons: ["a", "b", "c"]
+            };
+            assert_eq!(tracker.elements.len(), 3);
+        }
+
+        #[test]
+        fn test_gui_coverage_macro_full() {
+            let mut tracker = crate::gui_coverage! {
+                buttons: ["start", "stop"],
+                inputs: ["name"],
+                screens: ["home", "settings"],
+                modals: ["confirm"]
+            };
+            assert_eq!(tracker.elements.len(), 3); // 2 buttons + 1 input
+            assert_eq!(tracker.expected_states.len(), 3); // 2 screens + 1 modal
+
+            // Test the simple API works with macro-created tracker
+            tracker.click("start");
+            tracker.visit("home");
+            assert!(tracker.percent() > 0.0);
+        }
+
+        #[test]
+        fn test_gui_coverage_macro_trailing_comma() {
+            let tracker = crate::gui_coverage! {
+                buttons: ["a", "b",],
+                screens: ["home",],
+            };
+            assert_eq!(tracker.elements.len(), 2);
+            assert_eq!(tracker.expected_states.len(), 1);
         }
     }
 }

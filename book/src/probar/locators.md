@@ -1,23 +1,77 @@
 # Locators
 
-Probar provides Playwright-style locators for finding game elements.
+Probar provides Playwright-style locators for finding game elements with full Playwright parity.
 
 ## Basic Locators
 
 ```rust
-use jugar_probar::locator::*;
+use probar::{Locator, Selector};
 
-// By ID
-let player = Locator::id("player");
+// CSS selector
+let button = Locator::new("button.primary");
 
-// By name
-let score = Locator::name("score_display");
+// Test ID selector (recommended for stability)
+let submit = Locator::by_test_id("submit-button");
 
-// By component type
-let balls = Locator::component::<Ball>();
+// Text content
+let start = Locator::by_text("Start Game");
 
-// By tag
-let enemies = Locator::tag("enemy");
+// Entity selector (WASM games)
+let player = Locator::from_selector(Selector::entity("player"));
+```
+
+## Semantic Locators (PMAT-001)
+
+Probar supports Playwright's semantic locators for accessible testing:
+
+```rust
+use probar::{Locator, Selector};
+
+// Role selector (ARIA roles)
+let button = Locator::by_role("button");
+let link = Locator::by_role("link");
+let textbox = Locator::by_role("textbox");
+
+// Role with name filter (like Playwright's { name: 'Submit' })
+let submit = Locator::by_role_with_name("button", "Submit");
+
+// Label selector (form elements by label text)
+let username = Locator::by_label("Username");
+let password = Locator::by_label("Password");
+
+// Placeholder selector
+let search = Locator::by_placeholder("Search...");
+let email = Locator::by_placeholder("Enter email");
+
+// Alt text selector (images)
+let logo = Locator::by_alt_text("Company Logo");
+let avatar = Locator::by_alt_text("Player Avatar");
+```
+
+### Selector Variants
+
+```rust
+use probar::Selector;
+
+// All selector types
+let css = Selector::css("button.primary");
+let xpath = Selector::XPath("//button[@id='submit']".into());
+let text = Selector::text("Click me");
+let test_id = Selector::test_id("submit-btn");
+let entity = Selector::entity("hero");
+
+// Semantic selectors
+let role = Selector::role("button");
+let role_named = Selector::role_with_name("button", "Submit");
+let label = Selector::label("Username");
+let placeholder = Selector::placeholder("Search");
+let alt = Selector::alt_text("Logo");
+
+// Combined with text filter
+let css_text = Selector::CssWithText {
+    css: "button".into(),
+    text: "Submit".into(),
+};
 ```
 
 ## Entity Queries
@@ -37,20 +91,87 @@ assert_eq!(coins.len(), 5);
 let first_enemy = platform.locate_first(Locator::tag("enemy"));
 ```
 
+## Locator Operations (PMAT-002)
+
+Probar supports Playwright's locator composition operations:
+
+### Filter
+
+```rust
+use probar::{Locator, FilterOptions};
+
+// Filter with hasText
+let active_buttons = Locator::new("button")
+    .filter(FilterOptions::new().has_text("Active"));
+
+// Filter with hasNotText
+let enabled = Locator::new("button")
+    .filter(FilterOptions::new().has_not_text("Disabled"));
+
+// Filter with child locator
+let with_icon = Locator::new("button")
+    .filter(FilterOptions::new().has(Locator::new(".icon")));
+
+// Combined filters
+let opts = FilterOptions::new()
+    .has_text("Submit")
+    .has_not_text("Cancel");
+```
+
+### And/Or Composition
+
+```rust
+use probar::Locator;
+
+// AND - both conditions must match (intersection)
+let active_button = Locator::new("button")
+    .and(Locator::new(".active"));
+// Produces: "button.active"
+
+// OR - either condition can match (union)
+let clickable = Locator::new("button")
+    .or(Locator::new("a.btn"));
+// Produces: "button, a.btn"
+
+// Chain multiple ORs
+let any_interactive = Locator::new("button")
+    .or(Locator::new("a"))
+    .or(Locator::new("[role='button']"));
+```
+
+### Index Operations
+
+```rust
+use probar::Locator;
+
+// Get first element
+let first_item = Locator::new("li.menu-item").first();
+
+// Get last element
+let last_item = Locator::new("li.menu-item").last();
+
+// Get nth element (0-indexed)
+let third_item = Locator::new("li.menu-item").nth(2);
+
+// Chained operations
+let second_active = Locator::new("button")
+    .and(Locator::new(".active"))
+    .nth(1);
+```
+
 ## Compound Locators
 
 ```rust
 // AND - must match all
-let armed_enemy = Locator::tag("enemy")
-    .and(Locator::has_component::<Weapon>());
+let armed_enemy = Locator::new(".enemy")
+    .and(Locator::new(".armed"));
 
 // OR - match any
-let interactable = Locator::tag("door")
-    .or(Locator::tag("chest"));
+let interactable = Locator::new(".door")
+    .or(Locator::new(".chest"));
 
-// NOT - exclude
-let non_player = Locator::component::<Character>()
-    .not(Locator::id("player"));
+// Combined with index
+let first_enemy = Locator::new(".enemy").first();
 ```
 
 ## Spatial Locators

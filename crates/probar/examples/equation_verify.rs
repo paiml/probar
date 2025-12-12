@@ -6,6 +6,8 @@
 //!
 //! Toyota Way: Poka-Yoke (Mistake-Proofing) - Mathematical correctness guarantees
 
+#![allow(clippy::many_single_char_names, clippy::float_cmp)]
+
 use probar::prelude::*;
 
 fn main() -> ProbarResult<()> {

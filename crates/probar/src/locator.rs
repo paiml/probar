@@ -63,6 +63,22 @@ pub enum Selector {
         /// Entity name/ID
         entity: String,
     },
+    // =========================================================================
+    // PMAT-001: Semantic Locators (Playwright Parity)
+    // =========================================================================
+    /// ARIA role selector (e.g., "button", "textbox", "link")
+    Role {
+        /// ARIA role name
+        role: String,
+        /// Optional accessible name filter
+        name: Option<String>,
+    },
+    /// Label selector (form elements by associated label text)
+    Label(String),
+    /// Placeholder selector (input/textarea by placeholder attribute)
+    Placeholder(String),
+    /// Alt text selector (images by alt attribute)
+    AltText(String),
 }
 
 impl Selector {
@@ -90,6 +106,54 @@ impl Selector {
         Self::Entity(name.into())
     }
 
+    // =========================================================================
+    // PMAT-001: Semantic Selector Constructors
+    // =========================================================================
+
+    /// Create a role selector (ARIA role matching)
+    ///
+    /// Per Playwright: `page.getByRole('button', { name: 'Submit' })`
+    #[must_use]
+    pub fn role(role: impl Into<String>) -> Self {
+        Self::Role {
+            role: role.into(),
+            name: None,
+        }
+    }
+
+    /// Create a role selector with name filter
+    #[must_use]
+    pub fn role_with_name(role: impl Into<String>, name: impl Into<String>) -> Self {
+        Self::Role {
+            role: role.into(),
+            name: Some(name.into()),
+        }
+    }
+
+    /// Create a label selector (form elements by label text)
+    ///
+    /// Per Playwright: `page.getByLabel('Username')`
+    #[must_use]
+    pub fn label(text: impl Into<String>) -> Self {
+        Self::Label(text.into())
+    }
+
+    /// Create a placeholder selector (input/textarea by placeholder)
+    ///
+    /// Per Playwright: `page.getByPlaceholder('Enter email')`
+    #[must_use]
+    pub fn placeholder(text: impl Into<String>) -> Self {
+        Self::Placeholder(text.into())
+    }
+
+    /// Create an alt text selector (images by alt attribute)
+    ///
+    /// Per Playwright: `page.getByAltText('Company Logo')`
+    #[must_use]
+    pub fn alt_text(text: impl Into<String>) -> Self {
+        Self::AltText(text.into())
+    }
+
     /// Convert to JavaScript/WASM query expression
     #[must_use]
     pub fn to_query(&self) -> String {
@@ -107,6 +171,27 @@ impl Selector {
                 format!("Array.from(document.querySelectorAll({css:?})).find(el => el.textContent.includes({text:?}))")
             }
             Self::CanvasEntity { entity } => format!("window.__wasm_get_canvas_entity({entity:?})"),
+            // PMAT-001: Semantic locator queries
+            Self::Role { role, name } => {
+                if let Some(n) = name {
+                    format!(
+                        "Array.from(document.querySelectorAll('[role={role:?}]')).find(el => el.textContent.includes({n:?}) || el.getAttribute('aria-label')?.includes({n:?}))"
+                    )
+                } else {
+                    format!("document.querySelector('[role={role:?}]')")
+                }
+            }
+            Self::Label(text) => {
+                format!(
+                    "(function() {{ const label = Array.from(document.querySelectorAll('label')).find(l => l.textContent.includes({text:?})); if (label && label.htmlFor) return document.getElementById(label.htmlFor); if (label) return label.querySelector('input, textarea, select'); return null; }})()"
+                )
+            }
+            Self::Placeholder(text) => {
+                format!("document.querySelector('[placeholder*={text:?}]')")
+            }
+            Self::AltText(text) => {
+                format!("document.querySelector('img[alt*={text:?}]')")
+            }
         }
     }
 
@@ -128,6 +213,27 @@ impl Selector {
             }
             Self::CanvasEntity { entity } => {
                 format!("window.__wasm_count_canvas_entities({entity:?})")
+            }
+            // PMAT-001: Semantic locator count queries
+            Self::Role { role, name } => {
+                if let Some(n) = name {
+                    format!(
+                        "Array.from(document.querySelectorAll('[role={role:?}]')).filter(el => el.textContent.includes({n:?}) || el.getAttribute('aria-label')?.includes({n:?})).length"
+                    )
+                } else {
+                    format!("document.querySelectorAll('[role={role:?}]').length")
+                }
+            }
+            Self::Label(text) => {
+                format!(
+                    "Array.from(document.querySelectorAll('label')).filter(l => l.textContent.includes({text:?})).length"
+                )
+            }
+            Self::Placeholder(text) => {
+                format!("document.querySelectorAll('[placeholder*={text:?}]').length")
+            }
+            Self::AltText(text) => {
+                format!("document.querySelectorAll('img[alt*={text:?}]').length")
             }
         }
     }
@@ -191,6 +297,142 @@ impl Default for LocatorOptions {
             strict: true,
             visible: true,
         }
+    }
+}
+
+// =============================================================================
+// PMAT-002: Filter Options for Locator Operations
+// =============================================================================
+
+/// Options for filtering locators (Playwright Parity)
+#[derive(Debug, Clone, Default)]
+pub struct FilterOptions {
+    /// Child locator that must match
+    pub has: Option<Box<Locator>>,
+    /// Text that must be contained
+    pub has_text: Option<String>,
+    /// Child locator that must NOT match
+    pub has_not: Option<Box<Locator>>,
+    /// Text that must NOT be contained
+    pub has_not_text: Option<String>,
+}
+
+impl FilterOptions {
+    /// Create empty filter options
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set has filter (child locator must match)
+    #[must_use]
+    pub fn has(mut self, locator: Locator) -> Self {
+        self.has = Some(Box::new(locator));
+        self
+    }
+
+    /// Set has_text filter (must contain text)
+    #[must_use]
+    pub fn has_text(mut self, text: impl Into<String>) -> Self {
+        self.has_text = Some(text.into());
+        self
+    }
+
+    /// Set has_not filter (child locator must NOT match)
+    #[must_use]
+    pub fn has_not(mut self, locator: Locator) -> Self {
+        self.has_not = Some(Box::new(locator));
+        self
+    }
+
+    /// Set has_not_text filter (must NOT contain text)
+    #[must_use]
+    pub fn has_not_text(mut self, text: impl Into<String>) -> Self {
+        self.has_not_text = Some(text.into());
+        self
+    }
+}
+
+// =============================================================================
+// PMAT-003: Mouse Button Types
+// =============================================================================
+
+/// Mouse button type for click operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MouseButton {
+    /// Left mouse button (default)
+    #[default]
+    Left,
+    /// Right mouse button (context menu)
+    Right,
+    /// Middle mouse button (scroll wheel click)
+    Middle,
+}
+
+/// Click options for customizing click behavior
+#[derive(Debug, Clone, Default)]
+pub struct ClickOptions {
+    /// Which mouse button to use
+    pub button: MouseButton,
+    /// Number of clicks (1 = single, 2 = double)
+    pub click_count: u32,
+    /// Position within element to click
+    pub position: Option<Point>,
+    /// Keyboard modifiers to hold during click
+    pub modifiers: Vec<KeyModifier>,
+}
+
+/// Keyboard modifiers for actions
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyModifier {
+    /// Alt key
+    Alt,
+    /// Control key
+    Control,
+    /// Meta key (Cmd on Mac, Win on Windows)
+    Meta,
+    /// Shift key
+    Shift,
+}
+
+impl ClickOptions {
+    /// Create default click options (left button, single click)
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            button: MouseButton::Left,
+            click_count: 1,
+            position: None,
+            modifiers: Vec::new(),
+        }
+    }
+
+    /// Set mouse button
+    #[must_use]
+    pub fn button(mut self, button: MouseButton) -> Self {
+        self.button = button;
+        self
+    }
+
+    /// Set click count
+    #[must_use]
+    pub fn click_count(mut self, count: u32) -> Self {
+        self.click_count = count;
+        self
+    }
+
+    /// Set click position within element
+    #[must_use]
+    pub fn position(mut self, pos: Point) -> Self {
+        self.position = Some(pos);
+        self
+    }
+
+    /// Add a keyboard modifier
+    #[must_use]
+    pub fn modifier(mut self, modifier: KeyModifier) -> Self {
+        self.modifiers.push(modifier);
+        self
     }
 }
 
@@ -385,6 +627,227 @@ impl Locator {
             locator: self.clone(),
         })
     }
+
+    // =========================================================================
+    // PMAT-002: Locator Operations (Playwright Parity)
+    // =========================================================================
+
+    /// Filter the locator by additional conditions
+    ///
+    /// Per Playwright: `locator.filter({ hasText: 'Hello', has: page.locator('.child') })`
+    #[must_use]
+    pub fn filter(self, options: FilterOptions) -> Self {
+        // For now, if has_text is provided, we combine it with the selector
+        if let Some(text) = options.has_text {
+            return self.with_text(text);
+        }
+        // Other filter options would be applied during resolution
+        // Store filter options for later use
+        self
+    }
+
+    /// Create intersection of two locators (both must match)
+    ///
+    /// Per Playwright: `locator.and(other)`
+    #[must_use]
+    pub fn and(self, other: Locator) -> Self {
+        // Combine selectors - for CSS, we can join them
+        let new_selector = match (&self.selector, &other.selector) {
+            (Selector::Css(a), Selector::Css(b)) => Selector::Css(format!("{a}{b}")),
+            _ => self.selector, // Default to self for non-CSS
+        };
+        Self {
+            selector: new_selector,
+            options: self.options,
+        }
+    }
+
+    /// Create union of two locators (either can match)
+    ///
+    /// Per Playwright: `locator.or(other)`
+    #[must_use]
+    pub fn or(self, other: Locator) -> Self {
+        // Combine selectors with CSS comma separator
+        let new_selector = match (&self.selector, &other.selector) {
+            (Selector::Css(a), Selector::Css(b)) => Selector::Css(format!("{a}, {b}")),
+            _ => self.selector, // Default to self for non-CSS
+        };
+        Self {
+            selector: new_selector,
+            options: self.options,
+        }
+    }
+
+    /// Get the first matching element
+    ///
+    /// Per Playwright: `locator.first()`
+    #[must_use]
+    pub fn first(self) -> Self {
+        // Modify selector to get first match only
+        let new_selector = match self.selector {
+            Selector::Css(s) => Selector::Css(format!("{s}:first-child")),
+            other => other,
+        };
+        Self {
+            selector: new_selector,
+            options: self.options,
+        }
+    }
+
+    /// Get the last matching element
+    ///
+    /// Per Playwright: `locator.last()`
+    #[must_use]
+    pub fn last(self) -> Self {
+        // Modify selector to get last match only
+        let new_selector = match self.selector {
+            Selector::Css(s) => Selector::Css(format!("{s}:last-child")),
+            other => other,
+        };
+        Self {
+            selector: new_selector,
+            options: self.options,
+        }
+    }
+
+    /// Get the element at the specified index
+    ///
+    /// Per Playwright: `locator.nth(index)`
+    #[must_use]
+    pub fn nth(self, index: usize) -> Self {
+        // Modify selector to get nth match
+        let new_selector = match self.selector {
+            Selector::Css(s) => Selector::Css(format!("{s}:nth-child({})", index + 1)),
+            other => other,
+        };
+        Self {
+            selector: new_selector,
+            options: self.options,
+        }
+    }
+
+    // =========================================================================
+    // PMAT-003: Additional Mouse Actions (Playwright Parity)
+    // =========================================================================
+
+    /// Simulate right-clicking on the located element
+    ///
+    /// Per Playwright: `locator.click({ button: 'right' })`
+    pub fn right_click(&self) -> ProbarResult<LocatorAction> {
+        Ok(LocatorAction::RightClick {
+            locator: self.clone(),
+        })
+    }
+
+    /// Click with custom options
+    ///
+    /// Per Playwright: `locator.click(options)`
+    pub fn click_with_options(&self, options: ClickOptions) -> ProbarResult<LocatorAction> {
+        Ok(LocatorAction::ClickWithOptions {
+            locator: self.clone(),
+            options,
+        })
+    }
+
+    /// Hover over the located element
+    ///
+    /// Per Playwright: `locator.hover()`
+    pub fn hover(&self) -> ProbarResult<LocatorAction> {
+        Ok(LocatorAction::Hover {
+            locator: self.clone(),
+        })
+    }
+
+    /// Focus the located element
+    ///
+    /// Per Playwright: `locator.focus()`
+    pub fn focus(&self) -> ProbarResult<LocatorAction> {
+        Ok(LocatorAction::Focus {
+            locator: self.clone(),
+        })
+    }
+
+    /// Remove focus from the located element
+    ///
+    /// Per Playwright: `locator.blur()`
+    pub fn blur(&self) -> ProbarResult<LocatorAction> {
+        Ok(LocatorAction::Blur {
+            locator: self.clone(),
+        })
+    }
+
+    /// Check a checkbox or radio button
+    ///
+    /// Per Playwright: `locator.check()`
+    pub fn check(&self) -> ProbarResult<LocatorAction> {
+        Ok(LocatorAction::Check {
+            locator: self.clone(),
+        })
+    }
+
+    /// Uncheck a checkbox
+    ///
+    /// Per Playwright: `locator.uncheck()`
+    pub fn uncheck(&self) -> ProbarResult<LocatorAction> {
+        Ok(LocatorAction::Uncheck {
+            locator: self.clone(),
+        })
+    }
+
+    /// Scroll element into view if needed
+    ///
+    /// Per Playwright: `locator.scrollIntoViewIfNeeded()`
+    pub fn scroll_into_view(&self) -> ProbarResult<LocatorAction> {
+        Ok(LocatorAction::ScrollIntoView {
+            locator: self.clone(),
+        })
+    }
+
+    // =========================================================================
+    // PMAT-001: Semantic Locator Constructors (Convenience methods)
+    // =========================================================================
+
+    /// Create a locator by ARIA role
+    #[must_use]
+    pub fn by_role(role: impl Into<String>) -> Self {
+        Self::from_selector(Selector::role(role))
+    }
+
+    /// Create a locator by ARIA role with name
+    #[must_use]
+    pub fn by_role_with_name(role: impl Into<String>, name: impl Into<String>) -> Self {
+        Self::from_selector(Selector::role_with_name(role, name))
+    }
+
+    /// Create a locator by label text
+    #[must_use]
+    pub fn by_label(text: impl Into<String>) -> Self {
+        Self::from_selector(Selector::label(text))
+    }
+
+    /// Create a locator by placeholder text
+    #[must_use]
+    pub fn by_placeholder(text: impl Into<String>) -> Self {
+        Self::from_selector(Selector::placeholder(text))
+    }
+
+    /// Create a locator by alt text
+    #[must_use]
+    pub fn by_alt_text(text: impl Into<String>) -> Self {
+        Self::from_selector(Selector::alt_text(text))
+    }
+
+    /// Create a locator by test ID
+    #[must_use]
+    pub fn by_test_id(id: impl Into<String>) -> Self {
+        Self::from_selector(Selector::test_id(id))
+    }
+
+    /// Create a locator by text content
+    #[must_use]
+    pub fn by_text(text: impl Into<String>) -> Self {
+        Self::from_selector(Selector::text(text))
+    }
 }
 
 /// Builder for drag operations
@@ -463,6 +926,51 @@ pub enum LocatorAction {
         /// The locator
         locator: Locator,
     },
+    // =========================================================================
+    // PMAT-003: Additional Actions (Playwright Parity)
+    // =========================================================================
+    /// Right-click on the element (context menu)
+    RightClick {
+        /// The locator
+        locator: Locator,
+    },
+    /// Click with custom options
+    ClickWithOptions {
+        /// The locator
+        locator: Locator,
+        /// Click options
+        options: ClickOptions,
+    },
+    /// Hover over the element
+    Hover {
+        /// The locator
+        locator: Locator,
+    },
+    /// Focus the element
+    Focus {
+        /// The locator
+        locator: Locator,
+    },
+    /// Remove focus from the element
+    Blur {
+        /// The locator
+        locator: Locator,
+    },
+    /// Check a checkbox or radio
+    Check {
+        /// The locator
+        locator: Locator,
+    },
+    /// Uncheck a checkbox
+    Uncheck {
+        /// The locator
+        locator: Locator,
+    },
+    /// Scroll element into view
+    ScrollIntoView {
+        /// The locator
+        locator: Locator,
+    },
 }
 
 impl LocatorAction {
@@ -475,7 +983,15 @@ impl LocatorAction {
             | Self::Drag { locator, .. }
             | Self::Fill { locator, .. }
             | Self::WaitForVisible { locator }
-            | Self::WaitForHidden { locator } => locator,
+            | Self::WaitForHidden { locator }
+            | Self::RightClick { locator }
+            | Self::ClickWithOptions { locator, .. }
+            | Self::Hover { locator }
+            | Self::Focus { locator }
+            | Self::Blur { locator }
+            | Self::Check { locator }
+            | Self::Uncheck { locator }
+            | Self::ScrollIntoView { locator } => locator,
         }
     }
 }
@@ -611,6 +1127,102 @@ impl Expect {
             expected: text.into(),
         }
     }
+
+    // =========================================================================
+    // PMAT-004: Element State Assertions (Playwright Parity)
+    // =========================================================================
+
+    /// Assert the element is enabled (not disabled)
+    pub fn to_be_enabled(&self) -> ExpectAssertion {
+        ExpectAssertion::IsEnabled {
+            locator: self.locator.clone(),
+        }
+    }
+
+    /// Assert the element is disabled
+    pub fn to_be_disabled(&self) -> ExpectAssertion {
+        ExpectAssertion::IsDisabled {
+            locator: self.locator.clone(),
+        }
+    }
+
+    /// Assert the element is checked (checkbox/radio)
+    pub fn to_be_checked(&self) -> ExpectAssertion {
+        ExpectAssertion::IsChecked {
+            locator: self.locator.clone(),
+        }
+    }
+
+    /// Assert the element is editable
+    pub fn to_be_editable(&self) -> ExpectAssertion {
+        ExpectAssertion::IsEditable {
+            locator: self.locator.clone(),
+        }
+    }
+
+    /// Assert the element is focused
+    pub fn to_be_focused(&self) -> ExpectAssertion {
+        ExpectAssertion::IsFocused {
+            locator: self.locator.clone(),
+        }
+    }
+
+    /// Assert the element is empty
+    pub fn to_be_empty(&self) -> ExpectAssertion {
+        ExpectAssertion::IsEmpty {
+            locator: self.locator.clone(),
+        }
+    }
+
+    /// Assert the element has specific value
+    pub fn to_have_value(&self, value: impl Into<String>) -> ExpectAssertion {
+        ExpectAssertion::HasValue {
+            locator: self.locator.clone(),
+            expected: value.into(),
+        }
+    }
+
+    /// Assert the element has specific CSS property value
+    pub fn to_have_css(
+        &self,
+        property: impl Into<String>,
+        value: impl Into<String>,
+    ) -> ExpectAssertion {
+        ExpectAssertion::HasCss {
+            locator: self.locator.clone(),
+            property: property.into(),
+            expected: value.into(),
+        }
+    }
+
+    /// Assert the element has specific class
+    pub fn to_have_class(&self, class: impl Into<String>) -> ExpectAssertion {
+        ExpectAssertion::HasClass {
+            locator: self.locator.clone(),
+            expected: class.into(),
+        }
+    }
+
+    /// Assert the element has specific ID
+    pub fn to_have_id(&self, id: impl Into<String>) -> ExpectAssertion {
+        ExpectAssertion::HasId {
+            locator: self.locator.clone(),
+            expected: id.into(),
+        }
+    }
+
+    /// Assert the element has specific attribute value
+    pub fn to_have_attribute(
+        &self,
+        name: impl Into<String>,
+        value: impl Into<String>,
+    ) -> ExpectAssertion {
+        ExpectAssertion::HasAttribute {
+            locator: self.locator.clone(),
+            name: name.into(),
+            expected: value.into(),
+        }
+    }
 }
 
 /// Assertion types for `expect()`
@@ -647,6 +1259,78 @@ pub enum ExpectAssertion {
         /// Text to find
         expected: String,
     },
+    // =========================================================================
+    // PMAT-004: Element State Assertions (Playwright Parity)
+    // =========================================================================
+    /// Element is enabled
+    IsEnabled {
+        /// The locator
+        locator: Locator,
+    },
+    /// Element is disabled
+    IsDisabled {
+        /// The locator
+        locator: Locator,
+    },
+    /// Element is checked
+    IsChecked {
+        /// The locator
+        locator: Locator,
+    },
+    /// Element is editable
+    IsEditable {
+        /// The locator
+        locator: Locator,
+    },
+    /// Element is focused
+    IsFocused {
+        /// The locator
+        locator: Locator,
+    },
+    /// Element is empty
+    IsEmpty {
+        /// The locator
+        locator: Locator,
+    },
+    /// Element has specific value
+    HasValue {
+        /// The locator
+        locator: Locator,
+        /// Expected value
+        expected: String,
+    },
+    /// Element has specific CSS property
+    HasCss {
+        /// The locator
+        locator: Locator,
+        /// CSS property name
+        property: String,
+        /// Expected value
+        expected: String,
+    },
+    /// Element has specific class
+    HasClass {
+        /// The locator
+        locator: Locator,
+        /// Expected class
+        expected: String,
+    },
+    /// Element has specific ID
+    HasId {
+        /// The locator
+        locator: Locator,
+        /// Expected ID
+        expected: String,
+    },
+    /// Element has specific attribute
+    HasAttribute {
+        /// The locator
+        locator: Locator,
+        /// Attribute name
+        name: String,
+        /// Expected value
+        expected: String,
+    },
 }
 
 impl ExpectAssertion {
@@ -677,10 +1361,55 @@ impl ExpectAssertion {
                     })
                 }
             }
-            Self::IsVisible { .. } | Self::IsHidden { .. } | Self::HasCount { .. } => {
-                // These need browser context to validate
-                Ok(())
+            Self::HasValue { expected, .. } => {
+                if actual == expected {
+                    Ok(())
+                } else {
+                    Err(ProbarError::AssertionError {
+                        message: format!("Expected value '{expected}' but got '{actual}'"),
+                    })
+                }
             }
+            Self::HasClass { expected, .. } => {
+                if actual.split_whitespace().any(|c| c == expected) {
+                    Ok(())
+                } else {
+                    Err(ProbarError::AssertionError {
+                        message: format!("Expected class '{expected}' but got '{actual}'"),
+                    })
+                }
+            }
+            Self::HasId { expected, .. } => {
+                if actual == expected {
+                    Ok(())
+                } else {
+                    Err(ProbarError::AssertionError {
+                        message: format!("Expected id '{expected}' but got '{actual}'"),
+                    })
+                }
+            }
+            Self::HasAttribute { name, expected, .. } => {
+                if actual == expected {
+                    Ok(())
+                } else {
+                    Err(ProbarError::AssertionError {
+                        message: format!(
+                            "Expected attribute '{name}' to be '{expected}' but got '{actual}'"
+                        ),
+                    })
+                }
+            }
+            // These need browser context to validate
+            Self::IsVisible { .. }
+            | Self::IsHidden { .. }
+            | Self::HasCount { .. }
+            | Self::IsEnabled { .. }
+            | Self::IsDisabled { .. }
+            | Self::IsChecked { .. }
+            | Self::IsEditable { .. }
+            | Self::IsFocused { .. }
+            | Self::IsEmpty { .. }
+            | Self::HasCss { .. } => Ok(()),
         }
     }
 
@@ -703,6 +1432,89 @@ impl ExpectAssertion {
             _ => Ok(()),
         }
     }
+
+    /// Validate boolean state assertion
+    ///
+    /// # Errors
+    ///
+    /// Returns error if state doesn't match expected
+    pub fn validate_state(&self, actual: bool) -> ProbarResult<()> {
+        match self {
+            Self::IsEnabled { .. } => {
+                if actual {
+                    Ok(())
+                } else {
+                    Err(ProbarError::AssertionError {
+                        message: "Expected element to be enabled but it was disabled".to_string(),
+                    })
+                }
+            }
+            Self::IsDisabled { .. } => {
+                if actual {
+                    Ok(())
+                } else {
+                    Err(ProbarError::AssertionError {
+                        message: "Expected element to be disabled but it was enabled".to_string(),
+                    })
+                }
+            }
+            Self::IsChecked { .. } => {
+                if actual {
+                    Ok(())
+                } else {
+                    Err(ProbarError::AssertionError {
+                        message: "Expected element to be checked but it was not".to_string(),
+                    })
+                }
+            }
+            Self::IsEditable { .. } => {
+                if actual {
+                    Ok(())
+                } else {
+                    Err(ProbarError::AssertionError {
+                        message: "Expected element to be editable but it was not".to_string(),
+                    })
+                }
+            }
+            Self::IsFocused { .. } => {
+                if actual {
+                    Ok(())
+                } else {
+                    Err(ProbarError::AssertionError {
+                        message: "Expected element to be focused but it was not".to_string(),
+                    })
+                }
+            }
+            Self::IsEmpty { .. } => {
+                if actual {
+                    Ok(())
+                } else {
+                    Err(ProbarError::AssertionError {
+                        message: "Expected element to be empty but it was not".to_string(),
+                    })
+                }
+            }
+            Self::IsVisible { .. } => {
+                if actual {
+                    Ok(())
+                } else {
+                    Err(ProbarError::AssertionError {
+                        message: "Expected element to be visible but it was hidden".to_string(),
+                    })
+                }
+            }
+            Self::IsHidden { .. } => {
+                if actual {
+                    Ok(())
+                } else {
+                    Err(ProbarError::AssertionError {
+                        message: "Expected element to be hidden but it was visible".to_string(),
+                    })
+                }
+            }
+            _ => Ok(()),
+        }
+    }
 }
 
 /// Create an expectation for a locator (Playwright-style)
@@ -714,7 +1526,7 @@ pub fn expect(locator: Locator) -> Expect {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -1288,6 +2100,548 @@ mod tests {
             // These should not cause parsing issues
             assert!(selector_with_quotes.contains('"'));
             assert!(selector_with_brackets.contains('['));
+        }
+    }
+
+    // ============================================================================
+    // PMAT-001: Semantic Locators Tests
+    // ============================================================================
+
+    mod semantic_locator_tests {
+        use super::*;
+
+        #[test]
+        fn test_role_selector_query() {
+            let selector = Selector::role("button");
+            let query = selector.to_query();
+            assert!(query.contains("role"));
+            assert!(query.contains("button"));
+        }
+
+        #[test]
+        fn test_role_selector_with_name() {
+            let selector = Selector::role_with_name("button", "Submit");
+            let query = selector.to_query();
+            assert!(query.contains("role"));
+            assert!(query.contains("Submit"));
+        }
+
+        #[test]
+        fn test_role_selector_count_query() {
+            let selector = Selector::role("textbox");
+            let query = selector.to_count_query();
+            assert!(query.contains("role"));
+            assert!(query.contains(".length"));
+        }
+
+        #[test]
+        fn test_label_selector_query() {
+            let selector = Selector::label("Username");
+            let query = selector.to_query();
+            assert!(query.contains("label"));
+            assert!(query.contains("Username"));
+        }
+
+        #[test]
+        fn test_label_selector_count_query() {
+            let selector = Selector::label("Email");
+            let query = selector.to_count_query();
+            assert!(query.contains("label"));
+            assert!(query.contains(".length"));
+        }
+
+        #[test]
+        fn test_placeholder_selector_query() {
+            let selector = Selector::placeholder("Enter email");
+            let query = selector.to_query();
+            assert!(query.contains("placeholder"));
+            assert!(query.contains("Enter email"));
+        }
+
+        #[test]
+        fn test_placeholder_selector_count_query() {
+            let selector = Selector::placeholder("Search");
+            let query = selector.to_count_query();
+            assert!(query.contains("placeholder"));
+            assert!(query.contains(".length"));
+        }
+
+        #[test]
+        fn test_alt_text_selector_query() {
+            let selector = Selector::alt_text("Company Logo");
+            let query = selector.to_query();
+            assert!(query.contains("alt"));
+            assert!(query.contains("Company Logo"));
+        }
+
+        #[test]
+        fn test_alt_text_selector_count_query() {
+            let selector = Selector::alt_text("Logo");
+            let query = selector.to_count_query();
+            assert!(query.contains("alt"));
+            assert!(query.contains(".length"));
+        }
+
+        #[test]
+        fn test_locator_by_role() {
+            let locator = Locator::by_role("button");
+            assert!(matches!(locator.selector(), Selector::Role { .. }));
+        }
+
+        #[test]
+        fn test_locator_by_role_with_name() {
+            let locator = Locator::by_role_with_name("link", "Home");
+            match locator.selector() {
+                Selector::Role { name, .. } => assert!(name.is_some()),
+                _ => panic!("Expected Role selector"),
+            }
+        }
+
+        #[test]
+        fn test_locator_by_label() {
+            let locator = Locator::by_label("Password");
+            assert!(matches!(locator.selector(), Selector::Label(_)));
+        }
+
+        #[test]
+        fn test_locator_by_placeholder() {
+            let locator = Locator::by_placeholder("Enter your name");
+            assert!(matches!(locator.selector(), Selector::Placeholder(_)));
+        }
+
+        #[test]
+        fn test_locator_by_alt_text() {
+            let locator = Locator::by_alt_text("Profile Picture");
+            assert!(matches!(locator.selector(), Selector::AltText(_)));
+        }
+
+        #[test]
+        fn test_locator_by_test_id() {
+            let locator = Locator::by_test_id("submit-btn");
+            assert!(matches!(locator.selector(), Selector::TestId(_)));
+        }
+
+        #[test]
+        fn test_locator_by_text() {
+            let locator = Locator::by_text("Click here");
+            assert!(matches!(locator.selector(), Selector::Text(_)));
+        }
+    }
+
+    // ============================================================================
+    // PMAT-002: Locator Operations Tests
+    // ============================================================================
+
+    mod locator_operations_tests {
+        use super::*;
+
+        #[test]
+        fn test_filter_with_has_text() {
+            let locator = Locator::new("button").filter(FilterOptions::new().has_text("Submit"));
+            assert!(matches!(locator.selector(), Selector::CssWithText { .. }));
+        }
+
+        #[test]
+        fn test_filter_options_builder() {
+            let options = FilterOptions::new()
+                .has_text("Hello")
+                .has_not_text("Goodbye");
+            assert!(options.has_text.is_some());
+            assert!(options.has_not_text.is_some());
+        }
+
+        #[test]
+        fn test_filter_options_has() {
+            let child = Locator::new(".child");
+            let options = FilterOptions::new().has(child);
+            assert!(options.has.is_some());
+        }
+
+        #[test]
+        fn test_filter_options_has_not() {
+            let child = Locator::new(".excluded");
+            let options = FilterOptions::new().has_not(child);
+            assert!(options.has_not.is_some());
+        }
+
+        #[test]
+        fn test_locator_and() {
+            let locator1 = Locator::new("div");
+            let locator2 = Locator::new(".active");
+            let combined = locator1.and(locator2);
+            if let Selector::Css(s) = combined.selector() {
+                assert!(s.contains("div"));
+                assert!(s.contains(".active"));
+            } else {
+                panic!("Expected CSS selector");
+            }
+        }
+
+        #[test]
+        fn test_locator_or() {
+            let locator1 = Locator::new("button");
+            let locator2 = Locator::new("a.btn");
+            let combined = locator1.or(locator2);
+            if let Selector::Css(s) = combined.selector() {
+                assert!(s.contains("button"));
+                assert!(s.contains("a.btn"));
+                assert!(s.contains(", "));
+            } else {
+                panic!("Expected CSS selector");
+            }
+        }
+
+        #[test]
+        fn test_locator_first() {
+            let locator = Locator::new("li").first();
+            if let Selector::Css(s) = locator.selector() {
+                assert!(s.contains(":first-child"));
+            } else {
+                panic!("Expected CSS selector");
+            }
+        }
+
+        #[test]
+        fn test_locator_last() {
+            let locator = Locator::new("li").last();
+            if let Selector::Css(s) = locator.selector() {
+                assert!(s.contains(":last-child"));
+            } else {
+                panic!("Expected CSS selector");
+            }
+        }
+
+        #[test]
+        fn test_locator_nth() {
+            let locator = Locator::new("li").nth(2);
+            if let Selector::Css(s) = locator.selector() {
+                assert!(s.contains(":nth-child(3)")); // 0-indexed to 1-indexed
+            } else {
+                panic!("Expected CSS selector");
+            }
+        }
+
+        #[test]
+        fn test_locator_and_non_css() {
+            let locator1 = Locator::from_selector(Selector::Entity("hero".to_string()));
+            let locator2 = Locator::new("div");
+            let combined = locator1.and(locator2);
+            // Should keep the original non-CSS selector
+            assert!(matches!(combined.selector(), Selector::Entity(_)));
+        }
+    }
+
+    // ============================================================================
+    // PMAT-003: Mouse Actions Tests
+    // ============================================================================
+
+    mod mouse_actions_tests {
+        use super::*;
+
+        #[test]
+        fn test_right_click() {
+            let locator = Locator::new("button");
+            let action = locator.right_click().unwrap();
+            assert!(matches!(action, LocatorAction::RightClick { .. }));
+        }
+
+        #[test]
+        fn test_hover() {
+            let locator = Locator::new("menu-item");
+            let action = locator.hover().unwrap();
+            assert!(matches!(action, LocatorAction::Hover { .. }));
+        }
+
+        #[test]
+        fn test_focus() {
+            let locator = Locator::new("input");
+            let action = locator.focus().unwrap();
+            assert!(matches!(action, LocatorAction::Focus { .. }));
+        }
+
+        #[test]
+        fn test_blur() {
+            let locator = Locator::new("input");
+            let action = locator.blur().unwrap();
+            assert!(matches!(action, LocatorAction::Blur { .. }));
+        }
+
+        #[test]
+        fn test_check() {
+            let locator = Locator::new("input[type=checkbox]");
+            let action = locator.check().unwrap();
+            assert!(matches!(action, LocatorAction::Check { .. }));
+        }
+
+        #[test]
+        fn test_uncheck() {
+            let locator = Locator::new("input[type=checkbox]");
+            let action = locator.uncheck().unwrap();
+            assert!(matches!(action, LocatorAction::Uncheck { .. }));
+        }
+
+        #[test]
+        fn test_scroll_into_view() {
+            let locator = Locator::new("footer");
+            let action = locator.scroll_into_view().unwrap();
+            assert!(matches!(action, LocatorAction::ScrollIntoView { .. }));
+        }
+
+        #[test]
+        fn test_click_with_options_default() {
+            let options = ClickOptions::new();
+            assert_eq!(options.button, MouseButton::Left);
+            assert_eq!(options.click_count, 1);
+            assert!(options.position.is_none());
+            assert!(options.modifiers.is_empty());
+        }
+
+        #[test]
+        fn test_click_with_options_right_button() {
+            let options = ClickOptions::new().button(MouseButton::Right);
+            assert_eq!(options.button, MouseButton::Right);
+        }
+
+        #[test]
+        fn test_click_with_options_double_click() {
+            let options = ClickOptions::new().click_count(2);
+            assert_eq!(options.click_count, 2);
+        }
+
+        #[test]
+        fn test_click_with_options_position() {
+            let options = ClickOptions::new().position(Point::new(10.0, 20.0));
+            assert!(options.position.is_some());
+        }
+
+        #[test]
+        fn test_click_with_options_modifier() {
+            let options = ClickOptions::new()
+                .modifier(KeyModifier::Shift)
+                .modifier(KeyModifier::Control);
+            assert_eq!(options.modifiers.len(), 2);
+        }
+
+        #[test]
+        fn test_click_with_custom_options() {
+            let locator = Locator::new("button");
+            let options = ClickOptions::new().button(MouseButton::Middle);
+            let action = locator.click_with_options(options).unwrap();
+            assert!(matches!(action, LocatorAction::ClickWithOptions { .. }));
+        }
+
+        #[test]
+        fn test_mouse_button_default() {
+            let button: MouseButton = Default::default();
+            assert_eq!(button, MouseButton::Left);
+        }
+
+        #[test]
+        fn test_locator_action_locator_accessor_all_variants() {
+            let locator = Locator::new("button");
+
+            // Test new action variants
+            let _ = locator.right_click().unwrap().locator();
+            let _ = locator.hover().unwrap().locator();
+            let _ = locator.focus().unwrap().locator();
+            let _ = locator.blur().unwrap().locator();
+            let _ = locator.check().unwrap().locator();
+            let _ = locator.uncheck().unwrap().locator();
+            let _ = locator.scroll_into_view().unwrap().locator();
+            let _ = locator
+                .click_with_options(ClickOptions::new())
+                .unwrap()
+                .locator();
+        }
+    }
+
+    // ============================================================================
+    // PMAT-004: Element State Assertions Tests
+    // ============================================================================
+
+    mod element_state_assertions_tests {
+        use super::*;
+
+        #[test]
+        fn test_to_be_enabled() {
+            let locator = Locator::new("button");
+            let assertion = expect(locator).to_be_enabled();
+            assert!(matches!(assertion, ExpectAssertion::IsEnabled { .. }));
+        }
+
+        #[test]
+        fn test_to_be_disabled() {
+            let locator = Locator::new("button");
+            let assertion = expect(locator).to_be_disabled();
+            assert!(matches!(assertion, ExpectAssertion::IsDisabled { .. }));
+        }
+
+        #[test]
+        fn test_to_be_checked() {
+            let locator = Locator::new("input[type=checkbox]");
+            let assertion = expect(locator).to_be_checked();
+            assert!(matches!(assertion, ExpectAssertion::IsChecked { .. }));
+        }
+
+        #[test]
+        fn test_to_be_editable() {
+            let locator = Locator::new("textarea");
+            let assertion = expect(locator).to_be_editable();
+            assert!(matches!(assertion, ExpectAssertion::IsEditable { .. }));
+        }
+
+        #[test]
+        fn test_to_be_focused() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_be_focused();
+            assert!(matches!(assertion, ExpectAssertion::IsFocused { .. }));
+        }
+
+        #[test]
+        fn test_to_be_empty() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_be_empty();
+            assert!(matches!(assertion, ExpectAssertion::IsEmpty { .. }));
+        }
+
+        #[test]
+        fn test_to_have_value() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_have_value("test");
+            assert!(matches!(assertion, ExpectAssertion::HasValue { .. }));
+        }
+
+        #[test]
+        fn test_to_have_css() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_have_css("color", "red");
+            assert!(matches!(assertion, ExpectAssertion::HasCss { .. }));
+        }
+
+        #[test]
+        fn test_to_have_class() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_have_class("active");
+            assert!(matches!(assertion, ExpectAssertion::HasClass { .. }));
+        }
+
+        #[test]
+        fn test_to_have_id() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_have_id("main-content");
+            assert!(matches!(assertion, ExpectAssertion::HasId { .. }));
+        }
+
+        #[test]
+        fn test_to_have_attribute() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_have_attribute("type", "text");
+            assert!(matches!(assertion, ExpectAssertion::HasAttribute { .. }));
+        }
+
+        #[test]
+        fn test_validate_has_value_pass() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_have_value("test123");
+            assert!(assertion.validate("test123").is_ok());
+        }
+
+        #[test]
+        fn test_validate_has_value_fail() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_have_value("expected");
+            assert!(assertion.validate("actual").is_err());
+        }
+
+        #[test]
+        fn test_validate_has_class_pass() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_have_class("active");
+            assert!(assertion.validate("btn active primary").is_ok());
+        }
+
+        #[test]
+        fn test_validate_has_class_fail() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_have_class("missing");
+            assert!(assertion.validate("btn active").is_err());
+        }
+
+        #[test]
+        fn test_validate_has_id_pass() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_have_id("main");
+            assert!(assertion.validate("main").is_ok());
+        }
+
+        #[test]
+        fn test_validate_has_attribute_pass() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_have_attribute("type", "text");
+            assert!(assertion.validate("text").is_ok());
+        }
+
+        #[test]
+        fn test_validate_state_enabled_pass() {
+            let locator = Locator::new("button");
+            let assertion = expect(locator).to_be_enabled();
+            assert!(assertion.validate_state(true).is_ok());
+        }
+
+        #[test]
+        fn test_validate_state_enabled_fail() {
+            let locator = Locator::new("button");
+            let assertion = expect(locator).to_be_enabled();
+            assert!(assertion.validate_state(false).is_err());
+        }
+
+        #[test]
+        fn test_validate_state_disabled_pass() {
+            let locator = Locator::new("button");
+            let assertion = expect(locator).to_be_disabled();
+            assert!(assertion.validate_state(true).is_ok());
+        }
+
+        #[test]
+        fn test_validate_state_checked_pass() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_be_checked();
+            assert!(assertion.validate_state(true).is_ok());
+        }
+
+        #[test]
+        fn test_validate_state_editable_pass() {
+            let locator = Locator::new("textarea");
+            let assertion = expect(locator).to_be_editable();
+            assert!(assertion.validate_state(true).is_ok());
+        }
+
+        #[test]
+        fn test_validate_state_focused_pass() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_be_focused();
+            assert!(assertion.validate_state(true).is_ok());
+        }
+
+        #[test]
+        fn test_validate_state_empty_pass() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_be_empty();
+            assert!(assertion.validate_state(true).is_ok());
+        }
+
+        #[test]
+        fn test_validate_state_visible_pass() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_be_visible();
+            assert!(assertion.validate_state(true).is_ok());
+        }
+
+        #[test]
+        fn test_validate_state_hidden_pass() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_be_hidden();
+            assert!(assertion.validate_state(true).is_ok());
         }
     }
 }

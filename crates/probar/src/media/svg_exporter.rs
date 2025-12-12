@@ -927,6 +927,7 @@ fn base64_encode(data: &[u8]) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use std::time::SystemTime;
@@ -1131,6 +1132,173 @@ mod tests {
             assert!(svg.contains("<circle"));
             assert!(svg.contains("</g>"));
         }
+
+        #[test]
+        fn test_group_without_id() {
+            let shapes = vec![SvgShape::Group {
+                id: None,
+                children: vec![SvgShape::rect(0.0, 0.0, 50.0, 50.0).with_fill("blue")],
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<g>"));
+            assert!(!svg.contains("<g id="));
+        }
+
+        #[test]
+        fn test_ellipse_shape() {
+            let shapes = vec![SvgShape::Ellipse {
+                cx: 100.0,
+                cy: 50.0,
+                rx: 80.0,
+                ry: 40.0,
+                fill: Some("yellow".to_string()),
+                stroke: Some("black".to_string()),
+                stroke_width: Some(2.0),
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(200, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<ellipse"));
+            assert!(svg.contains("cx=\"100\""));
+            assert!(svg.contains("rx=\"80\""));
+            assert!(svg.contains("ry=\"40\""));
+            assert!(svg.contains("fill=\"yellow\""));
+        }
+
+        #[test]
+        fn test_polyline_shape() {
+            let shapes = vec![SvgShape::Polyline {
+                points: vec![(10.0, 10.0), (50.0, 90.0), (90.0, 10.0)],
+                stroke: Some("purple".to_string()),
+                stroke_width: Some(3.0),
+                fill: None,
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<polyline"));
+            assert!(svg.contains("points=\"10,10 50,90 90,10\""));
+            assert!(svg.contains("stroke=\"purple\""));
+            assert!(svg.contains("fill=\"none\""));
+        }
+
+        #[test]
+        fn test_polyline_with_fill() {
+            let shapes = vec![SvgShape::Polyline {
+                points: vec![(10.0, 10.0), (50.0, 90.0), (90.0, 10.0)],
+                stroke: None,
+                stroke_width: None,
+                fill: Some("orange".to_string()),
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("fill=\"orange\""));
+        }
+
+        #[test]
+        fn test_polygon_shape() {
+            let shapes = vec![SvgShape::Polygon {
+                points: vec![(50.0, 10.0), (90.0, 90.0), (10.0, 90.0)],
+                fill: Some("green".to_string()),
+                stroke: Some("darkgreen".to_string()),
+                stroke_width: Some(2.0),
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<polygon"));
+            assert!(svg.contains("points=\"50,10 90,90 10,90\""));
+            assert!(svg.contains("fill=\"green\""));
+        }
+
+        #[test]
+        fn test_path_shape() {
+            let shapes = vec![SvgShape::Path {
+                d: "M10 10 L90 90 L10 90 Z".to_string(),
+                fill: Some("cyan".to_string()),
+                stroke: Some("teal".to_string()),
+                stroke_width: Some(1.0),
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<path"));
+            assert!(svg.contains("d=\"M10 10 L90 90 L10 90 Z\""));
+            assert!(svg.contains("fill=\"cyan\""));
+        }
+
+        #[test]
+        fn test_rect_with_rounded_corners() {
+            let shapes = vec![SvgShape::Rect {
+                x: 10.0,
+                y: 10.0,
+                width: 80.0,
+                height: 60.0,
+                fill: Some("blue".to_string()),
+                stroke: None,
+                stroke_width: None,
+                rx: Some(10.0),
+                ry: Some(5.0),
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("rx=\"10\""));
+            assert!(svg.contains("ry=\"5\""));
+        }
+
+        #[test]
+        fn test_text_with_font_options() {
+            let shapes = vec![SvgShape::Text {
+                x: 10.0,
+                y: 50.0,
+                content: "Hello".to_string(),
+                font_size: Some(24.0),
+                fill: Some("black".to_string()),
+                font_family: Some("Arial".to_string()),
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<text"));
+            assert!(svg.contains("font-size=\"24\""));
+            assert!(svg.contains("font-family=\"Arial\""));
+            assert!(svg.contains(">Hello</text>"));
+        }
+
+        #[test]
+        fn test_shapes_preserve_aspect_ratio_false() {
+            let config = SvgConfig::new(100, 100).with_preserve_aspect_ratio(false);
+            let exporter = SvgExporter::with_config(config);
+            let shapes = vec![SvgShape::rect(0.0, 0.0, 50.0, 50.0)];
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("preserveAspectRatio=\"none\""));
+        }
+
+        #[test]
+        fn test_shapes_with_title_and_description() {
+            let config = SvgConfig::new(100, 100)
+                .with_title("My Shapes")
+                .with_description("A test shape");
+            let exporter = SvgExporter::with_config(config);
+            let shapes = vec![SvgShape::rect(0.0, 0.0, 50.0, 50.0)];
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<title>My Shapes</title>"));
+            assert!(svg.contains("<desc>A test shape</desc>"));
+        }
     }
 
     mod annotation_tests {
@@ -1254,6 +1422,235 @@ mod tests {
             assert!(svg.contains("</svg>"));
             assert_eq!(svg.matches("<svg").count(), 1);
             assert_eq!(svg.matches("</svg>").count(), 1);
+        }
+    }
+
+    mod shape_builder_tests {
+        use super::*;
+
+        #[test]
+        fn test_rect_with_stroke() {
+            let shape = SvgShape::rect(0.0, 0.0, 100.0, 50.0)
+                .with_stroke("red")
+                .with_stroke_width(2.0);
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(200, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("stroke=\"red\""));
+            assert!(svg.contains("stroke-width=\"2\""));
+        }
+
+        #[test]
+        fn test_circle_with_all_properties() {
+            let shape = SvgShape::circle(50.0, 50.0, 25.0)
+                .with_fill("blue")
+                .with_stroke("black")
+                .with_stroke_width(3.0);
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("fill=\"blue\""));
+            assert!(svg.contains("stroke=\"black\""));
+            assert!(svg.contains("stroke-width=\"3\""));
+        }
+
+        #[test]
+        fn test_line_with_stroke() {
+            let shape = SvgShape::line(0.0, 0.0, 100.0, 100.0)
+                .with_stroke("green")
+                .with_stroke_width(5.0);
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("stroke=\"green\""));
+        }
+
+        #[test]
+        fn test_text_with_fill() {
+            let shape = SvgShape::text(10.0, 50.0, "Hello World").with_fill("purple");
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(200, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("fill=\"purple\""));
+            assert!(svg.contains("Hello World"));
+        }
+
+        #[test]
+        fn test_line_ignores_fill() {
+            // Fill should be ignored for lines
+            let shape = SvgShape::line(0.0, 0.0, 100.0, 100.0).with_fill("red");
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            // Line should not have fill attribute
+            assert!(svg.contains("<line"));
+        }
+
+        #[test]
+        fn test_group_ignores_style_methods() {
+            // Group should ignore fill/stroke/stroke_width
+            let child = SvgShape::rect(0.0, 0.0, 50.0, 50.0).with_fill("blue");
+            let shape = SvgShape::Group {
+                id: Some("test".to_string()),
+                children: vec![child],
+            };
+
+            let modified = shape
+                .with_fill("red")
+                .with_stroke("green")
+                .with_stroke_width(5.0);
+
+            let shapes = vec![modified];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            // Group itself shouldn't have fill, child should have blue
+            assert!(svg.contains("fill=\"blue\""));
+        }
+
+        #[test]
+        fn test_ellipse_with_all_properties() {
+            let shape = SvgShape::Ellipse {
+                cx: 50.0,
+                cy: 50.0,
+                rx: 40.0,
+                ry: 20.0,
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+            };
+
+            let shape = shape
+                .with_fill("orange")
+                .with_stroke("brown")
+                .with_stroke_width(2.0);
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("fill=\"orange\""));
+            assert!(svg.contains("stroke=\"brown\""));
+        }
+
+        #[test]
+        fn test_polygon_with_fill() {
+            let shape = SvgShape::Polygon {
+                points: vec![(50.0, 0.0), (100.0, 100.0), (0.0, 100.0)],
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+            }
+            .with_fill("yellow");
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("fill=\"yellow\""));
+        }
+
+        #[test]
+        fn test_path_with_stroke() {
+            let shape = SvgShape::Path {
+                d: "M 0 0 L 100 100".to_string(),
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+            }
+            .with_stroke("gray")
+            .with_stroke_width(4.0);
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("stroke=\"gray\""));
+            assert!(svg.contains("stroke-width=\"4\""));
+        }
+
+        #[test]
+        fn test_polyline_with_stroke() {
+            let shape = SvgShape::Polyline {
+                points: vec![(0.0, 0.0), (50.0, 100.0), (100.0, 0.0)],
+                stroke: None,
+                stroke_width: None,
+                fill: None,
+            }
+            .with_stroke("navy")
+            .with_fill("none");
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("stroke=\"navy\""));
+        }
+    }
+
+    mod annotation_rendering_tests {
+        use super::*;
+
+        #[test]
+        fn test_annotation_with_custom_color() {
+            let screenshot = test_screenshot();
+            let annotations =
+                vec![Annotation::rectangle(10, 10, 50, 50).with_color(0, 255, 0, 255)];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
+
+            assert!(svg.contains("rgba(0,255,0,1)"));
+        }
+
+        #[test]
+        fn test_annotation_with_label() {
+            let screenshot = test_screenshot();
+            let annotations = vec![Annotation::rectangle(10, 10, 50, 50).with_label("Test")];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
+
+            assert!(svg.contains("Test"));
+        }
+    }
+
+    mod exporter_clone_debug_tests {
+        use super::*;
+
+        #[test]
+        fn test_svg_config_debug() {
+            let config = SvgConfig::new(800, 600);
+            let debug = format!("{:?}", config);
+            assert!(debug.contains("SvgConfig"));
+        }
+
+        #[test]
+        fn test_svg_exporter_debug() {
+            let exporter = SvgExporter::new();
+            let debug = format!("{:?}", exporter);
+            assert!(debug.contains("SvgExporter"));
+        }
+
+        #[test]
+        fn test_svg_shape_debug() {
+            let shape = SvgShape::rect(0.0, 0.0, 100.0, 50.0);
+            let debug = format!("{:?}", shape);
+            assert!(debug.contains("Rect"));
         }
     }
 }

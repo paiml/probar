@@ -540,6 +540,7 @@ impl WatchBuilder {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -570,6 +571,20 @@ mod tests {
         fn test_with_debounce() {
             let config = WatchConfig::new().with_debounce(500);
             assert_eq!(config.debounce_ms, 500);
+        }
+
+        #[test]
+        fn test_with_clear_screen() {
+            let config = WatchConfig::new().with_clear_screen(false);
+            assert!(!config.clear_screen);
+            let config = WatchConfig::new().with_clear_screen(true);
+            assert!(config.clear_screen);
+        }
+
+        #[test]
+        fn test_with_watch_dir() {
+            let config = WatchConfig::new().with_watch_dir(Path::new("src"));
+            assert!(config.watch_dirs.contains(&PathBuf::from("src")));
         }
 
         #[test]
@@ -686,6 +701,65 @@ mod tests {
             let mut watcher = FileWatcher::new(config).unwrap();
             assert!(watcher.check_changes().is_none());
         }
+
+        #[test]
+        fn test_start_and_stop() {
+            let config = WatchConfig::new().with_watch_dir(Path::new("."));
+            let mut watcher = FileWatcher::new(config).unwrap();
+            assert!(!watcher.is_running());
+
+            watcher.start().unwrap();
+            assert!(watcher.is_running());
+
+            watcher.stop();
+            assert!(!watcher.is_running());
+        }
+
+        #[test]
+        fn test_config_accessor() {
+            let config = WatchConfig::new().with_debounce(500);
+            let watcher = FileWatcher::new(config).unwrap();
+            assert_eq!(watcher.config().debounce_ms, 500);
+        }
+
+        #[test]
+        fn test_debug() {
+            let config = WatchConfig::default();
+            let watcher = FileWatcher::new(config).unwrap();
+            let debug_str = format!("{:?}", watcher);
+            assert!(debug_str.contains("FileWatcher"));
+            assert!(debug_str.contains("is_running"));
+        }
+
+        #[test]
+        fn test_start_stop_multiple_times() {
+            let config = WatchConfig::new().with_watch_dir(Path::new("."));
+            let mut watcher = FileWatcher::new(config).unwrap();
+
+            watcher.start().unwrap();
+            assert!(watcher.is_running());
+            watcher.stop();
+            assert!(!watcher.is_running());
+
+            // Start again
+            watcher.start().unwrap();
+            assert!(watcher.is_running());
+            watcher.stop();
+            assert!(!watcher.is_running());
+        }
+
+        #[test]
+        fn test_check_changes_after_start_no_events() {
+            let config = WatchConfig::new().with_watch_dir(Path::new("."));
+            let mut watcher = FileWatcher::new(config).unwrap();
+            watcher.start().unwrap();
+
+            // No changes should be detected immediately
+            let changes = watcher.check_changes();
+            assert!(changes.is_none());
+
+            watcher.stop();
+        }
     }
 
     mod watch_stats_tests {
@@ -755,6 +829,12 @@ mod tests {
         }
 
         #[test]
+        fn test_src_dir() {
+            let config = WatchBuilder::new().src_dir().build();
+            assert!(config.watch_dirs.contains(&PathBuf::from("src")));
+        }
+
+        #[test]
         fn test_debounce() {
             let config = WatchBuilder::new().debounce(500).build();
             assert_eq!(config.debounce_ms, 500);
@@ -799,6 +879,81 @@ mod tests {
 
             handler.on_change(&changes).unwrap();
             assert_eq!(counter.load(Ordering::SeqCst), 1);
+        }
+
+        #[test]
+        fn test_debug() {
+            let handler = FnWatchHandler::new(|_changes| Ok(()));
+            let debug_str = format!("{:?}", handler);
+            assert!(debug_str.contains("FnWatchHandler"));
+        }
+    }
+
+    mod file_change_kind_tests {
+        use super::*;
+
+        #[test]
+        fn test_other_kind() {
+            let kind = FileChangeKind::from(EventKind::Other);
+            assert_eq!(kind, FileChangeKind::Other);
+        }
+
+        #[test]
+        fn test_access_kind() {
+            let kind = FileChangeKind::from(EventKind::Access(notify::event::AccessKind::Read));
+            assert_eq!(kind, FileChangeKind::Other);
+        }
+    }
+
+    mod file_change_additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_debug() {
+            let change = FileChange {
+                path: PathBuf::from("test.rs"),
+                kind: FileChangeKind::Modified,
+                timestamp: Instant::now(),
+            };
+            let debug_str = format!("{:?}", change);
+            assert!(debug_str.contains("test.rs"));
+            assert!(debug_str.contains("Modified"));
+        }
+
+        #[test]
+        fn test_clone() {
+            let change = FileChange {
+                path: PathBuf::from("test.rs"),
+                kind: FileChangeKind::Created,
+                timestamp: Instant::now(),
+            };
+            let cloned = change.clone();
+            assert_eq!(change.path, cloned.path);
+            assert_eq!(change.kind, cloned.kind);
+        }
+    }
+
+    mod watch_handler_default_tests {
+        use super::*;
+
+        struct TestHandler;
+
+        impl WatchHandler for TestHandler {
+            fn on_change(&self, _changes: &[FileChange]) -> ProbarResult<()> {
+                Ok(())
+            }
+        }
+
+        #[test]
+        fn test_on_start_default() {
+            let handler = TestHandler;
+            assert!(handler.on_start().is_ok());
+        }
+
+        #[test]
+        fn test_on_stop_default() {
+            let handler = TestHandler;
+            assert!(handler.on_stop().is_ok());
         }
     }
 }

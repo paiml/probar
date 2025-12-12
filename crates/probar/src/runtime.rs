@@ -450,6 +450,15 @@ pub struct WasmRuntime {
 }
 
 #[cfg(feature = "runtime")]
+impl std::fmt::Debug for WasmRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WasmRuntime")
+            .field("memory_view", &self.memory_view)
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "runtime")]
 impl WasmRuntime {
     /// Load a WASM game binary
     ///
@@ -710,6 +719,7 @@ impl WasmRuntime {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

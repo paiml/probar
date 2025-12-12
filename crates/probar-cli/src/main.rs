@@ -112,9 +112,13 @@ fn run_report(_config: &CliConfig, args: &probar_cli::ReportArgs) {
         #[cfg(target_os = "macos")]
         let _ = std::process::Command::new("open").arg(&args.output).spawn();
         #[cfg(target_os = "linux")]
-        let _ = std::process::Command::new("xdg-open").arg(&args.output).spawn();
+        let _ = std::process::Command::new("xdg-open")
+            .arg(&args.output)
+            .spawn();
         #[cfg(target_os = "windows")]
-        let _ = std::process::Command::new("start").arg(&args.output).spawn();
+        let _ = std::process::Command::new("start")
+            .arg(&args.output)
+            .spawn();
     }
 }
 
@@ -191,32 +195,264 @@ fn run_config(config: &CliConfig, args: &probar_cli::ConfigArgs) {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use probar_cli::{ConfigArgs, InitArgs, RecordArgs, RecordFormat, ReportArgs, ReportFormat};
+    use std::path::PathBuf;
 
-    #[test]
-    fn test_build_config_default() {
-        let cli = Cli::parse_from(["probar", "test"]);
-        let config = build_config(&cli);
-        assert_eq!(config.verbosity, Verbosity::Normal);
+    mod build_config_tests {
+        use super::*;
+
+        #[test]
+        fn test_build_config_default() {
+            let cli = Cli::parse_from(["probar", "test"]);
+            let config = build_config(&cli);
+            assert_eq!(config.verbosity, Verbosity::Normal);
+        }
+
+        #[test]
+        fn test_build_config_verbose() {
+            let cli = Cli::parse_from(["probar", "-v", "test"]);
+            let config = build_config(&cli);
+            assert_eq!(config.verbosity, Verbosity::Verbose);
+        }
+
+        #[test]
+        fn test_build_config_debug() {
+            let cli = Cli::parse_from(["probar", "-vv", "test"]);
+            let config = build_config(&cli);
+            assert_eq!(config.verbosity, Verbosity::Debug);
+        }
+
+        #[test]
+        fn test_build_config_very_verbose() {
+            let cli = Cli::parse_from(["probar", "-vvv", "test"]);
+            let config = build_config(&cli);
+            assert_eq!(config.verbosity, Verbosity::Debug);
+        }
+
+        #[test]
+        fn test_build_config_quiet() {
+            let cli = Cli::parse_from(["probar", "-q", "test"]);
+            let config = build_config(&cli);
+            assert_eq!(config.verbosity, Verbosity::Quiet);
+        }
+
+        #[test]
+        fn test_build_config_color_never() {
+            let cli = Cli::parse_from(["probar", "--color", "never", "test"]);
+            let config = build_config(&cli);
+            assert_eq!(config.color, ColorChoice::Never);
+        }
+
+        #[test]
+        fn test_build_config_color_always() {
+            let cli = Cli::parse_from(["probar", "--color", "always", "test"]);
+            let config = build_config(&cli);
+            assert_eq!(config.color, ColorChoice::Always);
+        }
     }
 
-    #[test]
-    fn test_build_config_verbose() {
-        let cli = Cli::parse_from(["probar", "-v", "test"]);
-        let config = build_config(&cli);
-        assert_eq!(config.verbosity, Verbosity::Verbose);
+    mod run_record_tests {
+        use super::*;
+
+        #[test]
+        fn test_run_record() {
+            let config = CliConfig::default();
+            let args = RecordArgs {
+                test: "my_test".to_string(),
+                format: RecordFormat::Gif,
+                output: None,
+                fps: 10,
+                quality: 80,
+            };
+            run_record(&config, &args);
+            // Just verify it doesn't panic
+        }
+
+        #[test]
+        fn test_run_record_png() {
+            let config = CliConfig::default();
+            let args = RecordArgs {
+                test: "another_test".to_string(),
+                format: RecordFormat::Png,
+                output: Some(PathBuf::from("output.png")),
+                fps: 30,
+                quality: 100,
+            };
+            run_record(&config, &args);
+        }
     }
 
-    #[test]
-    fn test_build_config_debug() {
-        let cli = Cli::parse_from(["probar", "-vv", "test"]);
-        let config = build_config(&cli);
-        assert_eq!(config.verbosity, Verbosity::Debug);
+    mod run_report_tests {
+        use super::*;
+
+        #[test]
+        fn test_run_report_html() {
+            let config = CliConfig::default();
+            let args = ReportArgs {
+                format: ReportFormat::Html,
+                output: PathBuf::from("/tmp/probar_test_report"),
+                open: false,
+            };
+            run_report(&config, &args);
+        }
+
+        #[test]
+        fn test_run_report_json() {
+            let config = CliConfig::default();
+            let args = ReportArgs {
+                format: ReportFormat::Json,
+                output: PathBuf::from("/tmp/probar_test_report.json"),
+                open: false,
+            };
+            run_report(&config, &args);
+        }
+
+        #[test]
+        fn test_run_report_with_open() {
+            let config = CliConfig::default();
+            let args = ReportArgs {
+                format: ReportFormat::Html,
+                output: PathBuf::from("/tmp/probar_test_report_open"),
+                open: true,
+            };
+            run_report(&config, &args);
+        }
     }
 
-    #[test]
-    fn test_build_config_quiet() {
-        let cli = Cli::parse_from(["probar", "-q", "test"]);
-        let config = build_config(&cli);
-        assert_eq!(config.verbosity, Verbosity::Quiet);
+    mod run_init_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn test_run_init_basic() {
+            let temp_dir = std::env::temp_dir().join("probar_init_test");
+            let _ = fs::remove_dir_all(&temp_dir);
+
+            let args = InitArgs {
+                path: temp_dir.clone(),
+                force: false,
+            };
+            run_init(&args);
+
+            // Cleanup
+            let _ = fs::remove_dir_all(&temp_dir);
+        }
+
+        #[test]
+        fn test_run_init_force() {
+            let temp_dir = std::env::temp_dir().join("probar_init_force_test");
+            let _ = fs::remove_dir_all(&temp_dir);
+
+            let args = InitArgs {
+                path: temp_dir.clone(),
+                force: true,
+            };
+            run_init(&args);
+
+            // Run again with force
+            run_init(&args);
+
+            // Cleanup
+            let _ = fs::remove_dir_all(&temp_dir);
+        }
+    }
+
+    mod run_config_tests {
+        use super::*;
+
+        #[test]
+        fn test_run_config_show() {
+            let config = CliConfig::default();
+            let args = ConfigArgs {
+                show: true,
+                set: None,
+                reset: false,
+            };
+            run_config(&config, &args);
+        }
+
+        #[test]
+        fn test_run_config_set_valid() {
+            let config = CliConfig::default();
+            let args = ConfigArgs {
+                show: false,
+                set: Some("key=value".to_string()),
+                reset: false,
+            };
+            run_config(&config, &args);
+        }
+
+        #[test]
+        fn test_run_config_set_invalid() {
+            let config = CliConfig::default();
+            let args = ConfigArgs {
+                show: false,
+                set: Some("invalid_format".to_string()),
+                reset: false,
+            };
+            run_config(&config, &args);
+        }
+
+        #[test]
+        fn test_run_config_reset() {
+            let config = CliConfig::default();
+            let args = ConfigArgs {
+                show: false,
+                set: None,
+                reset: true,
+            };
+            run_config(&config, &args);
+        }
+
+        #[test]
+        fn test_run_config_all_flags() {
+            let config = CliConfig::default();
+            let args = ConfigArgs {
+                show: true,
+                set: Some("test=value".to_string()),
+                reset: true,
+            };
+            run_config(&config, &args);
+        }
+    }
+
+    mod run_tests_tests {
+        use super::*;
+        use probar_cli::TestArgs;
+
+        #[test]
+        fn test_run_tests_no_tests() {
+            let config = CliConfig::default();
+            let args = TestArgs {
+                filter: None,
+                parallel: 0,
+                coverage: false,
+                mutants: false,
+                fail_fast: false,
+                watch: false,
+                timeout: 30000,
+                output: PathBuf::from("target/probar"),
+            };
+            // run_tests returns Ok when no tests are found
+            let result = run_tests(config, &args);
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_run_tests_with_filter() {
+            let config = CliConfig::default();
+            let args = TestArgs {
+                filter: Some("game::*".to_string()),
+                parallel: 4,
+                coverage: true,
+                mutants: false,
+                fail_fast: true,
+                watch: false,
+                timeout: 5000,
+                output: PathBuf::from("target/test_output"),
+            };
+            let result = run_tests(config, &args);
+            assert!(result.is_ok());
+        }
     }
 }

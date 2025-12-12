@@ -4,6 +4,7 @@ members = [
     "crates/probar",
     "crates/probar-derive",
     "crates/probar-cli",
+    "crates/showcase-calculator",
 ]
 
 [workspace.package]

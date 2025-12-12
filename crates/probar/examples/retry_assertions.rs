@@ -17,7 +17,7 @@ fn main() -> ProbarResult<()> {
     // 1. Simple retry that succeeds
     println!("1. Retry that succeeds on 3rd attempt...");
     let counter = Arc::new(AtomicUsize::new(0));
-    let counter_clone = counter.clone();
+    let counter_clone = counter;
 
     let assertion = retry_true(
         move || {
@@ -40,7 +40,7 @@ fn main() -> ProbarResult<()> {
     // 2. Retry with equality check
     println!("\n2. Retry until value equals expected...");
     let value = Arc::new(AtomicUsize::new(0));
-    let value_clone = value.clone();
+    let value_clone = value;
 
     let assertion = retry_eq(move || value_clone.fetch_add(1, Ordering::SeqCst), 5)
         .with_timeout(Duration::from_millis(500))
@@ -54,7 +54,7 @@ fn main() -> ProbarResult<()> {
     // 3. Retry with Option check
     println!("\n3. Retry until Option becomes Some...");
     let has_value = Arc::new(AtomicUsize::new(0));
-    let has_value_clone = has_value.clone();
+    let has_value_clone = has_value;
 
     let assertion = retry_some(move || {
         let count = has_value_clone.fetch_add(1, Ordering::SeqCst);
@@ -92,7 +92,7 @@ fn main() -> ProbarResult<()> {
     // 5. Using fast config for quick checks
     println!("\n5. Using fast retry config...");
     let fast_counter = Arc::new(AtomicUsize::new(0));
-    let fast_counter_clone = fast_counter.clone();
+    let fast_counter_clone = fast_counter;
 
     let config = RetryConfig::fast();
     let assertion = retry_true(

@@ -841,6 +841,7 @@ pub struct ContextPoolStats {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -1167,6 +1168,355 @@ mod tests {
             assert_eq!(stats.total, 2);
             assert_eq!(stats.in_use, 2);
             assert_eq!(stats.active_tests, 2);
+        }
+    }
+
+    mod context_config_additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_with_device_scale() {
+            let config = ContextConfig::new("test").with_device_scale(2.0);
+            assert!((config.device_scale_factor - 2.0).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn test_with_user_agent() {
+            let config = ContextConfig::new("test").with_user_agent("Custom UA");
+            assert_eq!(config.user_agent, Some("Custom UA".to_string()));
+        }
+
+        #[test]
+        fn test_with_locale() {
+            let config = ContextConfig::new("test").with_locale("en-US");
+            assert_eq!(config.locale, Some("en-US".to_string()));
+        }
+
+        #[test]
+        fn test_with_timezone() {
+            let config = ContextConfig::new("test").with_timezone("America/New_York");
+            assert_eq!(config.timezone, Some("America/New_York".to_string()));
+        }
+
+        #[test]
+        fn test_with_permission() {
+            let config = ContextConfig::new("test")
+                .with_permission("geolocation")
+                .with_permission("notifications");
+            assert_eq!(config.permissions.len(), 2);
+            assert!(config.permissions.contains(&"geolocation".to_string()));
+        }
+
+        #[test]
+        fn test_with_storage_state() {
+            let storage =
+                StorageState::new().with_cookie(Cookie::new("session", "abc", "example.com"));
+            let config = ContextConfig::new("test").with_storage_state(storage);
+            assert!(config.storage_state.is_some());
+            assert_eq!(config.storage_state.unwrap().cookies.len(), 1);
+        }
+
+        #[test]
+        fn test_with_video() {
+            let config = ContextConfig::new("test").with_video();
+            assert!(config.record_video);
+        }
+
+        #[test]
+        fn test_with_har() {
+            let config = ContextConfig::new("test").with_har();
+            assert!(config.record_har);
+        }
+
+        #[test]
+        fn test_ignore_https_errors() {
+            let config = ContextConfig::new("test").ignore_https_errors();
+            assert!(config.ignore_https_errors);
+        }
+
+        #[test]
+        fn test_config_default() {
+            let config = ContextConfig::default();
+            assert!(config.name.is_empty());
+            assert_eq!(config.viewport_width, 1280);
+            assert!(!config.is_mobile);
+            assert!(!config.offline);
+        }
+    }
+
+    mod storage_state_additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_with_session_storage() {
+            let state =
+                StorageState::new().with_session_storage("https://example.com", "key", "value");
+            assert!(!state.session_storage.is_empty());
+            assert!(state.session_storage.contains_key("https://example.com"));
+        }
+
+        #[test]
+        fn test_is_empty() {
+            let state = StorageState::new();
+            assert!(state.is_empty());
+
+            let state_with_cookie =
+                StorageState::new().with_cookie(Cookie::new("name", "value", "example.com"));
+            assert!(!state_with_cookie.is_empty());
+        }
+    }
+
+    mod cookie_additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_with_expires() {
+            let cookie = Cookie::new("name", "value", "example.com").with_expires(1234567890);
+            assert_eq!(cookie.expires, Some(1234567890));
+        }
+
+        #[test]
+        fn test_cookie_debug() {
+            let cookie = Cookie::new("name", "value", "example.com");
+            let debug = format!("{:?}", cookie);
+            assert!(debug.contains("Cookie"));
+            assert!(debug.contains("name"));
+        }
+
+        #[test]
+        fn test_same_site_variants() {
+            let strict = SameSite::Strict;
+            let lax = SameSite::Lax;
+            let none = SameSite::None;
+
+            assert!(matches!(strict, SameSite::Strict));
+            assert!(matches!(lax, SameSite::Lax));
+            assert!(matches!(none, SameSite::None));
+        }
+
+        #[test]
+        fn test_same_site_debug() {
+            assert!(format!("{:?}", SameSite::Strict).contains("Strict"));
+            assert!(format!("{:?}", SameSite::Lax).contains("Lax"));
+            assert!(format!("{:?}", SameSite::None).contains("None"));
+        }
+    }
+
+    mod context_state_tests {
+        use super::*;
+
+        #[test]
+        fn test_all_states() {
+            let states = [
+                ContextState::Creating,
+                ContextState::Ready,
+                ContextState::InUse,
+                ContextState::Cleaning,
+                ContextState::Closed,
+                ContextState::Error,
+            ];
+
+            for state in &states {
+                let debug = format!("{:?}", state);
+                assert!(!debug.is_empty());
+            }
+        }
+
+        #[test]
+        fn test_state_clone() {
+            let state = ContextState::Ready;
+            let cloned = state;
+            assert_eq!(state, cloned);
+        }
+
+        #[test]
+        fn test_state_serialization() {
+            let state = ContextState::Ready;
+            let serialized = serde_json::to_string(&state).unwrap();
+            let deserialized: ContextState = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(state, deserialized);
+        }
+    }
+
+    mod browser_context_additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_with_storage_state_initialization() {
+            let storage =
+                StorageState::new().with_cookie(Cookie::new("init", "value", "example.com"));
+            let config = ContextConfig::new("test").with_storage_state(storage);
+            let context = BrowserContext::new("ctx_1", config);
+
+            let stored = context.storage_state();
+            assert_eq!(stored.cookies.len(), 1);
+        }
+
+        #[test]
+        fn test_context_age() {
+            let config = ContextConfig::new("test");
+            let context = BrowserContext::new("ctx_1", config);
+
+            // Context was just created, age should be small
+            let age = context.age_ms();
+            assert!(age < 1000); // Less than 1 second
+        }
+
+        #[test]
+        fn test_clear_storage() {
+            let storage =
+                StorageState::new().with_cookie(Cookie::new("test", "value", "example.com"));
+            let config = ContextConfig::new("test").with_storage_state(storage);
+            let context = BrowserContext::new("ctx_1", config);
+
+            assert!(!context.storage_state().is_empty());
+            context.clear_storage();
+            assert!(context.storage_state().is_empty());
+        }
+
+        #[test]
+        fn test_debug() {
+            let config = ContextConfig::new("test");
+            let context = BrowserContext::new("ctx_1", config);
+            let debug = format!("{:?}", context);
+            assert!(debug.contains("BrowserContext"));
+            assert!(debug.contains("ctx_1"));
+        }
+    }
+
+    mod geolocation_tests {
+        use super::*;
+
+        #[test]
+        fn test_geolocation_debug() {
+            let geo = Geolocation {
+                latitude: 37.7749,
+                longitude: -122.4194,
+                accuracy: 10.0,
+            };
+            let debug = format!("{:?}", geo);
+            assert!(debug.contains("Geolocation"));
+            assert!(debug.contains("37.7749"));
+        }
+
+        #[test]
+        fn test_geolocation_clone() {
+            let geo = Geolocation {
+                latitude: 37.7749,
+                longitude: -122.4194,
+                accuracy: 10.0,
+            };
+            let cloned = geo;
+            assert!((geo.latitude - cloned.latitude).abs() < f64::EPSILON);
+        }
+    }
+
+    mod pool_stats_tests {
+        use super::*;
+
+        #[test]
+        fn test_pool_stats_debug() {
+            let manager = ContextManager::new();
+            manager.get_context("test_1").unwrap();
+            let stats = manager.stats();
+            let debug = format!("{:?}", stats);
+            assert!(debug.contains("total"));
+        }
+    }
+
+    mod context_pool_error_tests {
+        use super::*;
+
+        #[test]
+        fn test_release_unknown_context() {
+            let pool = ContextPool::new(5);
+            let result = pool.release("unknown_ctx");
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_close_unknown_context() {
+            let pool = ContextPool::new(5);
+            let result = pool.close("unknown_ctx");
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_remove_context() {
+            let pool = ContextPool::new(5);
+            let id = pool.create(None).unwrap();
+            assert_eq!(pool.count(), 1);
+
+            pool.remove(&id).unwrap();
+            assert_eq!(pool.count(), 0);
+        }
+
+        #[test]
+        fn test_with_default_config() {
+            let config = ContextConfig::new("default").mobile();
+            let pool = ContextPool::new(5).with_default_config(config);
+            let _id = pool.create(None).unwrap();
+            // Context should use mobile config
+            assert_eq!(pool.count(), 1);
+        }
+
+        #[test]
+        fn test_acquire_creates_new_context() {
+            let pool = ContextPool::new(5);
+            // First acquire should create a new context
+            let id1 = pool.acquire().unwrap();
+            assert_eq!(pool.count(), 1);
+            assert_eq!(pool.in_use_count(), 1);
+
+            // Second acquire should create another new context
+            let id2 = pool.acquire().unwrap();
+            assert_eq!(pool.count(), 2);
+            assert_eq!(pool.in_use_count(), 2);
+
+            assert_ne!(id1, id2);
+        }
+
+        #[test]
+        fn test_acquire_reuses_released_context() {
+            let pool = ContextPool::new(5);
+            let id1 = pool.acquire().unwrap();
+            pool.release(&id1).unwrap();
+
+            // Next acquire should reuse the released context
+            let id2 = pool.acquire().unwrap();
+            assert_eq!(id1, id2);
+            assert_eq!(pool.count(), 1);
+        }
+
+        #[test]
+        fn test_pool_default() {
+            let pool = ContextPool::default();
+            assert_eq!(pool.count(), 0);
+        }
+    }
+
+    mod context_manager_error_tests {
+        use super::*;
+
+        #[test]
+        fn test_release_unknown_test_ok() {
+            let manager = ContextManager::new();
+            // release_context returns Ok even for unknown tests
+            let result = manager.release_context("unknown_test");
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_with_pool_size() {
+            let manager = ContextManager::with_pool_size(3);
+            let stats = manager.stats();
+            assert_eq!(stats.total, 0);
+        }
+
+        #[test]
+        fn test_manager_default() {
+            let manager = ContextManager::default();
+            assert_eq!(manager.stats().total, 0);
         }
     }
 }

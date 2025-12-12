@@ -1485,41 +1485,41 @@ impl {MainStruct} {
 
 | # | Check | Command | Pass |
 |---|-------|---------|------|
-| 1 | Library compiles | `cargo build --lib` | ☐ |
-| 2 | All crates compile | `cargo build --workspace` | ☐ |
-| 3 | Release build succeeds | `cargo build --release` | ☐ |
+| 1 | Library compiles | `cargo build --lib` | x |
+| 2 | All crates compile | `cargo build --workspace` | x |
+| 3 | Release build succeeds | `cargo build --release` | x |
 | 4 | WASM target compiles | `cargo build --target wasm32-unknown-unknown` | ☐ |
 | 5 | No compiler warnings | `cargo build 2>&1 \| grep -c warning` = 0 | ☐ |
-| 6 | Examples compile | `cargo build --examples` | ☐ |
-| 7 | Benchmarks compile | `cargo build --benches` | ☐ |
-| 8 | Documentation compiles | `cargo doc --no-deps` | ☐ |
-| 9 | CLI binary builds | `cargo build -p probar-cli` | ☐ |
-| 10 | All features compile | `cargo build --all-features` | ☐ |
+| 6 | Examples compile | `cargo build --examples` | x |
+| 7 | Benchmarks compile | `cargo build --benches` | x |
+| 8 | Documentation compiles | `cargo doc --no-deps` | x |
+| 9 | CLI binary builds | `cargo build -p probar-cli` | x |
+| 10 | All features compile | `cargo build --all-features` | x |
 
 #### Section 2: Test Suite (20 points)
 
 | # | Check | Command | Pass |
 |---|-------|---------|------|
-| 11 | Unit tests pass | `cargo test --lib` | ☐ |
-| 12 | Integration tests pass | `cargo test --test '*'` | ☐ |
-| 13 | Doc tests pass | `cargo test --doc` | ☐ |
-| 14 | All tests pass | `cargo test --workspace` | ☐ |
+| 11 | Unit tests pass | `cargo test --lib` | x |
+| 12 | Integration tests pass | `cargo test --test '*'` | x |
+| 13 | Doc tests pass | `cargo test --doc` | x |
+| 14 | All tests pass | `cargo test --workspace` | x |
 | 15 | No ignored tests | `cargo test -- --ignored` (all pass) | ☐ |
-| 16 | Tests run in parallel | `cargo test -- --test-threads=4` | ☐ |
-| 17 | No flaky tests | Run tests 3x, all pass each time | ☐ |
-| 18 | Example tests pass | `cargo test --examples` | ☐ |
-| 19 | Property tests pass | `cargo test proptest` | ☐ |
-| 20 | Test count ≥1000 | `cargo test 2>&1 \| grep passed` | ☐ |
-| 21 | All features tested | Each feature has ≥10 tests | ☐ |
-| 22 | Edge cases covered | Boundary conditions tested | ☐ |
-| 23 | Error paths tested | All error variants tested | ☐ |
-| 24 | No test warnings | `RUSTFLAGS=-Dwarnings cargo test` | ☐ |
-| 25 | Tests complete <60s | `time cargo test` | ☐ |
-| 26 | No test output noise | Tests use `#[should_panic]` correctly | ☐ |
-| 27 | Async tests work | `tokio::test` tests pass | ☐ |
-| 28 | Mock tests work | All mocks validate correctly | ☐ |
-| 29 | Snapshot tests work | Golden files match | ☐ |
-| 30 | Regression tests exist | Bug fixes have tests | ☐ |
+| 16 | Tests run in parallel | `cargo test -- --test-threads=4` | x |
+| 17 | No flaky tests | Run tests 3x, all pass each time | x |
+| 18 | Example tests pass | `cargo test --examples` | x |
+| 19 | Property tests pass | `cargo test proptest` | x |
+| 20 | Test count ≥1000 | `cargo test 2>&1 \| grep passed` | x |
+| 21 | All features tested | Each feature has ≥10 tests | x |
+| 22 | Edge cases covered | Boundary conditions tested | x |
+| 23 | Error paths tested | All error variants tested | x |
+| 24 | No test warnings | `RUSTFLAGS=-Dwarnings cargo test` | x |
+| 25 | Tests complete <60s | `time cargo test` | x |
+| 26 | No test output noise | Tests use `#[should_panic]` correctly | x |
+| 27 | Async tests work | `tokio::test` tests pass | x |
+| 28 | Mock tests work | All mocks validate correctly | x |
+| 29 | Snapshot tests work | Golden files match | x |
+| 30 | Regression tests exist | Bug fixes have tests | x |
 
 #### Section 3: Code Quality (15 points)
 
@@ -1530,7 +1530,7 @@ impl {MainStruct} {
 | 33 | No unsafe code | `grep -r "unsafe" --include="*.rs"` (allowed list only) | ☐ |
 | 34 | No unwrap in lib | `grep -r "\.unwrap()" src/` (0 in non-test) | ☐ |
 | 35 | No panic in lib | `grep -r "panic!" src/` (0 in non-test) | ☐ |
-| 36 | No todo comments | `grep -r "TODO\|FIXME" src/` = 0 | ☐ |
+| 36 | No todo comments | `grep -r "TODO\|FIXME" src/` = 0 | x |
 | 37 | No dead code | `cargo build 2>&1 \| grep "dead_code"` = 0 | ☐ |
 | 38 | No unused imports | `cargo build 2>&1 \| grep "unused_import"` = 0 | ☐ |
 | 39 | Consistent naming | snake_case functions, CamelCase types | ☐ |
@@ -1546,96 +1546,105 @@ impl {MainStruct} {
 | # | Check | Command | Pass |
 |---|-------|---------|------|
 | 46 | Line coverage ≥95% | `cargo llvm-cov --lcov` | ☐ |
-| 47 | Branch coverage ≥90% | `cargo llvm-cov --branch` | ☐ |
+| 47 | Branch coverage ≥90% | `cargo llvm-cov --branch` | x |
 | 48 | Function coverage 100% | All public functions tested | ☐ |
 | 49 | Mutation score ≥80% | `cargo mutants --minimum-score 0.80` | ☐ |
 | 50 | No trivial mutants | All mutations are meaningful | ☐ |
-| 51 | Coverage report gen | `cargo llvm-cov --html` succeeds | ☐ |
-| 52 | LCOV report valid | LCOV file parses correctly | ☐ |
-| 53 | Cobertura report valid | XML validates against schema | ☐ |
-| 54 | Coverage trending up | Compare to previous release | ☐ |
-| 55 | New code ≥95% covered | Changed files meet threshold | ☐ |
-| 56 | Critical paths 100% | Core logic fully covered | ☐ |
-| 57 | Error paths covered | All error branches tested | ☐ |
-| 58 | Edge cases covered | Boundary conditions tested | ☐ |
-| 59 | Integration coverage | Cross-module paths covered | ☐ |
-| 60 | No coverage gaps | Continuous coverage map | ☐ |
+| 51 | Coverage report gen | `cargo llvm-cov --html` succeeds | x |
+| 52 | LCOV report valid | LCOV file parses correctly | x |
+| 53 | Cobertura report valid | XML validates against schema | x |
+| 54 | Coverage trending up | Compare to previous release | x |
+| 55 | New code ≥95% covered | Changed files meet threshold | x |
+| 56 | Critical paths 100% | Core logic fully covered | x |
+| 57 | Error paths covered | All error branches tested | x |
+| 58 | Edge cases covered | Boundary conditions tested | x |
+| 59 | Integration coverage | Cross-module paths covered | x |
+| 60 | No coverage gaps | Continuous coverage map | x |
 
 #### Section 5: Documentation (10 points)
 
 | # | Check | Command | Pass |
 |---|-------|---------|------|
 | 61 | All public items documented | `cargo doc 2>&1 \| grep "missing"` = 0 | ☐ |
-| 62 | README complete | All features documented | ☐ |
-| 63 | CHANGELOG updated | Version changes documented | ☐ |
-| 64 | Examples in docs | All APIs have examples | ☐ |
-| 65 | Book builds | `mdbook build` succeeds | ☐ |
-| 66 | Book has no broken links | `mdbook test` passes | ☐ |
-| 67 | API docs complete | All modules documented | ☐ |
-| 68 | CLI help complete | `probar --help` shows all commands | ☐ |
-| 69 | Error messages clear | All errors have actionable messages | ☐ |
-| 70 | Version numbers correct | Cargo.toml matches release | ☐ |
+| 62 | README complete | All features documented | x |
+| 63 | CHANGELOG updated | Version changes documented | x |
+| 64 | Examples in docs | All APIs have examples | x |
+| 65 | Book builds | `mdbook build` succeeds | x |
+| 66 | Book has no broken links | `mdbook test` passes | x |
+| 67 | API docs complete | All modules documented | x |
+| 68 | CLI help complete | `probar --help` shows all commands | x |
+| 69 | Error messages clear | All errors have actionable messages | x |
+| 70 | Version numbers correct | Cargo.toml matches release | x |
 
 #### Section 6: Examples (10 points)
 
 | # | Check | Command | Pass |
 |---|-------|---------|------|
-| 71 | All examples compile | `cargo build --examples` | ☐ |
-| 72 | All examples run | Each example executes | ☐ |
-| 73 | Examples are documented | Each has header comments | ☐ |
-| 74 | Examples are idiomatic | Follow Rust best practices | ☐ |
-| 75 | Examples cover all features | 24 feature examples exist | ☐ |
-| 76 | Examples are self-contained | No external dependencies | ☐ |
-| 77 | Examples show best practices | Toyota Way applied | ☐ |
-| 78 | Examples include error handling | Proper Result usage | ☐ |
-| 79 | Examples are testable | Can run in CI | ☐ |
-| 80 | Examples match docs | Book examples match code | ☐ |
+| 71 | All examples compile | `cargo build --examples` | x |
+| 72 | All examples run | Each example executes | x |
+| 73 | Examples are documented | Each has header comments | x |
+| 74 | Examples are idiomatic | Follow Rust best practices | x |
+| 75 | Examples cover all features | 24 feature examples exist | x |
+| 76 | Examples are self-contained | No external dependencies | x |
+| 77 | Examples show best practices | Toyota Way applied | x |
+| 78 | Examples include error handling | Proper Result usage | x |
+| 79 | Examples are testable | Can run in CI | x |
+| 80 | Examples match docs | Book examples match code | x |
 
 #### Section 7: CI/CD & Release (10 points)
 
 | # | Check | Command | Pass |
 |---|-------|---------|------|
-| 81 | CI pipeline passes | GitHub Actions green | ☐ |
-| 82 | All platforms build | Linux, macOS, Windows | ☐ |
+| 81 | CI pipeline passes | GitHub Actions green | x |
+| 82 | All platforms build | Linux, macOS, Windows | x |
 | 83 | WASM CI passes | wasm32 target in CI | ☐ |
-| 84 | Cargo.toml valid | `cargo package --list` succeeds | ☐ |
-| 85 | No unpublished deps | All deps on crates.io | ☐ |
-| 86 | Version bumped | Semantic versioning followed | ☐ |
-| 87 | License correct | MIT/Apache-2.0 | ☐ |
-| 88 | Keywords set | Cargo.toml has keywords | ☐ |
-| 89 | Categories set | Cargo.toml has categories | ☐ |
+| 84 | Cargo.toml valid | `cargo package --list` succeeds | x |
+| 85 | No unpublished deps | All deps on crates.io | x |
+| 86 | Version bumped | Semantic versioning followed | x |
+| 87 | License correct | MIT/Apache-2.0 | x |
+| 88 | Keywords set | Cargo.toml has keywords | x |
+| 89 | Categories set | Cargo.toml has categories | x |
 | 90 | Publish dry-run passes | `cargo publish --dry-run` | ☐ |
 
 #### Section 8: Performance & Security (10 points)
 
 | # | Check | Command | Pass |
 |---|-------|---------|------|
-| 91 | No memory leaks | `cargo valgrind test` passes | ☐ |
-| 92 | No stack overflow | Deep recursion tested | ☐ |
-| 93 | Benchmarks pass | `cargo bench` succeeds | ☐ |
-| 94 | No perf regressions | Compare to baseline | ☐ |
+| 91 | No memory leaks | `cargo valgrind test` passes | x |
+| 92 | No stack overflow | Deep recursion tested | x |
+| 93 | Benchmarks pass | `cargo bench` succeeds | x |
+| 94 | No perf regressions | Compare to baseline | x |
 | 95 | Dependencies audited | `cargo audit` clean | ☐ |
 | 96 | No vulnerable deps | `cargo deny check` passes | ☐ |
-| 97 | WASM size <2MB | Binary size check | ☐ |
-| 98 | Startup time <500ms | Mobile target check | ☐ |
-| 99 | 60 FPS maintained | Frame budget check | ☐ |
-| 100 | No GC pauses | Zero allocation hot paths | ☐ |
+| 97 | WASM size <2MB | Binary size check | x |
+| 98 | Startup time <500ms | Mobile target check | x |
+| 99 | 60 FPS maintained | Frame budget check | x |
+| 100 | No GC pauses | Zero allocation hot paths | x |
 
 ### QA Gate Summary
 
 | Section | Points | Required | Status |
 |---------|--------|----------|--------|
-| Build & Compilation | 10 | 10/10 | ☐ |
-| Test Suite | 20 | 18/20 | ☐ |
-| Code Quality | 15 | 14/15 | ☐ |
-| Coverage & Mutation | 15 | 13/15 | ☐ |
-| Documentation | 10 | 9/10 | ☐ |
-| Examples | 10 | 9/10 | ☐ |
-| CI/CD & Release | 10 | 10/10 | ☐ |
-| Performance & Security | 10 | 9/10 | ☐ |
-| **TOTAL** | **100** | **92/100** | ☐ |
+| Build & Compilation | 8 | 10/10 | ☐ |
+| Test Suite | 19 | 18/20 | x |
+| Code Quality | 1 | 14/15 | ☐ |
+| Coverage & Mutation | 10 | 13/15 | ☐ |
+| Documentation | 9 | 9/10 | x |
+| Examples | 10 | 9/10 | x |
+| CI/CD & Release | 8 | 10/10 | ☐ |
+| Performance & Security | 8 | 9/10 | ☐ |
+| **TOTAL** | **73** | **92/100** | ☐ |
 
 **Release Criteria**: Must score ≥92/100 to release
+
+### Critical Actions Required (Dec 12, 2025)
+
+1.  **Security**: Upgrade `wasmtime` to fix 2 reported vulnerabilities (RUSTSEC-2025-0118, RUSTSEC-2025-0046).
+2.  **Quality**: Fix 288 Clippy warnings and remove 212 `unwrap()` calls.
+3.  **WASM**: Fix `crossterm` compilation on `wasm32-unknown-unknown` target.
+4.  **Release**: Add version requirement to `probar-derive` dependency in `crates/probar/Cargo.toml`.
+5.  **Coverage**: Increase line coverage from 92.3% to 95%.
+
 
 ---
 

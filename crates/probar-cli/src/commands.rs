@@ -202,7 +202,7 @@ impl From<ColorArg> for crate::config::ColorChoice {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -353,6 +353,201 @@ mod tests {
 
             let never: ColorChoice = ColorArg::Never.into();
             assert!(matches!(never, ColorChoice::Never));
+        }
+    }
+
+    mod record_format_tests {
+        use super::*;
+
+        #[test]
+        fn test_default() {
+            let format = RecordFormat::default();
+            assert!(matches!(format, RecordFormat::Gif));
+        }
+
+        #[test]
+        fn test_all_variants() {
+            let _ = RecordFormat::Gif;
+            let _ = RecordFormat::Png;
+            let _ = RecordFormat::Svg;
+            let _ = RecordFormat::Mp4;
+        }
+
+        #[test]
+        fn test_debug() {
+            let debug = format!("{:?}", RecordFormat::Gif);
+            assert!(debug.contains("Gif"));
+        }
+
+        #[test]
+        fn test_clone() {
+            let format = RecordFormat::Mp4;
+            let cloned = format;
+            assert!(matches!(cloned, RecordFormat::Mp4));
+        }
+    }
+
+    mod report_format_tests {
+        use super::*;
+
+        #[test]
+        fn test_default() {
+            let format = ReportFormat::default();
+            assert!(matches!(format, ReportFormat::Html));
+        }
+
+        #[test]
+        fn test_all_variants() {
+            let _ = ReportFormat::Html;
+            let _ = ReportFormat::Junit;
+            let _ = ReportFormat::Lcov;
+            let _ = ReportFormat::Cobertura;
+            let _ = ReportFormat::Json;
+        }
+
+        #[test]
+        fn test_debug() {
+            let debug = format!("{:?}", ReportFormat::Junit);
+            assert!(debug.contains("Junit"));
+        }
+    }
+
+    mod test_args_tests {
+        use super::*;
+
+        #[test]
+        fn test_defaults() {
+            // Verify TestArgs can be created with defaults via clap
+            let args = TestArgs {
+                filter: None,
+                parallel: 0,
+                coverage: false,
+                mutants: false,
+                fail_fast: false,
+                watch: false,
+                timeout: 30000,
+                output: PathBuf::from("target/probar"),
+            };
+            assert!(!args.coverage);
+            assert_eq!(args.timeout, 30000);
+        }
+
+        #[test]
+        fn test_debug() {
+            let args = TestArgs {
+                filter: Some("test_*".to_string()),
+                parallel: 4,
+                coverage: true,
+                mutants: false,
+                fail_fast: true,
+                watch: false,
+                timeout: 5000,
+                output: PathBuf::from("target"),
+            };
+            let debug = format!("{args:?}");
+            assert!(debug.contains("TestArgs"));
+        }
+    }
+
+    mod record_args_tests {
+        use super::*;
+
+        #[test]
+        fn test_creation() {
+            let args = RecordArgs {
+                test: "my_test".to_string(),
+                format: RecordFormat::Gif,
+                output: None,
+                fps: 10,
+                quality: 80,
+            };
+            assert_eq!(args.test, "my_test");
+            assert_eq!(args.fps, 10);
+        }
+
+        #[test]
+        fn test_debug() {
+            let args = RecordArgs {
+                test: "test".to_string(),
+                format: RecordFormat::Png,
+                output: Some(PathBuf::from("out.png")),
+                fps: 30,
+                quality: 100,
+            };
+            let debug = format!("{args:?}");
+            assert!(debug.contains("RecordArgs"));
+        }
+    }
+
+    mod report_args_tests {
+        use super::*;
+
+        #[test]
+        fn test_creation() {
+            let args = ReportArgs {
+                format: ReportFormat::Lcov,
+                output: PathBuf::from("coverage"),
+                open: true,
+            };
+            assert!(args.open);
+        }
+
+        #[test]
+        fn test_debug() {
+            let args = ReportArgs {
+                format: ReportFormat::Html,
+                output: PathBuf::from("reports"),
+                open: false,
+            };
+            let debug = format!("{args:?}");
+            assert!(debug.contains("ReportArgs"));
+        }
+    }
+
+    mod init_args_tests {
+        use super::*;
+
+        #[test]
+        fn test_creation() {
+            let args = InitArgs {
+                path: PathBuf::from("."),
+                force: false,
+            };
+            assert!(!args.force);
+        }
+    }
+
+    mod config_args_tests {
+        use super::*;
+
+        #[test]
+        fn test_creation() {
+            let args = ConfigArgs {
+                show: false,
+                set: None,
+                reset: false,
+            };
+            assert!(!args.show);
+        }
+    }
+
+    mod cli_additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_cli_debug() {
+            let cli = Cli {
+                verbose: 0,
+                quiet: false,
+                color: ColorArg::Auto,
+                command: Commands::Config(ConfigArgs {
+                    show: true,
+                    set: None,
+                    reset: false,
+                }),
+            };
+            let debug = format!("{cli:?}");
+            assert!(debug.contains("Cli"));
         }
     }
 }

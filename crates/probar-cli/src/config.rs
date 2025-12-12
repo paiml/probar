@@ -206,6 +206,31 @@ mod tests {
             assert!(!Verbosity::Verbose.is_debug());
             assert!(Verbosity::Debug.is_debug());
         }
+
+        #[test]
+        fn test_clone() {
+            let v = Verbosity::Debug;
+            let cloned = v;
+            assert_eq!(v, cloned);
+        }
+
+        #[test]
+        fn test_debug_trait() {
+            let debug = format!("{:?}", Verbosity::Verbose);
+            assert!(debug.contains("Verbose"));
+        }
+
+        #[test]
+        fn test_serialize() {
+            let json = serde_json::to_string(&Verbosity::Debug).unwrap();
+            assert!(json.contains("Debug"));
+        }
+
+        #[test]
+        fn test_deserialize() {
+            let v: Verbosity = serde_json::from_str("\"Quiet\"").unwrap();
+            assert_eq!(v, Verbosity::Quiet);
+        }
     }
 
     mod color_choice_tests {
@@ -225,6 +250,37 @@ mod tests {
         #[test]
         fn test_should_color_never() {
             assert!(!ColorChoice::Never.should_color());
+        }
+
+        #[test]
+        fn test_should_color_auto() {
+            // Auto depends on terminal detection, just ensure it doesn't panic
+            let _ = ColorChoice::Auto.should_color();
+        }
+
+        #[test]
+        fn test_clone() {
+            let c = ColorChoice::Always;
+            let cloned = c;
+            assert_eq!(c, cloned);
+        }
+
+        #[test]
+        fn test_debug_trait() {
+            let debug = format!("{:?}", ColorChoice::Never);
+            assert!(debug.contains("Never"));
+        }
+
+        #[test]
+        fn test_serialize() {
+            let json = serde_json::to_string(&ColorChoice::Always).unwrap();
+            assert!(json.contains("Always"));
+        }
+
+        #[test]
+        fn test_deserialize() {
+            let c: ColorChoice = serde_json::from_str("\"Never\"").unwrap();
+            assert_eq!(c, ColorChoice::Never);
         }
     }
 
@@ -310,6 +366,48 @@ mod tests {
             assert_eq!(config.parallel_jobs, 2);
             assert!(config.fail_fast);
             assert!(config.coverage);
+        }
+
+        #[test]
+        fn test_clone() {
+            let config = CliConfig::new()
+                .with_verbosity(Verbosity::Debug)
+                .with_fail_fast(true);
+            let cloned = config.clone();
+            assert_eq!(config.verbosity, cloned.verbosity);
+            assert_eq!(config.fail_fast, cloned.fail_fast);
+        }
+
+        #[test]
+        fn test_debug_trait() {
+            let config = CliConfig::default();
+            let debug = format!("{config:?}");
+            assert!(debug.contains("CliConfig"));
+        }
+
+        #[test]
+        fn test_serialize() {
+            let config = CliConfig::new().with_fail_fast(true);
+            let json = serde_json::to_string(&config).unwrap();
+            assert!(json.contains("fail_fast"));
+            assert!(json.contains("true"));
+        }
+
+        #[test]
+        fn test_deserialize() {
+            let json = r#"{"verbosity":"Debug","color":"Always","parallel_jobs":4,"fail_fast":true,"watch":false,"coverage":true,"output_dir":"test"}"#;
+            let config: CliConfig = serde_json::from_str(json).unwrap();
+            assert_eq!(config.verbosity, Verbosity::Debug);
+            assert_eq!(config.color, ColorChoice::Always);
+            assert_eq!(config.parallel_jobs, 4);
+            assert!(config.fail_fast);
+            assert!(config.coverage);
+        }
+
+        #[test]
+        fn test_output_dir_default() {
+            let config = CliConfig::default();
+            assert_eq!(config.output_dir, "target/probar");
         }
     }
 }

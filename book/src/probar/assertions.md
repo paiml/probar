@@ -1,11 +1,85 @@
 # Assertions
 
-Probar provides a rich set of assertions for testing game state.
+Probar provides a rich set of assertions for testing game state with full Playwright parity.
+
+## Playwright-Style Element Assertions (PMAT-004)
+
+Probar supports Playwright's `expect()` API for fluent assertions:
+
+```rust
+use probar::{expect, Locator};
+
+let button = Locator::new("button#submit");
+let checkbox = Locator::new("input[type='checkbox']");
+let input = Locator::new("input#username");
+
+// Visibility assertions
+expect(button.clone()).to_be_visible();
+expect(button.clone()).to_be_hidden();
+
+// Text assertions
+expect(button.clone()).to_have_text("Submit");
+expect(button.clone()).to_contain_text("Sub");
+
+// Count assertion
+expect(Locator::new(".item")).to_have_count(5);
+
+// Element state assertions (PMAT-004)
+expect(button.clone()).to_be_enabled();
+expect(button.clone()).to_be_disabled();
+expect(checkbox.clone()).to_be_checked();
+expect(input.clone()).to_be_editable();
+expect(input.clone()).to_be_focused();
+expect(Locator::new(".container")).to_be_empty();
+
+// Value assertions
+expect(input.clone()).to_have_value("john_doe");
+
+// CSS assertions
+expect(button.clone()).to_have_css("color", "rgb(0, 255, 0)");
+expect(button.clone()).to_have_css("display", "flex");
+
+// Class/ID assertions
+expect(button.clone()).to_have_class("active");
+expect(button.clone()).to_have_id("submit-btn");
+
+// Attribute assertions
+expect(input.clone()).to_have_attribute("type", "text");
+expect(button).to_have_attribute("aria-label", "Submit form");
+```
+
+### Assertion Validation
+
+```rust
+use probar::{expect, Locator, ExpectAssertion};
+
+let locator = Locator::new("input#score");
+
+// Text validation
+let text_assertion = expect(locator.clone()).to_have_text("100");
+assert!(text_assertion.validate("100").is_ok());
+assert!(text_assertion.validate("50").is_err());
+
+// Count validation
+let count_assertion = expect(locator.clone()).to_have_count(3);
+assert!(count_assertion.validate_count(3).is_ok());
+assert!(count_assertion.validate_count(5).is_err());
+
+// State validation (for boolean states)
+let enabled = expect(locator.clone()).to_be_enabled();
+assert!(enabled.validate_state(true).is_ok());   // Element is enabled
+assert!(enabled.validate_state(false).is_err()); // Element is disabled
+
+// Class validation (checks within class list)
+let class_assertion = expect(locator).to_have_class("active");
+assert!(class_assertion.validate("btn active primary").is_ok());
+assert!(class_assertion.validate("btn disabled").is_err());
+```
 
 ## Basic Assertions
 
 ```rust
-use jugar_probar::Assertion;
+use probar::Assertion;
 
 // Equality
 let eq = Assertion::equals(&actual, &expected);

@@ -5,8 +5,11 @@
 //! Run with: `cargo run --example network_intercept`
 //!
 //! Toyota Way: Poka-Yoke (Mistake-Proofing) - Type-safe request handling
+//!
+//! PMAT-006: Added abort functionality and wait_for_response
 
 use probar::prelude::*;
+use std::collections::HashMap;
 
 fn main() -> ProbarResult<()> {
     println!("=== Network Interception Example ===\n");
@@ -32,7 +35,7 @@ fn main() -> ProbarResult<()> {
     let mock_response = MockResponse::new()
         .with_status(200)
         .with_header("Content-Type", "application/json")
-        .with_body(r#"{"id": 1, "name": "Test User"}"#.as_bytes().to_vec());
+        .with_body(br#"{"id": 1, "name": "Test User"}"#.to_vec());
 
     println!("   Status: {}", mock_response.status);
     println!("   Headers: {:?}", mock_response.headers);
@@ -40,7 +43,7 @@ fn main() -> ProbarResult<()> {
 
     // 4. Add route with mock
     println!("\n4. Adding route with mock response...");
-    let route = Route::new(exact_pattern.clone(), HttpMethod::Get, mock_response);
+    let route = Route::new(exact_pattern, HttpMethod::Get, mock_response);
 
     interceptor.route(route);
     println!("   Route added");
@@ -88,11 +91,145 @@ fn main() -> ProbarResult<()> {
         println!("   {} {}", code, text);
     }
 
-    // 8. Clear routes
-    println!("\n8. Clearing routes...");
+    // 8. PMAT-006: Request Abort functionality
+    println!("\n8. Request Abort (PMAT-006)...");
+    demo_request_abort()?;
+
+    // 9. PMAT-006: Wait for request/response
+    println!("\n9. Wait for Request/Response (PMAT-006)...");
+    demo_wait_for_request()?;
+
+    // 10. Clear routes
+    println!("\n10. Clearing routes...");
     interceptor.clear_routes();
-    println!("   Routes cleared. Count: {}", interceptor.route_count());
+    println!("    Routes cleared. Count: {}", interceptor.route_count());
 
     println!("\n✅ Network interception example completed!");
+    Ok(())
+}
+
+/// PMAT-006: Demonstrate request abort functionality
+fn demo_request_abort() -> ProbarResult<()> {
+    println!("   --- Request Abort Demo ---");
+
+    // Create interceptor
+    let mut interceptor = NetworkInterception::new();
+
+    // Abort all requests to tracking endpoints
+    println!("   Blocking tracking endpoints...");
+    interceptor.abort("/analytics", AbortReason::BlockedByClient);
+    interceptor.abort("/tracking", AbortReason::BlockedByClient);
+    interceptor.abort("/ads", AbortReason::BlockedByClient);
+
+    // Abort with different reasons
+    println!("   Simulating network failures...");
+    interceptor.abort_pattern(
+        UrlPattern::Contains("unreachable.com".to_string()),
+        AbortReason::ConnectionFailed,
+    );
+    interceptor.abort_pattern(
+        UrlPattern::Contains("timeout.com".to_string()),
+        AbortReason::TimedOut,
+    );
+
+    // Start interception
+    interceptor.start();
+
+    // Test blocked request
+    let response = interceptor.handle_request(
+        "https://example.com/analytics/event",
+        HttpMethod::Post,
+        HashMap::new(),
+        None,
+    );
+
+    if let Some(resp) = response {
+        println!("   Blocked request response:");
+        println!("     Status: {} (0 = aborted)", resp.status);
+        println!("     Body: {}", resp.body_string());
+    }
+
+    // Show all abort reasons
+    println!("\n   Available AbortReason variants:");
+    let reasons = [
+        AbortReason::Failed,
+        AbortReason::Aborted,
+        AbortReason::TimedOut,
+        AbortReason::AccessDenied,
+        AbortReason::ConnectionClosed,
+        AbortReason::ConnectionFailed,
+        AbortReason::ConnectionRefused,
+        AbortReason::ConnectionReset,
+        AbortReason::InternetDisconnected,
+        AbortReason::NameNotResolved,
+        AbortReason::BlockedByClient,
+    ];
+
+    for reason in &reasons {
+        println!("     {:?}: {}", reason, reason.message());
+    }
+
+    Ok(())
+}
+
+/// PMAT-006: Demonstrate wait for request/response
+fn demo_wait_for_request() -> ProbarResult<()> {
+    println!("   --- Wait for Request Demo ---");
+
+    // Create interceptor with capture_all
+    let mut interceptor = NetworkInterception::new().capture_all();
+    interceptor.get(
+        "/api/users",
+        MockResponse::json(&serde_json::json!({
+            "users": [{"id": 1, "name": "Alice"}]
+        }))?,
+    );
+    interceptor.start();
+
+    // Simulate some requests
+    interceptor.handle_request(
+        "https://example.com/api/users",
+        HttpMethod::Get,
+        HashMap::new(),
+        None,
+    );
+
+    interceptor.handle_request(
+        "https://example.com/api/posts",
+        HttpMethod::Get,
+        HashMap::new(),
+        None,
+    );
+
+    // Find request matching pattern
+    let pattern = UrlPattern::Contains("users".to_string());
+    let found = interceptor.find_request(&pattern);
+
+    println!("   find_request(Contains(\"users\")):");
+    if let Some(req) = found {
+        println!("     Found: {}", req.url);
+        println!("     Method: {:?}", req.method);
+    } else {
+        println!("     Not found");
+    }
+
+    // Find response for pattern
+    let response = interceptor.find_response_for(&pattern);
+    println!("\n   find_response_for(Contains(\"users\")):");
+    if let Some(resp) = response {
+        println!("     Status: {}", resp.status);
+        println!("     Body: {}", resp.body_string());
+    } else {
+        println!("     Not found");
+    }
+
+    // Get all captured responses
+    let responses = interceptor.captured_responses();
+    println!("\n   captured_responses():");
+    println!("     Count: {}", responses.len());
+    for (i, resp) in responses.iter().enumerate() {
+        println!("     [{}] Status: {}", i, resp.status);
+    }
+
     Ok(())
 }

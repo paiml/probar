@@ -577,6 +577,7 @@ impl VerificationResult {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -605,7 +606,7 @@ mod tests {
         #[test]
         fn test_new() {
             let event = InputEvent::key_press("Space");
-            let timed = TimedInput::new(100, event.clone());
+            let timed = TimedInput::new(100, event);
             assert_eq!(timed.frame, 100);
         }
     }
@@ -835,7 +836,7 @@ mod tests {
             assert!((player.progress() - 0.0).abs() < f64::EPSILON);
 
             for _ in 0..7 {
-                player.get_frame_inputs();
+                let _ = player.get_frame_inputs();
             }
 
             // 7/15 ≈ 0.467
@@ -878,7 +879,7 @@ mod tests {
 
             // Play through entire replay
             while player.is_playing() {
-                player.get_frame_inputs();
+                let _ = player.get_frame_inputs();
             }
 
             assert_eq!(player.current_frame(), 15);
@@ -892,7 +893,7 @@ mod tests {
 
             // Advance to frame 5 (checkpoint is at frame 5)
             for _ in 0..6 {
-                player.get_frame_inputs();
+                let _ = player.get_frame_inputs();
             }
 
             // Should verify successfully
@@ -906,7 +907,7 @@ mod tests {
 
             // Advance to frame 5
             for _ in 0..6 {
-                player.get_frame_inputs();
+                let _ = player.get_frame_inputs();
             }
 
             // Should fail with wrong hash

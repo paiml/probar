@@ -318,5 +318,67 @@ mod tests {
             reporter.failure("shown");
             // No panic = success
         }
+
+        #[test]
+        fn test_color_mode_messages() {
+            let reporter = ProgressReporter::new(true, false);
+            reporter.success("Pass with color");
+            reporter.failure("Fail with color");
+            reporter.warning("Warn with color");
+            reporter.info("Info with color");
+            reporter.header("Header with color");
+        }
+
+        #[test]
+        fn test_summary_all_skipped() {
+            let reporter = ProgressReporter::new(false, false);
+            reporter.summary(0, 0, 5, Duration::from_secs(1));
+        }
+
+        #[test]
+        fn test_summary_mixed() {
+            let reporter = ProgressReporter::new(true, false);
+            reporter.summary(5, 3, 2, Duration::from_millis(500));
+        }
+
+        #[test]
+        fn test_progress_without_start() {
+            let reporter = ProgressReporter::new(false, false);
+            // These should not panic even without start_progress
+            reporter.increment(1);
+            reporter.set_message("test");
+            reporter.finish();
+        }
+
+        #[test]
+        fn test_debug() {
+            let reporter = ProgressReporter::new(true, false);
+            let debug = format!("{reporter:?}");
+            assert!(debug.contains("ProgressReporter"));
+        }
+    }
+
+    mod output_format_additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_clone() {
+            let format = OutputFormat::Json;
+            let cloned = format;
+            assert_eq!(format, cloned);
+        }
+
+        #[test]
+        fn test_debug() {
+            let debug = format!("{:?}", OutputFormat::Text);
+            assert!(debug.contains("Text"));
+        }
+
+        #[test]
+        fn test_serialize() {
+            let format = OutputFormat::Json;
+            let json = serde_json::to_string(&format).unwrap();
+            assert!(json.contains("Json"));
+        }
     }
 }

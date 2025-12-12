@@ -754,6 +754,7 @@ impl PerformanceProfilerBuilder {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -1130,6 +1131,137 @@ mod tests {
                 .build();
 
             assert_eq!(profiler.thresholds.len(), 2);
+        }
+    }
+
+    mod additional_performance_tests {
+        use super::*;
+
+        #[test]
+        fn test_measurement_with_tag() {
+            let m = Measurement::timing("render", 16.0).with_tag("scene", "menu");
+            assert_eq!(m.tags.get("scene"), Some(&"menu".to_string()));
+        }
+
+        #[test]
+        fn test_measurement_memory() {
+            let m = Measurement::memory("heap", 1024 * 1024);
+            assert_eq!(m.metric_type, MetricType::MemoryUsage);
+            assert_eq!(m.unit, "bytes");
+        }
+
+        #[test]
+        fn test_measurement_frame_time() {
+            let m = Measurement::frame_time(16.67);
+            assert_eq!(m.metric_type, MetricType::FrameTime);
+            assert_eq!(m.name, "frame_time");
+        }
+
+        #[test]
+        fn test_measurement_with_timestamp() {
+            let m = Measurement::timing("test", 10.0).with_timestamp(100);
+            assert_eq!(m.timestamp_ms, 100);
+        }
+
+        #[test]
+        fn test_metric_type_variants() {
+            let types = [
+                MetricType::FrameTime,
+                MetricType::ScriptTime,
+                MetricType::LayoutTime,
+                MetricType::PaintTime,
+                MetricType::NetworkTime,
+                MetricType::MemoryUsage,
+                MetricType::GcTime,
+                MetricType::FirstContentfulPaint,
+                MetricType::LargestContentfulPaint,
+                MetricType::TimeToInteractive,
+                MetricType::TotalBlockingTime,
+                MetricType::CumulativeLayoutShift,
+                MetricType::Custom,
+            ];
+            for t in &types {
+                let debug = format!("{:?}", t);
+                assert!(!debug.is_empty());
+            }
+        }
+
+        #[test]
+        fn test_threshold_min_max() {
+            let t = PerformanceThreshold::new("test")
+                .with_min(10.0)
+                .with_max(100.0);
+            assert_eq!(t.min, Some(10.0));
+            assert_eq!(t.max, Some(100.0));
+        }
+
+        #[test]
+        fn test_threshold_check_failure_max() {
+            let mut profile = PerformanceProfile::new("test");
+            profile.add(Measurement::timing("render", 100.0));
+
+            let thresholds = vec![PerformanceThreshold::new("render").with_max(50.0)];
+            assert!(profile.check_thresholds(&thresholds).is_err());
+        }
+
+        #[test]
+        fn test_threshold_check_failure_min() {
+            let mut profile = PerformanceProfile::new("test");
+            profile.add(Measurement::timing("render", 5.0));
+
+            let thresholds = vec![PerformanceThreshold::new("render").with_min(10.0)];
+            assert!(profile.check_thresholds(&thresholds).is_err());
+        }
+
+        #[test]
+        fn test_profile_stats_nonexistent() {
+            let profile = PerformanceProfile::new("test");
+            assert!(profile.stats("nonexistent").is_none());
+        }
+
+        #[test]
+        fn test_profiler_stop_timer_nonexistent() {
+            let mut profiler = PerformanceProfiler::new("test");
+            profiler.start();
+            let duration = profiler.stop_timer("nonexistent");
+            assert!(duration.is_none());
+        }
+
+        #[test]
+        fn test_metric_stats_debug() {
+            let stats = MetricStats {
+                count: 10,
+                min: 1.0,
+                max: 100.0,
+                mean: 50.0,
+                median: 45.0,
+                std_dev: 25.0,
+                p95: 90.0,
+                p99: 98.0,
+                sum: 500.0,
+            };
+            let debug = format!("{:?}", stats);
+            assert!(debug.contains("MetricStats"));
+        }
+
+        #[test]
+        fn test_performance_summary_debug() {
+            let summary = PerformanceSummary {
+                test_name: "test".to_string(),
+                duration_ms: 1000,
+                metrics: HashMap::new(),
+            };
+            let debug = format!("{:?}", summary);
+            assert!(debug.contains("PerformanceSummary"));
+        }
+
+        #[test]
+        fn test_monitor_assert_performance_failure() {
+            let mut monitor = PerformanceMonitor::new();
+            monitor.record_frame_time(50.0);
+            monitor.record_frame_time(60.0);
+
+            assert!(monitor.assert_performance().is_err());
         }
     }
 }

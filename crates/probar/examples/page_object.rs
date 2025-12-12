@@ -44,7 +44,7 @@ fn main() -> ProbarResult<()> {
 
     // 4. Create another page object
     println!("\n4. Creating dashboard page...");
-    let dashboard_page = PageObjectBuilder::new()
+    let _dashboard_page = PageObjectBuilder::new()
         .with_url_pattern("/dashboard")
         .with_locator("user_menu", Selector::Css(".user-menu".into()))
         .with_locator("logout_btn", Selector::Text("Logout".into()))

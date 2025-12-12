@@ -579,6 +579,15 @@ pub struct BrowserController<D: ProbarDriver> {
 }
 
 #[cfg(feature = "browser")]
+impl<D: ProbarDriver> std::fmt::Debug for BrowserController<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BrowserController")
+            .field("config", &self.config)
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "browser")]
 impl<D: ProbarDriver> BrowserController<D> {
     /// Create controller with existing driver
     pub fn new(driver: D, config: DriverConfig) -> Self {
@@ -627,6 +636,7 @@ impl<D: ProbarDriver> BrowserController<D> {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

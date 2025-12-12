@@ -322,6 +322,7 @@ impl GeolocationMock {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -341,31 +342,31 @@ mod tests {
     #[test]
     #[should_panic(expected = "Latitude must be between -90 and 90 degrees")]
     fn test_position_invalid_latitude_high() {
-        GeolocationPosition::new(91.0, 0.0, 10.0);
+        let _ = GeolocationPosition::new(91.0, 0.0, 10.0);
     }
 
     #[test]
     #[should_panic(expected = "Latitude must be between -90 and 90 degrees")]
     fn test_position_invalid_latitude_low() {
-        GeolocationPosition::new(-91.0, 0.0, 10.0);
+        let _ = GeolocationPosition::new(-91.0, 0.0, 10.0);
     }
 
     #[test]
     #[should_panic(expected = "Longitude must be between -180 and 180 degrees")]
     fn test_position_invalid_longitude_high() {
-        GeolocationPosition::new(0.0, 181.0, 10.0);
+        let _ = GeolocationPosition::new(0.0, 181.0, 10.0);
     }
 
     #[test]
     #[should_panic(expected = "Longitude must be between -180 and 180 degrees")]
     fn test_position_invalid_longitude_low() {
-        GeolocationPosition::new(0.0, -181.0, 10.0);
+        let _ = GeolocationPosition::new(0.0, -181.0, 10.0);
     }
 
     #[test]
     #[should_panic(expected = "Accuracy must be non-negative")]
     fn test_position_invalid_accuracy() {
-        GeolocationPosition::new(0.0, 0.0, -1.0);
+        let _ = GeolocationPosition::new(0.0, 0.0, -1.0);
     }
 
     #[test]
@@ -384,7 +385,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Heading must be between 0 and 360 degrees")]
     fn test_position_invalid_heading() {
-        GeolocationPosition::new(0.0, 0.0, 10.0).with_heading(361.0);
+        let _ = GeolocationPosition::new(0.0, 0.0, 10.0).with_heading(361.0);
     }
 
     #[test]
@@ -396,7 +397,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Speed must be non-negative")]
     fn test_position_invalid_speed() {
-        GeolocationPosition::new(0.0, 0.0, 10.0).with_speed(-1.0);
+        let _ = GeolocationPosition::new(0.0, 0.0, 10.0).with_speed(-1.0);
     }
 
     #[test]

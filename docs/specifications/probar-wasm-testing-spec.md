@@ -238,9 +238,15 @@ pub struct WasmBindgenDriver { /* ... */ }
 | Test ID selectors | ✅ | ✅ | ✅ | `[data-testid]` |
 | XPath selectors | ✅ | ❌ | ✅ | `document.evaluate` |
 | Role selectors | ✅ | ❌ | ✅ | ARIA role matching |
+| **Label selectors** | ✅ | ❌ | ✅ | `label=` prefix, `for` attribute |
+| **Placeholder selectors** | ✅ | ❌ | ✅ | `placeholder=` prefix |
+| **Alt text selectors** | ✅ | ❌ | ✅ | `alt=` prefix for images |
 | Auto-waiting | ✅ | ⚠️ | ✅ | Polling with timeout |
 | Strict mode | ✅ | ✅ | ✅ | Single element assertion |
 | Chaining/filtering | ✅ | ✅ | ✅ | `.filter()`, `.nth()` |
+| **Locator.filter()** | ✅ | ❌ | ✅ | Filter by has/hasText/hasNot |
+| **Locator.and()** | ✅ | ❌ | ✅ | Intersection of locators |
+| **Locator.or()** | ✅ | ❌ | ✅ | Union of locators |
 | **Type-safe entity selectors** | ❌ | ❌ | ✅ | **`probar-derive` macro** |
 | **Compile-time verification** | ❌ | ❌ | ✅ | **Poka-Yoke pattern** |
 
@@ -251,8 +257,18 @@ pub struct WasmBindgenDriver { /* ... */ }
 | `toBeVisible()` | ✅ | ✅ | ✅ | Visibility check |
 | `toHaveText()` | ✅ | ✅ | ✅ | Text content match |
 | `toHaveCount()` | ✅ | ✅ | ✅ | Element count |
-| `toBeEnabled()` | ✅ | ❌ | ✅ | Disabled attribute |
+| `toBeEnabled()` | ✅ | ❌ | ✅ | Disabled attribute check |
+| **`toBeDisabled()`** | ✅ | ❌ | ✅ | Disabled attribute true |
+| **`toBeChecked()`** | ✅ | ❌ | ✅ | Checkbox/radio checked state |
+| **`toBeEditable()`** | ✅ | ❌ | ✅ | Input/textarea editable |
+| **`toBeHidden()`** | ✅ | ❌ | ✅ | Element not visible |
+| **`toBeFocused()`** | ✅ | ❌ | ✅ | Element has focus |
+| **`toBeEmpty()`** | ✅ | ❌ | ✅ | Element has no children/value |
 | `toHaveAttribute()` | ✅ | ❌ | ✅ | Attribute check |
+| **`toHaveValue()`** | ✅ | ❌ | ✅ | Input/select value |
+| **`toHaveCSS()`** | ✅ | ❌ | ✅ | Computed CSS property |
+| **`toHaveClass()`** | ✅ | ❌ | ✅ | Class name(s) present |
+| **`toHaveId()`** | ✅ | ❌ | ✅ | Element ID match |
 | `toHaveScreenshot()` | ✅ | ⚠️ | ✅ | Visual regression |
 | `toPass()` | ✅ | ❌ | ✅ | Retry assertion |
 | Soft assertions | ✅ | ❌ | ✅ | Non-failing collect |
@@ -264,13 +280,20 @@ pub struct WasmBindgenDriver { /* ... */ }
 | Feature | Playwright | Probar v0.1 | Probar v2.0 | Implementation |
 |---------|:----------:|:-----------:|:-----------:|----------------|
 | `click()` | ✅ | ✅ | ✅ | Mouse event dispatch |
+| **`dblclick()`** | ✅ | ❌ | ✅ | Double-click event |
+| **`click({ button: 'right' })`** | ✅ | ❌ | ✅ | Right-click/context menu |
 | `fill()` | ✅ | ✅ | ✅ | Input value + events |
 | `type()` | ✅ | ❌ | ✅ | Keystroke sequence |
 | `press()` | ✅ | ❌ | ✅ | Key press/release |
 | `hover()` | ✅ | ❌ | ✅ | Mouse move |
+| **`focus()`** | ✅ | ❌ | ✅ | Focus element |
+| **`blur()`** | ✅ | ❌ | ✅ | Remove focus |
+| **`check()`** | ✅ | ❌ | ✅ | Check checkbox/radio |
+| **`uncheck()`** | ✅ | ❌ | ✅ | Uncheck checkbox |
 | `dragTo()` | ✅ | ✅ | ✅ | Drag and drop |
 | `selectOption()` | ✅ | ❌ | ✅ | Select dropdown |
 | `setInputFiles()` | ✅ | ❌ | ✅ | File upload |
+| **`scrollIntoViewIfNeeded()`** | ✅ | ❌ | ✅ | Scroll element visible |
 | Touch gestures | ✅ | ✅ | ✅ | Touch events |
 | Gamepad input | ❌ | ✅ | ✅ | Gamepad API |
 
@@ -288,6 +311,34 @@ pub struct WasmBindgenDriver { /* ... */ }
 | AI state inspection | ❌ | ❌ | ✅ | GOAP/BT state |
 | WCAG accessibility | ⚠️ | ✅ | ✅ | Color contrast, flash |
 | Flash detection | ❌ | ✅ | ✅ | Photosensitivity |
+
+### 2.6 Wait Mechanisms (Playwright Parity)
+
+| Feature | Playwright | Probar v0.1 | Probar v2.0 | Implementation |
+|---------|:----------:|:-----------:|:-----------:|----------------|
+| `waitForSelector()` | ✅ | ⚠️ | ✅ | Polling with timeout |
+| **`waitForNavigation()`** | ✅ | ❌ | ✅ | Page load event |
+| **`waitForLoadState()`** | ✅ | ❌ | ✅ | load/domcontentloaded/networkidle |
+| **`waitForURL()`** | ✅ | ❌ | ✅ | URL pattern match |
+| **`waitForFunction()`** | ✅ | ❌ | ✅ | Custom JS condition |
+| **`waitForResponse()`** | ✅ | ❌ | ✅ | Network response match |
+| **`waitForRequest()`** | ✅ | ❌ | ✅ | Network request match |
+| **`waitForEvent()`** | ✅ | ❌ | ✅ | Page/browser event |
+| `waitForTimeout()` | ✅ | ✅ | ✅ | Fixed delay (discouraged) |
+| Auto-waiting on actions | ✅ | ⚠️ | ✅ | Built into locators |
+
+### 2.7 Network Interception (Playwright Parity)
+
+| Feature | Playwright | Probar v0.1 | Probar v2.0 | Implementation |
+|---------|:----------:|:-----------:|:-----------:|----------------|
+| Route interception | ✅ | ⚠️ | ✅ | CDP Fetch domain |
+| Request modification | ✅ | ⚠️ | ✅ | Header/body changes |
+| **Request abort** | ✅ | ❌ | ✅ | Block requests |
+| Mock responses | ✅ | ⚠️ | ✅ | Custom response body |
+| Continue request | ✅ | ⚠️ | ✅ | Pass-through |
+| HAR recording | ✅ | ❌ | ✅ | HTTP Archive format |
+| HAR playback | ✅ | ❌ | ✅ | Mock from HAR |
+| WebSocket interception | ✅ | ❌ | ✅ | WS frame inspection |
 
 ---
 

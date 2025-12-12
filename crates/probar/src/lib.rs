@@ -179,6 +179,15 @@ pub mod tracing_support;
 )]
 pub mod network;
 
+/// Wait Mechanisms (PMAT-005)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod wait;
+
 /// WebSocket Monitoring (Feature 8)
 #[allow(
     clippy::missing_errors_doc,
@@ -304,11 +313,15 @@ pub use tui::{
     TuiSnapshot, TuiTestBackend, ValueTracker,
 };
 pub use ux_coverage::{
-    ElementCoverage, ElementId, InteractionType, StateId, TrackedInteraction, UxCoverageBuilder,
-    UxCoverageReport, UxCoverageTracker,
+    calculator_coverage, game_coverage, ElementCoverage, ElementId, InteractionType, StateId,
+    TrackedInteraction, UxCoverageBuilder, UxCoverageReport, UxCoverageTracker,
 };
 pub use visual_regression::{
     perceptual_diff, ImageDiffResult, VisualRegressionConfig, VisualRegressionTester,
+};
+pub use wait::{
+    wait_timeout, wait_until, FnCondition, LoadState, NavigationOptions, PageEvent, WaitCondition,
+    WaitOptions, WaitResult, Waiter, DEFAULT_WAIT_TIMEOUT_MS, NETWORK_IDLE_THRESHOLD_MS,
 };
 pub use watch::{
     FileChange, FileChangeKind, FileWatcher, FnWatchHandler, WatchBuilder, WatchConfig,
@@ -346,6 +359,11 @@ pub mod prelude {
     pub use super::tui::*;
     pub use super::ux_coverage::*;
     pub use super::visual_regression::*;
+    pub use super::wait::{
+        wait_timeout, wait_until, FnCondition, LoadState, NavigationOptions, PageEvent,
+        WaitCondition, WaitOptions, WaitResult, Waiter, DEFAULT_WAIT_TIMEOUT_MS,
+        NETWORK_IDLE_THRESHOLD_MS,
+    };
     pub use super::watch::*;
     pub use super::websocket::*;
 }
@@ -360,7 +378,7 @@ pub mod standard_invariants {
 pub use probar_derive::{probar_test, ProbarComponent, ProbarEntity, ProbarSelector};
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
