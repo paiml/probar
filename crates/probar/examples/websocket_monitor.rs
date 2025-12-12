@@ -6,7 +6,7 @@
 //!
 //! Toyota Way: Mieruka (Visibility) - Clear view of all WebSocket traffic
 
-use probar::prelude::*;
+use jugar_jugar_probar::prelude::*;
 
 fn main() -> ProbarResult<()> {
     println!("=== WebSocket Monitoring Example ===\n");

@@ -22,7 +22,7 @@
 //! - `page.waitForURL(pattern)` -> `waiter.wait_for_url(&pattern, &options)`
 //! - `page.waitForFunction(fn)` -> `waiter.wait_for_function(|| predicate(), &options)`
 
-use probar::prelude::*;
+use jugar_jugar_probar::prelude::*;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;

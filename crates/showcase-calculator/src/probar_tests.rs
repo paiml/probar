@@ -15,7 +15,7 @@
 //! - Wait Mechanisms
 //! - Browser Context Management
 
-use probar::prelude::*;
+use jugar_probar::prelude::*;
 use std::collections::HashMap;
 
 // ============================================================================
@@ -364,7 +364,7 @@ impl Fixture for CalculatorFixture {
 
 /// Device presets optimized for calculator testing
 pub mod devices {
-    use probar::emulation::{DeviceDescriptor, TouchMode, Viewport};
+    use jugar_probar::emulation::{DeviceDescriptor, TouchMode, Viewport};
 
     /// iPhone SE - small mobile screen
     #[must_use]
@@ -485,7 +485,7 @@ impl CalculatorVisualConfig {
 
 /// Custom wait conditions for calculator
 pub mod wait_conditions {
-    use probar::wait::WaitCondition;
+    use jugar_probar::wait::WaitCondition;
 
     /// Wait for display to show a specific value
     #[derive(Debug)]

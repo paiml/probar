@@ -24,7 +24,7 @@
     dead_code
 )]
 
-use probar::{
+use jugar_jugar_probar::{
     run_replay, run_simulation, Assertion, InputEvent, RandomWalkAgent, Seed, SimulationConfig,
 };
 use std::collections::hash_map::DefaultHasher;

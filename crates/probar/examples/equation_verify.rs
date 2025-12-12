@@ -8,7 +8,7 @@
 
 #![allow(clippy::many_single_char_names, clippy::float_cmp)]
 
-use probar::prelude::*;
+use jugar_jugar_probar::prelude::*;
 
 fn main() -> ProbarResult<()> {
     println!("=== Equation Verification Example ===\n");

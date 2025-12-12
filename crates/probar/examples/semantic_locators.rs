@@ -22,7 +22,7 @@
 
 #![allow(clippy::uninlined_format_args)]
 
-use probar::{Locator, Selector};
+use jugar_jugar_probar::{Locator, Selector};
 
 fn main() {
     println!("=== Probar Semantic Locators Demo (PMAT-001) ===\n");

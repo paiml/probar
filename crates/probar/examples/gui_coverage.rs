@@ -6,7 +6,7 @@
 //!
 //! Probar: Complete UX verification with minimal boilerplate
 
-use probar::prelude::*;
+use jugar_jugar_probar::prelude::*;
 
 fn main() -> ProbarResult<()> {
     println!("=== GUI Coverage Example ===\n");
@@ -16,7 +16,7 @@ fn main() -> ProbarResult<()> {
     // =========================================================================
     println!("1. Using gui_coverage! macro (simplest)...");
 
-    let mut gui = probar::gui_coverage! {
+    let mut gui = jugar_probar::gui_coverage! {
         buttons: ["start", "pause", "quit"],
         screens: ["title", "playing", "game_over"]
     };
@@ -105,7 +105,7 @@ fn main() -> ProbarResult<()> {
     // =========================================================================
     println!("\n5. Achieving 100% coverage...");
 
-    let mut full = probar::gui_coverage! {
+    let mut full = jugar_probar::gui_coverage! {
         buttons: ["a", "b", "c"],
         screens: ["home"]
     };
@@ -126,7 +126,7 @@ fn main() -> ProbarResult<()> {
     // =========================================================================
     println!("\n6. Detailed coverage report...");
 
-    let mut detailed = probar::gui_coverage! {
+    let mut detailed = jugar_probar::gui_coverage! {
         buttons: ["save", "cancel", "delete"],
         inputs: ["name", "email"],
         screens: ["form", "confirmation"],

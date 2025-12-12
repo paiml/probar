@@ -28,7 +28,7 @@ pub enum CliError {
 
     /// Probar library error
     #[error("Probar error: {0}")]
-    Probar(#[from] probar::ProbarError),
+    Probar(#[from] jugar_probar::ProbarError),
 
     /// Invalid argument
     #[error("Invalid argument: {message}")]

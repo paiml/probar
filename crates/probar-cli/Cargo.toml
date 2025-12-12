@@ -12,8 +12,8 @@ name = "probar"
 path = "src/main.rs"
 
 [dependencies]
-# Core library
-probar = { path = "../probar" }
+# Core library (crates.io)
+jugar-probar = "0.2"
 
 # CLI framework
 clap = { workspace = true }

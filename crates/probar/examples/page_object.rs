@@ -6,7 +6,7 @@
 //!
 //! Toyota Way: Jidoka (Built-in Quality) - Encapsulated page interactions
 
-use probar::prelude::*;
+use jugar_jugar_probar::prelude::*;
 
 fn main() -> ProbarResult<()> {
     println!("=== Page Object Model Example ===\n");

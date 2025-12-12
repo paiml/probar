@@ -8,7 +8,7 @@
 //!
 //! PMAT-006: Added abort functionality and wait_for_response
 
-use probar::prelude::*;
+use jugar_jugar_probar::prelude::*;
 use std::collections::HashMap;
 
 fn main() -> ProbarResult<()> {

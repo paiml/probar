@@ -22,7 +22,7 @@
     clippy::unwrap_used
 )]
 
-use probar::{
+use jugar_jugar_probar::{
     expect, BoundingBox, Locator, Point, Selector, DEFAULT_POLL_INTERVAL_MS, DEFAULT_TIMEOUT_MS,
 };
 use std::time::Duration;

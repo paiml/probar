@@ -141,7 +141,7 @@ fn run_init(args: &probar_cli::InitArgs) {
         let _ = std::fs::create_dir_all(parent);
     }
     let test_content = r#"//! Basic Probar test
-use probar::prelude::*;
+use jugar_probar::prelude::*;
 
 #[test]
 fn test_example() {

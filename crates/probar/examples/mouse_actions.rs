@@ -23,7 +23,7 @@
 
 #![allow(clippy::uninlined_format_args)]
 
-use probar::prelude::*;
+use jugar_jugar_probar::prelude::*;
 
 fn main() {
     println!("=== Probar Mouse Actions Demo (PMAT-003) ===\n");

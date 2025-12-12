@@ -6,7 +6,7 @@
 //!
 //! Toyota Way: Muda (Waste Elimination) - Identify performance bottlenecks
 
-use probar::prelude::*;
+use jugar_jugar_probar::prelude::*;
 
 fn main() -> ProbarResult<()> {
     println!("=== Performance Profiling Example ===\n");

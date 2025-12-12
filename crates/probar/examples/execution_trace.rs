@@ -6,7 +6,7 @@
 //!
 //! Toyota Way: Genchi Genbutsu (Go and See) - See actual execution flow
 
-use probar::prelude::*;
+use jugar_jugar_probar::prelude::*;
 
 fn main() -> ProbarResult<()> {
     println!("=== Execution Tracing Example ===\n");

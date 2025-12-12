@@ -6,7 +6,7 @@
 //!
 //! Toyota Way: Jidoka (Autonomation) - Fail-fast on quality issues
 
-use probar::prelude::*;
+use jugar_jugar_probar::prelude::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
