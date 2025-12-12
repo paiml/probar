@@ -19,7 +19,7 @@
 
 #![allow(clippy::uninlined_format_args)]
 
-use jugar_jugar_probar::coverage::{
+use jugar_probar::coverage::{
     BlockId, CoverageCollector, CoverageConfig, CoverageExecutor, CoverageHypothesis,
     CoverageViolation, EdgeId, FunctionId, Granularity, NullificationConfig, Superblock,
     SuperblockBuilder, SuperblockId, SuperblockResult, TaintedBlocks, ThreadLocalCounters,

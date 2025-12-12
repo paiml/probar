@@ -6,7 +6,7 @@
 //!
 //! Probar: Complete UX verification with minimal boilerplate
 
-use jugar_jugar_probar::prelude::*;
+use jugar_probar::prelude::*;
 
 fn main() -> ProbarResult<()> {
     println!("=== GUI Coverage Example ===\n");

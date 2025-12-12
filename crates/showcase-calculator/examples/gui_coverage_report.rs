@@ -4,7 +4,7 @@
 //!
 //! This runs all calculator functionality and reports GUI coverage.
 
-use probar::UxCoverageBuilder;
+use jugar_probar::UxCoverageBuilder;
 use showcase_calculator::prelude::*;
 
 fn main() {

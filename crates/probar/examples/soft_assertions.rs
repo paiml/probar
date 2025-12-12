@@ -6,7 +6,7 @@
 //!
 //! Toyota Way: Kaizen (Continuous Improvement) - Gather all issues before reporting
 
-use jugar_jugar_probar::prelude::*;
+use jugar_probar::prelude::*;
 
 fn main() -> ProbarResult<()> {
     println!("=== Soft Assertions Example ===\n");

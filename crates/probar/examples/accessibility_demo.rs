@@ -21,7 +21,7 @@
     clippy::unwrap_used
 )]
 
-use jugar_jugar_probar::{
+use jugar_probar::{
     AccessibilityAudit, AccessibilityConfig, AccessibilityValidator, Color, ContrastAnalysis,
     FlashDetector, Severity, MIN_CONTRAST_LARGE, MIN_CONTRAST_NORMAL, MIN_CONTRAST_UI,
 };

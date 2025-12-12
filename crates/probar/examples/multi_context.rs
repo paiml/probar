@@ -6,7 +6,7 @@
 //!
 //! Toyota Way: Heijunka (Level Loading) - Balanced resource allocation
 
-use jugar_jugar_probar::prelude::*;
+use jugar_probar::prelude::*;
 
 fn main() -> ProbarResult<()> {
     println!("=== Multi-Browser Context Management Example ===\n");

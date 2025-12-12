@@ -23,7 +23,7 @@
 
 #![allow(clippy::uninlined_format_args)]
 
-use jugar_jugar_probar::{expect, ExpectAssertion, Locator};
+use jugar_probar::{expect, ExpectAssertion, Locator};
 
 fn main() {
     println!("=== Probar Element Assertions Demo (PMAT-004) ===\n");

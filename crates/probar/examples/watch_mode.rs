@@ -6,7 +6,7 @@
 //!
 //! Toyota Way: Genchi Genbutsu (Go and See) - Real-time feedback on changes
 
-use jugar_jugar_probar::prelude::*;
+use jugar_probar::prelude::*;
 use std::path::PathBuf;
 use std::time::Instant;
 

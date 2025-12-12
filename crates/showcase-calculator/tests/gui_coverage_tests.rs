@@ -7,7 +7,7 @@
 //!   2. Run your tests
 //!   3. Get a simple percentage
 
-use probar::{calculator_coverage, game_coverage, gui_coverage, UxCoverageBuilder};
+use jugar_probar::{calculator_coverage, game_coverage, gui_coverage, UxCoverageBuilder};
 use showcase_calculator::prelude::*;
 
 // =============================================================================

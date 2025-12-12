@@ -22,7 +22,7 @@
 
 #![allow(clippy::uninlined_format_args)]
 
-use jugar_jugar_probar::prelude::*;
+use jugar_probar::prelude::*;
 
 fn main() {
     println!("=== Probar Locator Operations Demo (PMAT-002) ===\n");
