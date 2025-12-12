@@ -189,7 +189,6 @@ impl Default for GeolocationMock {
 impl GeolocationMock {
     /// Create a new geolocation mock
     #[must_use]
-    #[allow(clippy::unused_results)]
     pub fn new() -> Self {
         let mut presets = HashMap::new();
 
@@ -630,10 +629,7 @@ mod tests {
         mock.set_enabled(true);
         mock.simulate_error(GeolocationError::Timeout);
 
-        assert_eq!(
-            mock.get_current_position(),
-            Err(GeolocationError::Timeout)
-        );
+        assert_eq!(mock.get_current_position(), Err(GeolocationError::Timeout));
     }
 
     #[test]

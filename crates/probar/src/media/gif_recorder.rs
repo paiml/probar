@@ -114,10 +114,11 @@ impl GifFrame {
     /// Create a frame from a Screenshot
     pub fn from_screenshot(screenshot: &Screenshot, timestamp_ms: u64) -> ProbarResult<Self> {
         // Decode PNG data from screenshot
-        let img = image::load_from_memory_with_format(&screenshot.data, ImageFormat::Png)
-            .map_err(|e| ProbarError::ImageProcessing {
+        let img = image::load_from_memory_with_format(&screenshot.data, ImageFormat::Png).map_err(
+            |e| ProbarError::ImageProcessing {
                 message: format!("Failed to decode screenshot: {e}"),
-            })?;
+            },
+        )?;
 
         let (width, height) = img.dimensions();
         let rgba = img.to_rgba8();
@@ -289,9 +290,12 @@ impl GifRecorder {
     ///
     /// Returns error if no encoded data or file write fails
     pub fn save(&self, path: &Path) -> ProbarResult<()> {
-        let data = self.encoded_data.as_ref().ok_or_else(|| ProbarError::InvalidState {
-            message: "No encoded GIF data. Call stop() first.".to_string(),
-        })?;
+        let data = self
+            .encoded_data
+            .as_ref()
+            .ok_or_else(|| ProbarError::InvalidState {
+                message: "No encoded GIF data. Call stop() first.".to_string(),
+            })?;
 
         std::fs::write(path, data)?;
 
@@ -307,10 +311,11 @@ impl GifRecorder {
         let height = self.config.height as u16;
 
         {
-            let mut encoder = Encoder::new(&mut output, width, height, &[])
-                .map_err(|e| ProbarError::ImageProcessing {
+            let mut encoder = Encoder::new(&mut output, width, height, &[]).map_err(|e| {
+                ProbarError::ImageProcessing {
                     message: format!("Failed to create GIF encoder: {e}"),
-                })?;
+                }
+            })?;
 
             // Set loop behavior
             let repeat = if self.config.loop_count == 0 {
@@ -318,9 +323,11 @@ impl GifRecorder {
             } else {
                 Repeat::Finite(self.config.loop_count)
             };
-            encoder.set_repeat(repeat).map_err(|e| ProbarError::ImageProcessing {
-                message: format!("Failed to set GIF repeat: {e}"),
-            })?;
+            encoder
+                .set_repeat(repeat)
+                .map_err(|e| ProbarError::ImageProcessing {
+                    message: format!("Failed to set GIF repeat: {e}"),
+                })?;
 
             let frame_delay = self.config.frame_delay_cs();
 
@@ -337,9 +344,11 @@ impl GifRecorder {
                 );
                 frame.delay = frame_delay;
 
-                encoder.write_frame(&frame).map_err(|e| ProbarError::ImageProcessing {
-                    message: format!("Failed to write GIF frame: {e}"),
-                })?;
+                encoder
+                    .write_frame(&frame)
+                    .map_err(|e| ProbarError::ImageProcessing {
+                        message: format!("Failed to write GIF frame: {e}"),
+                    })?;
             }
         }
 
@@ -354,10 +363,11 @@ impl GifRecorder {
 
         // Create image from frame data
         let img = DynamicImage::ImageRgba8(
-            image::RgbaImage::from_raw(frame.width, frame.height, frame.data.clone())
-                .ok_or_else(|| ProbarError::ImageProcessing {
+            image::RgbaImage::from_raw(frame.width, frame.height, frame.data.clone()).ok_or_else(
+                || ProbarError::ImageProcessing {
                     message: "Invalid frame data dimensions".to_string(),
-                })?,
+                },
+            )?,
         );
 
         // Resize to target dimensions

@@ -12,10 +12,10 @@
 //! - **Genchi Genbutsu**: TestBackend reflects actual terminal behavior
 //! - **Jidoka**: Fail-fast on frame mismatch
 
-mod backend;
 mod assertions;
+mod backend;
 mod snapshot;
 
-pub use backend::{TuiTestBackend, TuiFrame};
 pub use assertions::{FrameAssertion, ValueTracker};
-pub use snapshot::{TuiSnapshot, FrameSequence};
+pub use backend::{TuiFrame, TuiTestBackend};
+pub use snapshot::{FrameSequence, TuiSnapshot};

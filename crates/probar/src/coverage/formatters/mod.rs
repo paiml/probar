@@ -4,10 +4,10 @@
 //!
 //! ## EXTREME TDD: Tests written FIRST per spec
 
-mod lcov;
-mod html;
 mod cobertura;
+mod html;
+mod lcov;
 
-pub use lcov::LcovFormatter;
-pub use html::{HtmlFormatter, HtmlReportConfig, Theme};
 pub use cobertura::CoberturaFormatter;
+pub use html::{HtmlFormatter, HtmlReportConfig, Theme};
+pub use lcov::LcovFormatter;

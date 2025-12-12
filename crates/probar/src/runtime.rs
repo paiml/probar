@@ -680,6 +680,7 @@ impl WasmRuntime {
 }
 
 /// Stub runtime for when the runtime feature is disabled
+#[derive(Debug)]
 #[cfg(not(feature = "runtime"))]
 pub struct WasmRuntime {
     _phantom: std::marker::PhantomData<()>,

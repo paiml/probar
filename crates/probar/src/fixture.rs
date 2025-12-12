@@ -169,18 +169,18 @@ impl FixtureManager {
     #[must_use]
     pub fn get<F: Fixture + 'static>(&self) -> Option<&F> {
         let type_id = TypeId::of::<F>();
-        self.fixtures.get(&type_id).and_then(|entry| {
-            entry.fixture.as_ref().as_any().downcast_ref::<F>()
-        })
+        self.fixtures
+            .get(&type_id)
+            .and_then(|entry| entry.fixture.as_ref().as_any().downcast_ref::<F>())
     }
 
     /// Get a mutable reference to a fixture by type.
     #[must_use]
     pub fn get_mut<F: Fixture + 'static>(&mut self) -> Option<&mut F> {
         let type_id = TypeId::of::<F>();
-        self.fixtures.get_mut(&type_id).and_then(|entry| {
-            entry.fixture.as_mut().as_any_mut().downcast_mut::<F>()
-        })
+        self.fixtures
+            .get_mut(&type_id)
+            .and_then(|entry| entry.fixture.as_mut().as_any_mut().downcast_mut::<F>())
     }
 
     /// Set up all registered fixtures in priority order (highest first).
@@ -209,7 +209,8 @@ impl FixtureManager {
                     if let Err(e) = entry.fixture.setup() {
                         let name = entry.fixture.name().to_string();
                         entry.state = FixtureState::Failed;
-                        failed_info = Some((type_id, format!("Fixture '{}' setup failed: {e}", name)));
+                        failed_info =
+                            Some((type_id, format!("Fixture '{}' setup failed: {e}", name)));
                         break;
                     }
                     entry.state = FixtureState::SetUp;
@@ -279,19 +280,23 @@ impl FixtureManager {
     pub fn setup<F: Fixture + 'static>(&mut self) -> ProbarResult<()> {
         let type_id = TypeId::of::<F>();
 
-        let entry = self.fixtures.get_mut(&type_id).ok_or_else(|| {
-            ProbarError::FixtureError {
+        let entry = self
+            .fixtures
+            .get_mut(&type_id)
+            .ok_or_else(|| ProbarError::FixtureError {
                 message: format!("Fixture '{}' not registered", std::any::type_name::<F>()),
-            }
-        })?;
+            })?;
 
         if entry.state == FixtureState::SetUp {
             return Ok(()); // Already set up
         }
 
-        entry.fixture.setup().map_err(|e| ProbarError::FixtureError {
-            message: format!("Fixture '{}' setup failed: {e}", entry.fixture.name()),
-        })?;
+        entry
+            .fixture
+            .setup()
+            .map_err(|e| ProbarError::FixtureError {
+                message: format!("Fixture '{}' setup failed: {e}", entry.fixture.name()),
+            })?;
 
         entry.state = FixtureState::SetUp;
 
@@ -310,11 +315,12 @@ impl FixtureManager {
     pub fn teardown<F: Fixture + 'static>(&mut self) -> ProbarResult<()> {
         let type_id = TypeId::of::<F>();
 
-        let entry = self.fixtures.get_mut(&type_id).ok_or_else(|| {
-            ProbarError::FixtureError {
+        let entry = self
+            .fixtures
+            .get_mut(&type_id)
+            .ok_or_else(|| ProbarError::FixtureError {
                 message: format!("Fixture '{}' not registered", std::any::type_name::<F>()),
-            }
-        })?;
+            })?;
 
         if entry.state != FixtureState::SetUp {
             return Ok(()); // Not set up or already torn down
@@ -364,6 +370,7 @@ impl FixtureManager {
 }
 
 /// Extension trait for downcasting fixtures.
+#[allow(dead_code)] // API for future use
 trait AsAny {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -677,7 +684,10 @@ mod tests {
             let mut manager = FixtureManager::new();
             manager.register(TestFixture::new());
 
-            assert_eq!(manager.state::<TestFixture>(), Some(FixtureState::Registered));
+            assert_eq!(
+                manager.state::<TestFixture>(),
+                Some(FixtureState::Registered)
+            );
         }
 
         #[test]
@@ -714,7 +724,9 @@ mod tests {
 
             let mut manager = FixtureManager::new();
             manager.register(fixture);
-            manager.setup::<TestFixture>().expect("Setup should succeed");
+            manager
+                .setup::<TestFixture>()
+                .expect("Setup should succeed");
 
             assert!(setup_called.load(Ordering::SeqCst));
         }
@@ -726,7 +738,9 @@ mod tests {
 
             let mut manager = FixtureManager::new();
             manager.register(fixture);
-            manager.setup::<TestFixture>().expect("Setup should succeed");
+            manager
+                .setup::<TestFixture>()
+                .expect("Setup should succeed");
             manager
                 .teardown::<TestFixture>()
                 .expect("Teardown should succeed");
@@ -760,7 +774,10 @@ mod tests {
 
             let result = manager.setup_all();
             assert!(result.is_err());
-            assert_eq!(manager.state::<FailingSetupFixture>(), Some(FixtureState::Failed));
+            assert_eq!(
+                manager.state::<FailingSetupFixture>(),
+                Some(FixtureState::Failed)
+            );
         }
 
         #[test]
@@ -799,7 +816,10 @@ mod tests {
             manager.setup_all().expect("Setup should succeed");
 
             manager.reset();
-            assert_eq!(manager.state::<TestFixture>(), Some(FixtureState::Registered));
+            assert_eq!(
+                manager.state::<TestFixture>(),
+                Some(FixtureState::Registered)
+            );
         }
 
         #[test]
@@ -852,16 +872,14 @@ mod tests {
                 priority: -10,
                 order_counter: order.clone(),
             });
-            manager.register(SimpleFixture::new("middle")
-                .with_priority(0)
-                .with_setup({
-                    let order = order.clone();
-                    move || {
-                        let actual = order.fetch_add(1, Ordering::SeqCst);
-                        assert_eq!(actual, 1, "Wrong setup order for middle");
-                        Ok(())
-                    }
-                }));
+            manager.register(SimpleFixture::new("middle").with_priority(0).with_setup({
+                let order = order.clone();
+                move || {
+                    let actual = order.fetch_add(1, Ordering::SeqCst);
+                    assert_eq!(actual, 1, "Wrong setup order for middle");
+                    Ok(())
+                }
+            }));
 
             // We can't add OrderedFixture twice (same TypeId), so just test with SimpleFixture
             // The priority test is still valid since we're checking SimpleFixture order

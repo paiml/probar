@@ -104,9 +104,7 @@ impl SoftAssertions {
     pub fn assert_eq<T: PartialEq + Debug>(&mut self, actual: &T, expected: &T, message: &str) {
         self.assertion_count += 1;
         if actual != expected {
-            let failure_msg = format!(
-                "{message}: expected {expected:?}, got {actual:?}"
-            );
+            let failure_msg = format!("{message}: expected {expected:?}, got {actual:?}");
             self.record_failure(failure_msg);
         }
     }
@@ -115,9 +113,7 @@ impl SoftAssertions {
     pub fn assert_ne<T: PartialEq + Debug>(&mut self, actual: &T, expected: &T, message: &str) {
         self.assertion_count += 1;
         if actual == expected {
-            let failure_msg = format!(
-                "{message}: expected values to differ, both were {actual:?}"
-            );
+            let failure_msg = format!("{message}: expected values to differ, both were {actual:?}");
             self.record_failure(failure_msg);
         }
     }
@@ -733,8 +729,7 @@ mod tests {
 
         #[test]
         fn test_assertion_failure_with_location() {
-            let failure = AssertionFailure::new("test", 0)
-                .with_location("test.rs:42");
+            let failure = AssertionFailure::new("test", 0).with_location("test.rs:42");
             assert_eq!(failure.location, Some("test.rs:42".to_string()));
         }
     }

@@ -1164,7 +1164,9 @@ mod tests {
             let canvas = Selector::CanvasEntity {
                 entity: "player".to_string(),
             };
-            assert!(canvas.to_count_query().contains("__wasm_count_canvas_entities"));
+            assert!(canvas
+                .to_count_query()
+                .contains("__wasm_count_canvas_entities"));
         }
     }
 

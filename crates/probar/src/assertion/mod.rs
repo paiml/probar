@@ -21,7 +21,9 @@ pub use retry::{
     retry_contains, retry_eq, retry_none, retry_some, retry_true, AssertionCheckResult,
     RetryAssertion, RetryConfig, RetryError, RetryResult,
 };
-pub use soft::{AssertionFailure, AssertionMode, AssertionSummary, SoftAssertionError, SoftAssertions};
+pub use soft::{
+    AssertionFailure, AssertionMode, AssertionSummary, SoftAssertionError, SoftAssertions,
+};
 
 /// Result of an assertion
 #[derive(Debug, Clone)]

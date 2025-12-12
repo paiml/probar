@@ -117,10 +117,8 @@ impl TestRunner {
     /// Create a new test runner
     #[must_use]
     pub fn new(config: CliConfig) -> Self {
-        let reporter = ProgressReporter::new(
-            config.color.should_color(),
-            config.verbosity.is_quiet(),
-        );
+        let reporter =
+            ProgressReporter::new(config.color.should_color(), config.verbosity.is_quiet());
         Self { config, reporter }
     }
 
@@ -143,7 +141,8 @@ impl TestRunner {
         }
 
         self.reporter.header("Running Tests");
-        self.reporter.start_progress(tests.len() as u64, "Starting...");
+        self.reporter
+            .start_progress(tests.len() as u64, "Starting...");
 
         for test_name in tests {
             self.reporter.set_message(&test_name);
@@ -261,7 +260,11 @@ mod tests {
         fn test_add_results() {
             let mut results = TestResults::new();
             results.add(TestResult::pass("test_1", Duration::from_millis(10)));
-            results.add(TestResult::fail("test_2", "error", Duration::from_millis(10)));
+            results.add(TestResult::fail(
+                "test_2",
+                "error",
+                Duration::from_millis(10),
+            ));
             results.add(TestResult::pass("test_3", Duration::from_millis(10)));
 
             assert_eq!(results.total(), 3);
@@ -276,7 +279,11 @@ mod tests {
             results.add(TestResult::pass("test_2", Duration::from_millis(10)));
             assert!(results.all_passed());
 
-            results.add(TestResult::fail("test_3", "error", Duration::from_millis(10)));
+            results.add(TestResult::fail(
+                "test_3",
+                "error",
+                Duration::from_millis(10),
+            ));
             assert!(!results.all_passed());
         }
 
@@ -284,8 +291,16 @@ mod tests {
         fn test_failures() {
             let mut results = TestResults::new();
             results.add(TestResult::pass("test_1", Duration::from_millis(10)));
-            results.add(TestResult::fail("test_2", "error1", Duration::from_millis(10)));
-            results.add(TestResult::fail("test_3", "error2", Duration::from_millis(10)));
+            results.add(TestResult::fail(
+                "test_2",
+                "error1",
+                Duration::from_millis(10),
+            ));
+            results.add(TestResult::fail(
+                "test_3",
+                "error2",
+                Duration::from_millis(10),
+            ));
 
             let failures = results.failures();
             assert_eq!(failures.len(), 2);

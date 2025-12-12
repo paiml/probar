@@ -264,7 +264,11 @@ impl<'a> HtmlFormatter<'a> {
                 100.0
             };
 
-            let color = if percent >= 80.0 { "covered" } else { "uncovered" };
+            let color = if percent >= 80.0 {
+                "covered"
+            } else {
+                "uncovered"
+            };
 
             let _ = write!(
                 html,

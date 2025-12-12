@@ -63,9 +63,7 @@ fn build_config(cli: &Cli) -> CliConfig {
 
     let color: ColorChoice = cli.color.clone().into();
 
-    CliConfig::new()
-        .with_verbosity(verbosity)
-        .with_color(color)
+    CliConfig::new().with_verbosity(verbosity).with_color(color)
 }
 
 fn run_tests(config: CliConfig, args: &probar_cli::TestArgs) -> CliResult<()> {
@@ -89,10 +87,7 @@ fn run_tests(config: CliConfig, args: &probar_cli::TestArgs) -> CliResult<()> {
     }
 }
 
-fn run_record(
-    _config: &CliConfig,
-    args: &probar_cli::RecordArgs,
-) {
+fn run_record(_config: &CliConfig, args: &probar_cli::RecordArgs) {
     println!("Recording test: {}", args.test);
     println!("Format: {:?}", args.format);
     println!("FPS: {}", args.fps);
@@ -102,10 +97,7 @@ fn run_record(
     // This is a placeholder for the basic CLI implementation
 }
 
-fn run_report(
-    _config: &CliConfig,
-    args: &probar_cli::ReportArgs,
-) {
+fn run_report(_config: &CliConfig, args: &probar_cli::ReportArgs) {
     println!("Generating report...");
     println!("Format: {:?}", args.format);
     println!("Output: {}", args.output.display());

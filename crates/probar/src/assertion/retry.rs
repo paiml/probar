@@ -374,9 +374,7 @@ pub fn retry_contains(
         if haystack.contains(&needle) {
             AssertionCheckResult::Pass
         } else {
-            AssertionCheckResult::Fail(format!(
-                "expected '{haystack}' to contain '{needle}'"
-            ))
+            AssertionCheckResult::Fail(format!("expected '{haystack}' to contain '{needle}'"))
         }
     })
 }
@@ -429,15 +427,13 @@ mod tests {
 
         #[test]
         fn test_with_poll_interval() {
-            let config = RetryConfig::default()
-                .with_poll_interval(Duration::from_millis(50));
+            let config = RetryConfig::default().with_poll_interval(Duration::from_millis(50));
             assert_eq!(config.poll_interval, Duration::from_millis(50));
         }
 
         #[test]
         fn test_with_max_retries() {
-            let config = RetryConfig::default()
-                .with_max_retries(3);
+            let config = RetryConfig::default().with_max_retries(3);
             assert_eq!(config.max_retries, 3);
         }
 
@@ -468,11 +464,10 @@ mod tests {
 
         #[test]
         fn test_immediate_fail_with_timeout() {
-            let assertion = RetryAssertion::new(|| {
-                AssertionCheckResult::Fail("always fails".into())
-            })
-            .with_timeout(Duration::from_millis(100))
-            .with_poll_interval(Duration::from_millis(20));
+            let assertion =
+                RetryAssertion::new(|| AssertionCheckResult::Fail("always fails".into()))
+                    .with_timeout(Duration::from_millis(100))
+                    .with_poll_interval(Duration::from_millis(20));
 
             let err = assertion.verify().unwrap_err();
             assert!(err.attempts > 1);
@@ -517,11 +512,9 @@ mod tests {
 
         #[test]
         fn test_with_description() {
-            let assertion = RetryAssertion::new(|| {
-                AssertionCheckResult::Fail("error".into())
-            })
-            .with_description("checking visibility")
-            .with_max_retries(1);
+            let assertion = RetryAssertion::new(|| AssertionCheckResult::Fail("error".into()))
+                .with_description("checking visibility")
+                .with_max_retries(1);
 
             let err = assertion.verify().unwrap_err();
             assert_eq!(err.description, Some("checking visibility".to_string()));
@@ -530,8 +523,7 @@ mod tests {
         #[test]
         fn test_with_config() {
             let config = RetryConfig::fast();
-            let assertion = RetryAssertion::new(|| AssertionCheckResult::Pass)
-                .with_config(config);
+            let assertion = RetryAssertion::new(|| AssertionCheckResult::Pass).with_config(config);
             assert_eq!(assertion.config().timeout, Duration::from_millis(500));
         }
 
@@ -543,17 +535,15 @@ mod tests {
 
         #[test]
         fn test_verify_once_fail() {
-            let assertion = RetryAssertion::new(|| {
-                AssertionCheckResult::Fail("error".into())
-            });
+            let assertion = RetryAssertion::new(|| AssertionCheckResult::Fail("error".into()));
             let err = assertion.verify_once().unwrap_err();
             assert_eq!(err.attempts, 1);
         }
 
         #[test]
         fn test_debug() {
-            let assertion = RetryAssertion::new(|| AssertionCheckResult::Pass)
-                .with_description("test");
+            let assertion =
+                RetryAssertion::new(|| AssertionCheckResult::Pass).with_description("test");
             let debug = format!("{assertion:?}");
             assert!(debug.contains("RetryAssertion"));
         }
@@ -594,73 +584,64 @@ mod tests {
 
         #[test]
         fn test_retry_eq_pass() {
-            let assertion = retry_eq(|| 42, 42)
-                .with_max_retries(1);
+            let assertion = retry_eq(|| 42, 42).with_max_retries(1);
             assert!(assertion.verify().is_ok());
         }
 
         #[test]
         fn test_retry_eq_fail() {
-            let assertion = retry_eq(|| 1, 2)
-                .with_max_retries(1);
+            let assertion = retry_eq(|| 1, 2).with_max_retries(1);
             let err = assertion.verify().unwrap_err();
             assert!(err.message.contains("expected"));
         }
 
         #[test]
         fn test_retry_true_pass() {
-            let assertion = retry_true(|| true, "should be true")
-                .with_max_retries(1);
+            let assertion = retry_true(|| true, "should be true").with_max_retries(1);
             assert!(assertion.verify().is_ok());
         }
 
         #[test]
         fn test_retry_true_fail() {
-            let assertion = retry_true(|| false, "should be true")
-                .with_max_retries(1);
+            let assertion = retry_true(|| false, "should be true").with_max_retries(1);
             let err = assertion.verify().unwrap_err();
             assert!(err.message.contains("should be true"));
         }
 
         #[test]
         fn test_retry_some_pass() {
-            let assertion = retry_some(|| Some(42))
-                .with_max_retries(1);
+            let assertion = retry_some(|| Some(42)).with_max_retries(1);
             assert!(assertion.verify().is_ok());
         }
 
         #[test]
         fn test_retry_some_fail() {
-            let assertion = retry_some::<i32>(|| None)
-                .with_max_retries(1);
+            let assertion = retry_some::<i32>(|| None).with_max_retries(1);
             assert!(assertion.verify().is_err());
         }
 
         #[test]
         fn test_retry_none_pass() {
-            let assertion = retry_none::<i32>(|| None)
-                .with_max_retries(1);
+            let assertion = retry_none::<i32>(|| None).with_max_retries(1);
             assert!(assertion.verify().is_ok());
         }
 
         #[test]
         fn test_retry_none_fail() {
-            let assertion = retry_none(|| Some(42))
-                .with_max_retries(1);
+            let assertion = retry_none(|| Some(42)).with_max_retries(1);
             assert!(assertion.verify().is_err());
         }
 
         #[test]
         fn test_retry_contains_pass() {
-            let assertion = retry_contains(|| "hello world".to_string(), "world")
-                .with_max_retries(1);
+            let assertion =
+                retry_contains(|| "hello world".to_string(), "world").with_max_retries(1);
             assert!(assertion.verify().is_ok());
         }
 
         #[test]
         fn test_retry_contains_fail() {
-            let assertion = retry_contains(|| "hello".to_string(), "world")
-                .with_max_retries(1);
+            let assertion = retry_contains(|| "hello".to_string(), "world").with_max_retries(1);
             let err = assertion.verify().unwrap_err();
             assert!(err.message.contains("contain"));
         }

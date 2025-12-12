@@ -12,8 +12,7 @@ use std::path::Path;
 use std::time::SystemTime;
 
 /// PNG compression level
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum CompressionLevel {
     /// No compression (fastest, largest files)
     None,
@@ -25,7 +24,6 @@ pub enum CompressionLevel {
     /// Best compression (slowest, smallest files)
     Best,
 }
-
 
 impl CompressionLevel {
     /// Convert to png crate compression level
@@ -283,10 +281,11 @@ impl PngExporter {
     /// Returns error if encoding fails
     pub fn export(&self, screenshot: &Screenshot) -> ProbarResult<Vec<u8>> {
         // Decode the screenshot if it's already PNG
-        let img = image::load_from_memory(&screenshot.data)
-            .map_err(|e| ProbarError::ImageProcessing {
+        let img = image::load_from_memory(&screenshot.data).map_err(|e| {
+            ProbarError::ImageProcessing {
                 message: format!("Failed to decode screenshot: {e}"),
-            })?;
+            }
+        })?;
 
         self.encode_png(&img)
     }
@@ -302,10 +301,11 @@ impl PngExporter {
         annotations: &[Annotation],
     ) -> ProbarResult<Vec<u8>> {
         // Decode the screenshot
-        let img = image::load_from_memory(&screenshot.data)
-            .map_err(|e| ProbarError::ImageProcessing {
+        let img = image::load_from_memory(&screenshot.data).map_err(|e| {
+            ProbarError::ImageProcessing {
                 message: format!("Failed to decode screenshot: {e}"),
-            })?;
+            }
+        })?;
 
         let mut rgba = img.to_rgba8();
 
@@ -357,9 +357,11 @@ impl PngExporter {
             encoder.set_depth(png::BitDepth::Eight);
             encoder.set_compression(self.compression.to_png_compression());
 
-            let mut writer = encoder.write_header().map_err(|e| ProbarError::ImageProcessing {
-                message: format!("Failed to write PNG header: {e}"),
-            })?;
+            let mut writer = encoder
+                .write_header()
+                .map_err(|e| ProbarError::ImageProcessing {
+                    message: format!("Failed to write PNG header: {e}"),
+                })?;
 
             writer
                 .write_image_data(&rgba)

@@ -1,0 +1,1172 @@
+//! Multi-Browser Context Management (Feature 14)
+//!
+//! Isolated browser contexts for parallel testing.
+//!
+//! ## EXTREME TDD: Tests written FIRST per spec
+//!
+//! ## Toyota Way Application
+//!
+//! - **Muda**: Eliminate waste by reusing browser instances
+//! - **Heijunka**: Load balancing across contexts
+//! - **Jidoka**: Automatic context cleanup on failure
+
+use crate::result::{ProbarError, ProbarResult};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
+/// Browser context state
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ContextState {
+    /// Context is being created
+    Creating,
+    /// Context is ready for use
+    Ready,
+    /// Context is in use
+    InUse,
+    /// Context is being cleaned up
+    Cleaning,
+    /// Context is closed
+    Closed,
+    /// Context has an error
+    Error,
+}
+
+/// Storage state for a context
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StorageState {
+    /// Cookies
+    pub cookies: Vec<Cookie>,
+    /// Local storage data
+    pub local_storage: HashMap<String, HashMap<String, String>>,
+    /// Session storage data
+    pub session_storage: HashMap<String, HashMap<String, String>>,
+}
+
+impl StorageState {
+    /// Create empty storage state
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add a cookie
+    #[must_use]
+    pub fn with_cookie(mut self, cookie: Cookie) -> Self {
+        self.cookies.push(cookie);
+        self
+    }
+
+    /// Add local storage item
+    #[must_use]
+    pub fn with_local_storage(mut self, origin: &str, key: &str, value: &str) -> Self {
+        self.local_storage
+            .entry(origin.to_string())
+            .or_default()
+            .insert(key.to_string(), value.to_string());
+        self
+    }
+
+    /// Add session storage item
+    #[must_use]
+    pub fn with_session_storage(mut self, origin: &str, key: &str, value: &str) -> Self {
+        self.session_storage
+            .entry(origin.to_string())
+            .or_default()
+            .insert(key.to_string(), value.to_string());
+        self
+    }
+
+    /// Check if storage is empty
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.cookies.is_empty() && self.local_storage.is_empty() && self.session_storage.is_empty()
+    }
+
+    /// Clear all storage
+    pub fn clear(&mut self) {
+        self.cookies.clear();
+        self.local_storage.clear();
+        self.session_storage.clear();
+    }
+}
+
+/// A browser cookie
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Cookie {
+    /// Cookie name
+    pub name: String,
+    /// Cookie value
+    pub value: String,
+    /// Domain
+    pub domain: String,
+    /// Path
+    pub path: String,
+    /// Expiration timestamp (seconds since epoch)
+    pub expires: Option<i64>,
+    /// HTTP only flag
+    pub http_only: bool,
+    /// Secure flag
+    pub secure: bool,
+    /// Same site setting
+    pub same_site: SameSite,
+}
+
+impl Cookie {
+    /// Create a new cookie
+    #[must_use]
+    pub fn new(name: &str, value: &str, domain: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            value: value.to_string(),
+            domain: domain.to_string(),
+            path: "/".to_string(),
+            expires: None,
+            http_only: false,
+            secure: false,
+            same_site: SameSite::Lax,
+        }
+    }
+
+    /// Set path
+    #[must_use]
+    pub fn with_path(mut self, path: &str) -> Self {
+        self.path = path.to_string();
+        self
+    }
+
+    /// Set expiration
+    #[must_use]
+    pub const fn with_expires(mut self, expires: i64) -> Self {
+        self.expires = Some(expires);
+        self
+    }
+
+    /// Set HTTP only
+    #[must_use]
+    pub const fn http_only(mut self) -> Self {
+        self.http_only = true;
+        self
+    }
+
+    /// Set secure
+    #[must_use]
+    pub const fn secure(mut self) -> Self {
+        self.secure = true;
+        self
+    }
+
+    /// Set same site
+    #[must_use]
+    pub const fn with_same_site(mut self, same_site: SameSite) -> Self {
+        self.same_site = same_site;
+        self
+    }
+}
+
+/// Same site cookie setting
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SameSite {
+    /// Strict same site
+    Strict,
+    /// Lax same site
+    Lax,
+    /// No same site restriction
+    None,
+}
+
+/// Configuration for a browser context
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextConfig {
+    /// Context name/ID
+    pub name: String,
+    /// Viewport width
+    pub viewport_width: u32,
+    /// Viewport height
+    pub viewport_height: u32,
+    /// Device scale factor
+    pub device_scale_factor: f64,
+    /// Is mobile device
+    pub is_mobile: bool,
+    /// Has touch support
+    pub has_touch: bool,
+    /// User agent string
+    pub user_agent: Option<String>,
+    /// Locale
+    pub locale: Option<String>,
+    /// Timezone
+    pub timezone: Option<String>,
+    /// Geolocation
+    pub geolocation: Option<Geolocation>,
+    /// Permissions
+    pub permissions: Vec<String>,
+    /// Extra HTTP headers
+    pub extra_headers: HashMap<String, String>,
+    /// Offline mode
+    pub offline: bool,
+    /// Initial storage state
+    pub storage_state: Option<StorageState>,
+    /// Accept downloads
+    pub accept_downloads: bool,
+    /// Record video
+    pub record_video: bool,
+    /// Record HAR
+    pub record_har: bool,
+    /// Ignore HTTPS errors
+    pub ignore_https_errors: bool,
+}
+
+impl Default for ContextConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            viewport_width: 1280,
+            viewport_height: 720,
+            device_scale_factor: 1.0,
+            is_mobile: false,
+            has_touch: false,
+            user_agent: None,
+            locale: None,
+            timezone: None,
+            geolocation: None,
+            permissions: Vec::new(),
+            extra_headers: HashMap::new(),
+            offline: false,
+            storage_state: None,
+            accept_downloads: false,
+            record_video: false,
+            record_har: false,
+            ignore_https_errors: false,
+        }
+    }
+}
+
+impl ContextConfig {
+    /// Create a new context config
+    #[must_use]
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            ..Self::default()
+        }
+    }
+
+    /// Set viewport size
+    #[must_use]
+    pub const fn with_viewport(mut self, width: u32, height: u32) -> Self {
+        self.viewport_width = width;
+        self.viewport_height = height;
+        self
+    }
+
+    /// Set device scale factor
+    #[must_use]
+    pub const fn with_device_scale(mut self, scale: f64) -> Self {
+        self.device_scale_factor = scale;
+        self
+    }
+
+    /// Set as mobile device
+    #[must_use]
+    pub const fn mobile(mut self) -> Self {
+        self.is_mobile = true;
+        self.has_touch = true;
+        self
+    }
+
+    /// Set user agent
+    #[must_use]
+    pub fn with_user_agent(mut self, user_agent: &str) -> Self {
+        self.user_agent = Some(user_agent.to_string());
+        self
+    }
+
+    /// Set locale
+    #[must_use]
+    pub fn with_locale(mut self, locale: &str) -> Self {
+        self.locale = Some(locale.to_string());
+        self
+    }
+
+    /// Set timezone
+    #[must_use]
+    pub fn with_timezone(mut self, timezone: &str) -> Self {
+        self.timezone = Some(timezone.to_string());
+        self
+    }
+
+    /// Set geolocation
+    #[must_use]
+    pub fn with_geolocation(mut self, lat: f64, lng: f64) -> Self {
+        self.geolocation = Some(Geolocation {
+            latitude: lat,
+            longitude: lng,
+            accuracy: 10.0,
+        });
+        self
+    }
+
+    /// Add permission
+    #[must_use]
+    pub fn with_permission(mut self, permission: &str) -> Self {
+        self.permissions.push(permission.to_string());
+        self
+    }
+
+    /// Add extra header
+    #[must_use]
+    pub fn with_header(mut self, key: &str, value: &str) -> Self {
+        self.extra_headers
+            .insert(key.to_string(), value.to_string());
+        self
+    }
+
+    /// Set offline mode
+    #[must_use]
+    pub const fn offline(mut self) -> Self {
+        self.offline = true;
+        self
+    }
+
+    /// Set storage state
+    #[must_use]
+    pub fn with_storage_state(mut self, state: StorageState) -> Self {
+        self.storage_state = Some(state);
+        self
+    }
+
+    /// Enable video recording
+    #[must_use]
+    pub const fn with_video(mut self) -> Self {
+        self.record_video = true;
+        self
+    }
+
+    /// Enable HAR recording
+    #[must_use]
+    pub const fn with_har(mut self) -> Self {
+        self.record_har = true;
+        self
+    }
+
+    /// Ignore HTTPS errors
+    #[must_use]
+    pub const fn ignore_https_errors(mut self) -> Self {
+        self.ignore_https_errors = true;
+        self
+    }
+}
+
+/// Geolocation coordinates
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Geolocation {
+    /// Latitude
+    pub latitude: f64,
+    /// Longitude
+    pub longitude: f64,
+    /// Accuracy in meters
+    pub accuracy: f64,
+}
+
+/// A browser context instance
+#[derive(Debug)]
+pub struct BrowserContext {
+    /// Context ID
+    pub id: String,
+    /// Configuration
+    pub config: ContextConfig,
+    /// Current state
+    pub state: ContextState,
+    /// Creation time
+    pub created_at: Instant,
+    /// Pages in this context
+    pages: Arc<Mutex<Vec<String>>>,
+    /// Storage state
+    storage: Arc<Mutex<StorageState>>,
+    /// Error message if state is Error
+    pub error_message: Option<String>,
+}
+
+impl BrowserContext {
+    /// Create a new context
+    #[must_use]
+    pub fn new(id: &str, config: ContextConfig) -> Self {
+        let storage = config.storage_state.clone().unwrap_or_default();
+        Self {
+            id: id.to_string(),
+            config,
+            state: ContextState::Creating,
+            created_at: Instant::now(),
+            pages: Arc::new(Mutex::new(Vec::new())),
+            storage: Arc::new(Mutex::new(storage)),
+            error_message: None,
+        }
+    }
+
+    /// Mark context as ready
+    pub fn ready(&mut self) {
+        self.state = ContextState::Ready;
+    }
+
+    /// Mark context as in use
+    pub fn acquire(&mut self) {
+        self.state = ContextState::InUse;
+    }
+
+    /// Release context back to pool
+    pub fn release(&mut self) {
+        self.state = ContextState::Ready;
+    }
+
+    /// Close the context
+    pub fn close(&mut self) {
+        self.state = ContextState::Closed;
+    }
+
+    /// Set error state
+    pub fn set_error(&mut self, message: &str) {
+        self.state = ContextState::Error;
+        self.error_message = Some(message.to_string());
+    }
+
+    /// Check if context is available
+    #[must_use]
+    pub const fn is_available(&self) -> bool {
+        matches!(self.state, ContextState::Ready)
+    }
+
+    /// Check if context is in use
+    #[must_use]
+    pub const fn is_in_use(&self) -> bool {
+        matches!(self.state, ContextState::InUse)
+    }
+
+    /// Check if context is closed
+    #[must_use]
+    pub const fn is_closed(&self) -> bool {
+        matches!(self.state, ContextState::Closed)
+    }
+
+    /// Get age in milliseconds
+    #[must_use]
+    pub fn age_ms(&self) -> u64 {
+        self.created_at.elapsed().as_millis() as u64
+    }
+
+    /// Create a new page
+    pub fn new_page(&self) -> String {
+        let page_id = format!("{}_{}", self.id, uuid::Uuid::new_v4());
+        if let Ok(mut pages) = self.pages.lock() {
+            pages.push(page_id.clone());
+        }
+        page_id
+    }
+
+    /// Close a page
+    pub fn close_page(&self, page_id: &str) {
+        if let Ok(mut pages) = self.pages.lock() {
+            pages.retain(|p| p != page_id);
+        }
+    }
+
+    /// Get page count
+    #[must_use]
+    pub fn page_count(&self) -> usize {
+        self.pages.lock().map(|p| p.len()).unwrap_or(0)
+    }
+
+    /// Get storage state
+    #[must_use]
+    pub fn storage_state(&self) -> StorageState {
+        self.storage.lock().map(|s| s.clone()).unwrap_or_default()
+    }
+
+    /// Clear storage
+    pub fn clear_storage(&self) {
+        if let Ok(mut storage) = self.storage.lock() {
+            storage.clear();
+        }
+    }
+
+    /// Add cookie
+    pub fn add_cookie(&self, cookie: Cookie) {
+        if let Ok(mut storage) = self.storage.lock() {
+            storage.cookies.push(cookie);
+        }
+    }
+
+    /// Clear cookies
+    pub fn clear_cookies(&self) {
+        if let Ok(mut storage) = self.storage.lock() {
+            storage.cookies.clear();
+        }
+    }
+}
+
+/// Context pool for managing multiple contexts
+#[derive(Debug)]
+pub struct ContextPool {
+    /// All contexts
+    contexts: Arc<Mutex<HashMap<String, BrowserContext>>>,
+    /// Maximum number of contexts
+    max_contexts: usize,
+    /// Default configuration
+    default_config: ContextConfig,
+    /// Context counter
+    counter: Arc<Mutex<u64>>,
+}
+
+impl Default for ContextPool {
+    fn default() -> Self {
+        Self::new(10)
+    }
+}
+
+impl ContextPool {
+    /// Create a new context pool
+    #[must_use]
+    pub fn new(max_contexts: usize) -> Self {
+        Self {
+            contexts: Arc::new(Mutex::new(HashMap::new())),
+            max_contexts,
+            default_config: ContextConfig::default(),
+            counter: Arc::new(Mutex::new(0)),
+        }
+    }
+
+    /// Set default configuration
+    #[must_use]
+    pub fn with_default_config(mut self, config: ContextConfig) -> Self {
+        self.default_config = config;
+        self
+    }
+
+    /// Create a new context
+    pub fn create(&self, config: Option<ContextConfig>) -> ProbarResult<String> {
+        let mut contexts = self.contexts.lock().map_err(|_| {
+            ProbarError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to lock contexts",
+            ))
+        })?;
+
+        if contexts.len() >= self.max_contexts {
+            return Err(ProbarError::AssertionError {
+                message: format!("Maximum contexts ({}) reached", self.max_contexts),
+            });
+        }
+
+        let id = {
+            let mut counter = self.counter.lock().map_err(|_| {
+                ProbarError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Failed to lock counter",
+                ))
+            })?;
+            *counter += 1;
+            format!("ctx_{}", *counter)
+        };
+
+        let mut ctx_config = config.unwrap_or_else(|| self.default_config.clone());
+        ctx_config.name = id.clone();
+
+        let mut context = BrowserContext::new(&id, ctx_config);
+        context.ready();
+
+        contexts.insert(id.clone(), context);
+        Ok(id)
+    }
+
+    /// Acquire an available context
+    pub fn acquire(&self) -> ProbarResult<String> {
+        let mut contexts = self.contexts.lock().map_err(|_| {
+            ProbarError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to lock contexts",
+            ))
+        })?;
+
+        for (id, context) in contexts.iter_mut() {
+            if context.is_available() {
+                context.acquire();
+                return Ok(id.clone());
+            }
+        }
+
+        // No available context, try to create one
+        drop(contexts);
+        let id = self.create(None)?;
+
+        let mut contexts = self.contexts.lock().map_err(|_| {
+            ProbarError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to lock contexts",
+            ))
+        })?;
+
+        if let Some(context) = contexts.get_mut(&id) {
+            context.acquire();
+        }
+
+        Ok(id)
+    }
+
+    /// Release a context back to the pool
+    pub fn release(&self, context_id: &str) -> ProbarResult<()> {
+        let mut contexts = self.contexts.lock().map_err(|_| {
+            ProbarError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to lock contexts",
+            ))
+        })?;
+
+        if let Some(context) = contexts.get_mut(context_id) {
+            context.release();
+            Ok(())
+        } else {
+            Err(ProbarError::AssertionError {
+                message: format!("Context {} not found", context_id),
+            })
+        }
+    }
+
+    /// Close a context
+    pub fn close(&self, context_id: &str) -> ProbarResult<()> {
+        let mut contexts = self.contexts.lock().map_err(|_| {
+            ProbarError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to lock contexts",
+            ))
+        })?;
+
+        if let Some(context) = contexts.get_mut(context_id) {
+            context.close();
+            Ok(())
+        } else {
+            Err(ProbarError::AssertionError {
+                message: format!("Context {} not found", context_id),
+            })
+        }
+    }
+
+    /// Remove a closed context
+    pub fn remove(&self, context_id: &str) -> ProbarResult<()> {
+        let mut contexts = self.contexts.lock().map_err(|_| {
+            ProbarError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to lock contexts",
+            ))
+        })?;
+
+        contexts.remove(context_id);
+        Ok(())
+    }
+
+    /// Get context count
+    #[must_use]
+    pub fn count(&self) -> usize {
+        self.contexts.lock().map(|c| c.len()).unwrap_or(0)
+    }
+
+    /// Get available context count
+    #[must_use]
+    pub fn available_count(&self) -> usize {
+        self.contexts
+            .lock()
+            .map(|c| c.values().filter(|ctx| ctx.is_available()).count())
+            .unwrap_or(0)
+    }
+
+    /// Get in-use context count
+    #[must_use]
+    pub fn in_use_count(&self) -> usize {
+        self.contexts
+            .lock()
+            .map(|c| c.values().filter(|ctx| ctx.is_in_use()).count())
+            .unwrap_or(0)
+    }
+
+    /// Close all contexts
+    pub fn close_all(&self) {
+        if let Ok(mut contexts) = self.contexts.lock() {
+            for context in contexts.values_mut() {
+                context.close();
+            }
+        }
+    }
+
+    /// Clear all contexts
+    pub fn clear(&self) {
+        if let Ok(mut contexts) = self.contexts.lock() {
+            contexts.clear();
+        }
+    }
+
+    /// Get context IDs
+    #[must_use]
+    pub fn context_ids(&self) -> Vec<String> {
+        self.contexts
+            .lock()
+            .map(|c| c.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+}
+
+/// Context manager for test isolation
+#[derive(Debug)]
+pub struct ContextManager {
+    /// Context pool
+    pool: ContextPool,
+    /// Active test contexts (test_id -> context_id)
+    active_contexts: Arc<Mutex<HashMap<String, String>>>,
+}
+
+impl Default for ContextManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ContextManager {
+    /// Create a new context manager
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            pool: ContextPool::new(10),
+            active_contexts: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Create with custom pool size
+    #[must_use]
+    pub fn with_pool_size(pool_size: usize) -> Self {
+        Self {
+            pool: ContextPool::new(pool_size),
+            active_contexts: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Get a context for a test
+    pub fn get_context(&self, test_id: &str) -> ProbarResult<String> {
+        let mut active = self.active_contexts.lock().map_err(|_| {
+            ProbarError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to lock active contexts",
+            ))
+        })?;
+
+        // Check if test already has a context
+        if let Some(context_id) = active.get(test_id) {
+            return Ok(context_id.clone());
+        }
+
+        // Acquire a new context
+        let context_id = self.pool.acquire()?;
+        let _ = active.insert(test_id.to_string(), context_id.clone());
+        Ok(context_id)
+    }
+
+    /// Release a test's context
+    pub fn release_context(&self, test_id: &str) -> ProbarResult<()> {
+        let mut active = self.active_contexts.lock().map_err(|_| {
+            ProbarError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to lock active contexts",
+            ))
+        })?;
+
+        if let Some(context_id) = active.remove(test_id) {
+            self.pool.release(&context_id)?;
+        }
+        Ok(())
+    }
+
+    /// Create a new isolated context for a test
+    pub fn create_isolated_context(
+        &self,
+        test_id: &str,
+        config: ContextConfig,
+    ) -> ProbarResult<String> {
+        let context_id = self.pool.create(Some(config))?;
+
+        let mut active = self.active_contexts.lock().map_err(|_| {
+            ProbarError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to lock active contexts",
+            ))
+        })?;
+
+        // Release any existing context
+        if let Some(old_id) = active.get(test_id) {
+            let _ = self.pool.release(old_id);
+        }
+
+        let _ = active.insert(test_id.to_string(), context_id.clone());
+        Ok(context_id)
+    }
+
+    /// Get pool statistics
+    #[must_use]
+    pub fn stats(&self) -> ContextPoolStats {
+        ContextPoolStats {
+            total: self.pool.count(),
+            available: self.pool.available_count(),
+            in_use: self.pool.in_use_count(),
+            active_tests: self.active_contexts.lock().map(|a| a.len()).unwrap_or(0),
+        }
+    }
+
+    /// Cleanup all resources
+    pub fn cleanup(&self) {
+        self.pool.close_all();
+        self.pool.clear();
+        if let Ok(mut active) = self.active_contexts.lock() {
+            active.clear();
+        }
+    }
+}
+
+/// Statistics for context pool
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextPoolStats {
+    /// Total contexts
+    pub total: usize,
+    /// Available contexts
+    pub available: usize,
+    /// In-use contexts
+    pub in_use: usize,
+    /// Active test count
+    pub active_tests: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod storage_state_tests {
+        use super::*;
+
+        #[test]
+        fn test_new() {
+            let state = StorageState::new();
+            assert!(state.is_empty());
+        }
+
+        #[test]
+        fn test_with_cookie() {
+            let state =
+                StorageState::new().with_cookie(Cookie::new("session", "abc123", "example.com"));
+            assert_eq!(state.cookies.len(), 1);
+        }
+
+        #[test]
+        fn test_with_local_storage() {
+            let state =
+                StorageState::new().with_local_storage("https://example.com", "key", "value");
+            assert!(!state.local_storage.is_empty());
+        }
+
+        #[test]
+        fn test_clear() {
+            let mut state =
+                StorageState::new().with_cookie(Cookie::new("session", "abc123", "example.com"));
+            state.clear();
+            assert!(state.is_empty());
+        }
+    }
+
+    mod cookie_tests {
+        use super::*;
+
+        #[test]
+        fn test_new() {
+            let cookie = Cookie::new("name", "value", "example.com");
+            assert_eq!(cookie.name, "name");
+            assert_eq!(cookie.value, "value");
+            assert_eq!(cookie.domain, "example.com");
+            assert_eq!(cookie.path, "/");
+        }
+
+        #[test]
+        fn test_with_path() {
+            let cookie = Cookie::new("name", "value", "example.com").with_path("/api");
+            assert_eq!(cookie.path, "/api");
+        }
+
+        #[test]
+        fn test_secure_http_only() {
+            let cookie = Cookie::new("name", "value", "example.com")
+                .secure()
+                .http_only();
+            assert!(cookie.secure);
+            assert!(cookie.http_only);
+        }
+
+        #[test]
+        fn test_same_site() {
+            let cookie =
+                Cookie::new("name", "value", "example.com").with_same_site(SameSite::Strict);
+            assert!(matches!(cookie.same_site, SameSite::Strict));
+        }
+    }
+
+    mod context_config_tests {
+        use super::*;
+
+        #[test]
+        fn test_new() {
+            let config = ContextConfig::new("test");
+            assert_eq!(config.name, "test");
+            assert_eq!(config.viewport_width, 1280);
+            assert_eq!(config.viewport_height, 720);
+        }
+
+        #[test]
+        fn test_with_viewport() {
+            let config = ContextConfig::new("test").with_viewport(1920, 1080);
+            assert_eq!(config.viewport_width, 1920);
+            assert_eq!(config.viewport_height, 1080);
+        }
+
+        #[test]
+        fn test_mobile() {
+            let config = ContextConfig::new("test").mobile();
+            assert!(config.is_mobile);
+            assert!(config.has_touch);
+        }
+
+        #[test]
+        fn test_with_geolocation() {
+            let config = ContextConfig::new("test").with_geolocation(37.7749, -122.4194);
+            assert!(config.geolocation.is_some());
+            let geo = config.geolocation.unwrap();
+            assert!((geo.latitude - 37.7749).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn test_with_header() {
+            let config = ContextConfig::new("test").with_header("Authorization", "Bearer token");
+            assert_eq!(
+                config.extra_headers.get("Authorization"),
+                Some(&"Bearer token".to_string())
+            );
+        }
+
+        #[test]
+        fn test_offline() {
+            let config = ContextConfig::new("test").offline();
+            assert!(config.offline);
+        }
+    }
+
+    mod browser_context_tests {
+        use super::*;
+
+        #[test]
+        fn test_new() {
+            let config = ContextConfig::new("test");
+            let context = BrowserContext::new("ctx_1", config);
+            assert_eq!(context.id, "ctx_1");
+            assert!(matches!(context.state, ContextState::Creating));
+        }
+
+        #[test]
+        fn test_state_transitions() {
+            let config = ContextConfig::new("test");
+            let mut context = BrowserContext::new("ctx_1", config);
+
+            context.ready();
+            assert!(context.is_available());
+
+            context.acquire();
+            assert!(context.is_in_use());
+
+            context.release();
+            assert!(context.is_available());
+
+            context.close();
+            assert!(context.is_closed());
+        }
+
+        #[test]
+        fn test_error_state() {
+            let config = ContextConfig::new("test");
+            let mut context = BrowserContext::new("ctx_1", config);
+
+            context.set_error("Connection failed");
+            assert!(matches!(context.state, ContextState::Error));
+            assert_eq!(context.error_message, Some("Connection failed".to_string()));
+        }
+
+        #[test]
+        fn test_pages() {
+            let config = ContextConfig::new("test");
+            let context = BrowserContext::new("ctx_1", config);
+
+            let page1 = context.new_page();
+            let page2 = context.new_page();
+            assert_eq!(context.page_count(), 2);
+
+            context.close_page(&page1);
+            assert_eq!(context.page_count(), 1);
+
+            context.close_page(&page2);
+            assert_eq!(context.page_count(), 0);
+        }
+
+        #[test]
+        fn test_storage() {
+            let config = ContextConfig::new("test");
+            let context = BrowserContext::new("ctx_1", config);
+
+            context.add_cookie(Cookie::new("session", "abc", "example.com"));
+            let storage = context.storage_state();
+            assert_eq!(storage.cookies.len(), 1);
+
+            context.clear_cookies();
+            let storage = context.storage_state();
+            assert!(storage.cookies.is_empty());
+        }
+    }
+
+    mod context_pool_tests {
+        use super::*;
+
+        #[test]
+        fn test_new() {
+            let pool = ContextPool::new(5);
+            assert_eq!(pool.count(), 0);
+        }
+
+        #[test]
+        fn test_create() {
+            let pool = ContextPool::new(5);
+            let id = pool.create(None).unwrap();
+            assert!(!id.is_empty());
+            assert_eq!(pool.count(), 1);
+        }
+
+        #[test]
+        fn test_max_contexts() {
+            let pool = ContextPool::new(2);
+            pool.create(None).unwrap();
+            pool.create(None).unwrap();
+
+            let result = pool.create(None);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_acquire_release() {
+            let pool = ContextPool::new(5);
+            let id = pool.acquire().unwrap();
+
+            assert_eq!(pool.in_use_count(), 1);
+            assert_eq!(pool.available_count(), 0);
+
+            pool.release(&id).unwrap();
+            assert_eq!(pool.in_use_count(), 0);
+            assert_eq!(pool.available_count(), 1);
+        }
+
+        #[test]
+        fn test_close() {
+            let pool = ContextPool::new(5);
+            let id = pool.create(None).unwrap();
+
+            pool.close(&id).unwrap();
+            assert_eq!(pool.available_count(), 0);
+        }
+
+        #[test]
+        fn test_close_all() {
+            let pool = ContextPool::new(5);
+            pool.create(None).unwrap();
+            pool.create(None).unwrap();
+
+            pool.close_all();
+            assert_eq!(pool.available_count(), 0);
+        }
+
+        #[test]
+        fn test_clear() {
+            let pool = ContextPool::new(5);
+            pool.create(None).unwrap();
+            pool.clear();
+            assert_eq!(pool.count(), 0);
+        }
+    }
+
+    mod context_manager_tests {
+        use super::*;
+
+        #[test]
+        fn test_new() {
+            let manager = ContextManager::new();
+            let stats = manager.stats();
+            assert_eq!(stats.total, 0);
+        }
+
+        #[test]
+        fn test_get_context() {
+            let manager = ContextManager::new();
+            let ctx_id = manager.get_context("test_1").unwrap();
+            assert!(!ctx_id.is_empty());
+
+            // Same test gets same context
+            let ctx_id2 = manager.get_context("test_1").unwrap();
+            assert_eq!(ctx_id, ctx_id2);
+
+            // Different test gets different context
+            let ctx_id3 = manager.get_context("test_2").unwrap();
+            assert_ne!(ctx_id, ctx_id3);
+        }
+
+        #[test]
+        fn test_release_context() {
+            let manager = ContextManager::new();
+            let _ctx_id = manager.get_context("test_1").unwrap();
+
+            manager.release_context("test_1").unwrap();
+            let stats = manager.stats();
+            assert_eq!(stats.available, 1);
+            assert_eq!(stats.in_use, 0);
+        }
+
+        #[test]
+        fn test_create_isolated_context() {
+            let manager = ContextManager::new();
+            let config = ContextConfig::new("isolated")
+                .mobile()
+                .with_viewport(375, 812);
+
+            let ctx_id = manager.create_isolated_context("test_1", config).unwrap();
+            assert!(!ctx_id.is_empty());
+        }
+
+        #[test]
+        fn test_cleanup() {
+            let manager = ContextManager::new();
+            manager.get_context("test_1").unwrap();
+            manager.get_context("test_2").unwrap();
+
+            manager.cleanup();
+            let stats = manager.stats();
+            assert_eq!(stats.total, 0);
+            assert_eq!(stats.active_tests, 0);
+        }
+
+        #[test]
+        fn test_stats() {
+            let manager = ContextManager::new();
+            manager.get_context("test_1").unwrap();
+            manager.get_context("test_2").unwrap();
+
+            let stats = manager.stats();
+            assert_eq!(stats.total, 2);
+            assert_eq!(stats.in_use, 2);
+            assert_eq!(stats.active_tests, 2);
+        }
+    }
+}

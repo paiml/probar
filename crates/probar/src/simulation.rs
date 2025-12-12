@@ -733,10 +733,7 @@ mod tests {
             state.player_y = 100.0;
 
             // Touch far away - should move toward it
-            state.update(&[InputEvent::Touch {
-                x: 200.0,
-                y: 100.0,
-            }]);
+            state.update(&[InputEvent::Touch { x: 200.0, y: 100.0 }]);
 
             assert!(state.player_x > 100.0, "Player should move toward touch");
         }
@@ -762,10 +759,7 @@ mod tests {
             let initial_y = state.player_y;
 
             // Touch very close - should not move (distance < 1.0)
-            state.update(&[InputEvent::Touch {
-                x: 100.5,
-                y: 100.5,
-            }]);
+            state.update(&[InputEvent::Touch { x: 100.5, y: 100.5 }]);
 
             // Account for frame update effects on random state
             assert!(

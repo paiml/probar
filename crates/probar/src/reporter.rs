@@ -897,8 +897,8 @@ mod tests {
         #[test]
         fn test_with_screenshot() {
             let screenshot = Screenshot::new(vec![1, 2, 3], 100, 100);
-            let result =
-                TestResultEntry::failed("test", Duration::ZERO, "error").with_screenshot(screenshot);
+            let result = TestResultEntry::failed("test", Duration::ZERO, "error")
+                .with_screenshot(screenshot);
             assert!(result.failure_screenshot.is_some());
         }
 

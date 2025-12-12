@@ -10,13 +10,15 @@ keywords = ["testing", "wasm", "games", "browser", "e2e"]
 categories = ["development-tools::testing", "wasm"]
 
 [features]
-default = []
+default = ["tui"]
 # Enable real browser control (requires chromium)
 browser = ["chromiumoxide", "tokio", "futures"]
 # Enable WASM runtime for logic testing (Phase 1)
 runtime = ["wasmtime", "async-trait"]
 # Enable derive macros for type-safe selectors (Phase 4)
 derive = ["probar-derive"]
+# Enable TUI testing (not available on WASM due to crossterm)
+tui = ["ratatui", "crossterm"]
 
 [dependencies]
 thiserror = { workspace = true }
@@ -30,12 +32,18 @@ gif = { workspace = true }
 png = { workspace = true }
 mp4 = { workspace = true }
 
-# TUI testing (EDD compliance)
-ratatui = { workspace = true }
-crossterm = { workspace = true }
+# TUI testing (EDD compliance) - optional, not available on WASM
+ratatui = { workspace = true, optional = true }
+crossterm = { workspace = true, optional = true }
 regex = { workspace = true }
 sha2 = { workspace = true }
 serde_yaml = { workspace = true }
+
+# Watch mode and tracing (Phase 6)
+notify = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
 
 # Optional CDP browser control
 chromiumoxide = { workspace = true, optional = true }

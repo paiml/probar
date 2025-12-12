@@ -1245,11 +1245,406 @@ These features would violate the **ABSOLUTE ZERO JavaScript** constraint.
 
 ---
 
+## Appendix C: Runnable Examples (`cargo run --example`)
+
+All features must include runnable examples demonstrating real-world usage patterns.
+
+### Required Examples
+
+| Example | Feature | Description | Command |
+|---------|---------|-------------|---------|
+| `basic_test` | Core | Simple test execution | `cargo run --example basic_test` |
+| `gif_recording` | Feature 1 | Record test as GIF | `cargo run --example gif_recording` |
+| `png_screenshot` | Feature 2 | Capture PNG screenshots | `cargo run --example png_screenshot` |
+| `svg_export` | Feature 3 | Generate SVG screenshots | `cargo run --example svg_export` |
+| `video_recording` | Feature 4 | Record MP4 video | `cargo run --example video_recording` |
+| `watch_mode` | Feature 6 | Hot reload on file changes | `cargo run --example watch_mode` |
+| `network_intercept` | Feature 7 | Mock network requests | `cargo run --example network_intercept` |
+| `websocket_monitor` | Feature 8 | Monitor WebSocket traffic | `cargo run --example websocket_monitor` |
+| `execution_trace` | Feature 9 | Generate execution trace | `cargo run --example execution_trace` |
+| `performance_profile` | Feature 10 | Profile performance metrics | `cargo run --example performance_profile` |
+| `lcov_report` | Feature 11 | Generate LCOV coverage | `cargo run --example lcov_report` |
+| `html_coverage` | Feature 12 | Generate HTML coverage | `cargo run --example html_coverage` |
+| `cobertura_report` | Feature 13 | Generate Cobertura XML | `cargo run --example cobertura_report` |
+| `multi_context` | Feature 14 | Parallel browser contexts | `cargo run --example multi_context` |
+| `device_emulation` | Feature 15 | Mobile device emulation | `cargo run --example device_emulation` |
+| `geolocation_mock` | Feature 16 | Mock GPS location | `cargo run --example geolocation_mock` |
+| `soft_assertions` | Feature 17 | Collect multiple failures | `cargo run --example soft_assertions` |
+| `retry_assertions` | Feature 18 | Auto-retry assertions | `cargo run --example retry_assertions` |
+| `page_object` | Feature 19 | Page Object Model | `cargo run --example page_object` |
+| `fixtures` | Feature 20 | Test fixture management | `cargo run --example fixtures` |
+| `tui_testing` | Feature 21 | TUI/Ratatui testing | `cargo run --example tui_testing` |
+| `equation_verify` | Feature 22 | Equation verification | `cargo run --example equation_verify` |
+| `deterministic_replay` | Feature 23 | Replay recorded sessions | `cargo run --example deterministic_replay` |
+| `ux_coverage` | Feature 24 | 100% UX coverage | `cargo run --example ux_coverage` |
+
+### Example Template
+
+Each example must follow this structure:
+
+```rust
+//! Example: {Feature Name}
+//!
+//! Demonstrates: {Brief description}
+//!
+//! Run with: `cargo run --example {name}`
+//!
+//! Toyota Way: {Principle applied}
+
+use probar::prelude::*;
+
+fn main() -> ProbarResult<()> {
+    // 1. Setup
+    println!("=== {Feature Name} Example ===\n");
+
+    // 2. Demonstrate feature
+    // ... implementation ...
+
+    // 3. Show results
+    println!("\n✅ Example completed successfully!");
+    Ok(())
+}
+```
+
+### Example Quality Requirements
+
+- **Compilable**: All examples must compile with `cargo build --examples`
+- **Runnable**: All examples must execute without external dependencies
+- **Self-contained**: No network or file system requirements beyond temp files
+- **Documented**: Each example must have doc comments explaining usage
+- **Tested**: Examples are tested in CI via `cargo test --examples`
+
+---
+
+## Appendix D: Book Documentation Updates
+
+The mdBook documentation must be updated to cover all implemented features.
+
+### New Book Chapters Required
+
+| Chapter | Location | Content |
+|---------|----------|---------|
+| Media Recording | `src/probar/media-recording.md` | GIF, PNG, SVG, MP4 recording |
+| Watch Mode | `src/probar/watch-mode.md` | Hot reload development |
+| Network Interception | `src/probar/network-interception.md` | Request mocking |
+| WebSocket Testing | `src/probar/websocket-testing.md` | WebSocket monitoring |
+| Execution Tracing | `src/probar/execution-tracing.md` | Debug trace generation |
+| Performance Profiling | `src/probar/performance-profiling.md` | FPS, memory, CPU metrics |
+| Coverage Reports | `src/probar/coverage-reports.md` | LCOV, HTML, Cobertura |
+| Browser Contexts | `src/probar/browser-contexts.md` | Parallel isolated contexts |
+| Device Emulation | `src/probar/device-emulation.md` | Mobile device testing |
+| Assertions Guide | `src/probar/assertions-guide.md` | Soft, retry, equation assertions |
+| Page Objects | `src/probar/page-objects.md` | POM pattern guide |
+| Fixtures | `src/probar/fixtures.md` | Test fixture management |
+| TUI Testing | `src/probar/tui-testing.md` | Terminal UI testing |
+| UX Coverage | `src/probar/ux-coverage.md` | 100% UX coverage metrics |
+
+### Updated SUMMARY.md Structure
+
+```markdown
+# Summary
+
+[Introduction](./introduction.md)
+
+# User Guide
+
+- [Why Probar?](./probar/why-probar.md)
+- [Quick Start](./probar/quick-start.md)
+- [Overview](./probar/overview.md)
+
+# Core Concepts
+
+- [Locators](./probar/locators.md)
+- [Assertions](./probar/assertions.md)
+  - [Soft Assertions](./probar/assertions-soft.md)
+  - [Retry Assertions](./probar/assertions-retry.md)
+  - [Equation Verification](./probar/assertions-equation.md)
+- [Simulation](./probar/simulation.md)
+- [Deterministic Replay](./probar/deterministic-replay.md)
+
+# Media & Recording
+
+- [Media Recording](./probar/media-recording.md)
+  - [GIF Recording](./probar/media-gif.md)
+  - [PNG Screenshots](./probar/media-png.md)
+  - [SVG Export](./probar/media-svg.md)
+  - [MP4 Video](./probar/media-mp4.md)
+
+# Network & Protocol
+
+- [Network Interception](./probar/network-interception.md)
+- [WebSocket Testing](./probar/websocket-testing.md)
+
+# Browser Automation
+
+- [Browser Contexts](./probar/browser-contexts.md)
+- [Device Emulation](./probar/device-emulation.md)
+- [Geolocation Mocking](./probar/geolocation-mocking.md)
+
+# Testing Patterns
+
+- [Page Objects](./probar/page-objects.md)
+- [Fixtures](./probar/fixtures.md)
+- [TUI Testing](./probar/tui-testing.md)
+
+# Analysis & Debugging
+
+- [Execution Tracing](./probar/execution-tracing.md)
+- [Performance Profiling](./probar/performance-profiling.md)
+- [Watch Mode](./probar/watch-mode.md)
+
+# Coverage & Reports
+
+- [Coverage Tooling](./probar/coverage-tooling.md)
+- [LCOV Reports](./probar/coverage-lcov.md)
+- [HTML Reports](./probar/coverage-html.md)
+- [Cobertura XML](./probar/coverage-cobertura.md)
+- [UX Coverage](./probar/ux-coverage.md)
+
+# Advanced Topics
+
+- [Fuzzing](./probar/fuzzing.md)
+- [Accessibility Testing](./probar/accessibility.md)
+
+# Reference
+
+- [API Reference](./probar/api-reference.md)
+- [CLI Reference](./probar/cli-reference.md)
+- [Configuration](./probar/configuration.md)
+```
+
+### Chapter Template
+
+Each new chapter must follow this template:
+
+```markdown
+# {Feature Name}
+
+> **Toyota Way**: {Principle} - {Brief explanation}
+
+## Overview
+
+{2-3 sentence description of the feature}
+
+## Quick Start
+
+\`\`\`rust
+use probar::prelude::*;
+
+// Minimal working example
+\`\`\`
+
+## API Reference
+
+### {MainStruct}
+
+\`\`\`rust
+pub struct {MainStruct} {
+    // fields...
+}
+
+impl {MainStruct} {
+    pub fn new() -> Self;
+    // key methods...
+}
+\`\`\`
+
+## Examples
+
+### Basic Usage
+
+\`\`\`rust
+// Example code
+\`\`\`
+
+### Advanced Usage
+
+\`\`\`rust
+// More complex example
+\`\`\`
+
+## Best Practices
+
+1. {Practice 1}
+2. {Practice 2}
+3. {Practice 3}
+
+## See Also
+
+- [Related Feature](./related.md)
+- [API Docs](https://docs.rs/probar)
+```
+
+---
+
+## Appendix E: 100-Point QA Checklist
+
+### Quality Gate: All items must pass before release
+
+#### Section 1: Build & Compilation (10 points)
+
+| # | Check | Command | Pass |
+|---|-------|---------|------|
+| 1 | Library compiles | `cargo build --lib` | ☐ |
+| 2 | All crates compile | `cargo build --workspace` | ☐ |
+| 3 | Release build succeeds | `cargo build --release` | ☐ |
+| 4 | WASM target compiles | `cargo build --target wasm32-unknown-unknown` | ☐ |
+| 5 | No compiler warnings | `cargo build 2>&1 \| grep -c warning` = 0 | ☐ |
+| 6 | Examples compile | `cargo build --examples` | ☐ |
+| 7 | Benchmarks compile | `cargo build --benches` | ☐ |
+| 8 | Documentation compiles | `cargo doc --no-deps` | ☐ |
+| 9 | CLI binary builds | `cargo build -p probar-cli` | ☐ |
+| 10 | All features compile | `cargo build --all-features` | ☐ |
+
+#### Section 2: Test Suite (20 points)
+
+| # | Check | Command | Pass |
+|---|-------|---------|------|
+| 11 | Unit tests pass | `cargo test --lib` | ☐ |
+| 12 | Integration tests pass | `cargo test --test '*'` | ☐ |
+| 13 | Doc tests pass | `cargo test --doc` | ☐ |
+| 14 | All tests pass | `cargo test --workspace` | ☐ |
+| 15 | No ignored tests | `cargo test -- --ignored` (all pass) | ☐ |
+| 16 | Tests run in parallel | `cargo test -- --test-threads=4` | ☐ |
+| 17 | No flaky tests | Run tests 3x, all pass each time | ☐ |
+| 18 | Example tests pass | `cargo test --examples` | ☐ |
+| 19 | Property tests pass | `cargo test proptest` | ☐ |
+| 20 | Test count ≥1000 | `cargo test 2>&1 \| grep passed` | ☐ |
+| 21 | All features tested | Each feature has ≥10 tests | ☐ |
+| 22 | Edge cases covered | Boundary conditions tested | ☐ |
+| 23 | Error paths tested | All error variants tested | ☐ |
+| 24 | No test warnings | `RUSTFLAGS=-Dwarnings cargo test` | ☐ |
+| 25 | Tests complete <60s | `time cargo test` | ☐ |
+| 26 | No test output noise | Tests use `#[should_panic]` correctly | ☐ |
+| 27 | Async tests work | `tokio::test` tests pass | ☐ |
+| 28 | Mock tests work | All mocks validate correctly | ☐ |
+| 29 | Snapshot tests work | Golden files match | ☐ |
+| 30 | Regression tests exist | Bug fixes have tests | ☐ |
+
+#### Section 3: Code Quality (15 points)
+
+| # | Check | Command | Pass |
+|---|-------|---------|------|
+| 31 | Clippy passes | `cargo clippy -- -D warnings` | ☐ |
+| 32 | Format check passes | `cargo fmt -- --check` | ☐ |
+| 33 | No unsafe code | `grep -r "unsafe" --include="*.rs"` (allowed list only) | ☐ |
+| 34 | No unwrap in lib | `grep -r "\.unwrap()" src/` (0 in non-test) | ☐ |
+| 35 | No panic in lib | `grep -r "panic!" src/` (0 in non-test) | ☐ |
+| 36 | No todo comments | `grep -r "TODO\|FIXME" src/` = 0 | ☐ |
+| 37 | No dead code | `cargo build 2>&1 \| grep "dead_code"` = 0 | ☐ |
+| 38 | No unused imports | `cargo build 2>&1 \| grep "unused_import"` = 0 | ☐ |
+| 39 | Consistent naming | snake_case functions, CamelCase types | ☐ |
+| 40 | Module structure clean | Max 3 levels of nesting | ☐ |
+| 41 | Error handling proper | All errors use ProbarError | ☐ |
+| 42 | No magic numbers | Constants are named | ☐ |
+| 43 | Functions ≤50 lines | No oversized functions | ☐ |
+| 44 | Cyclomatic complexity ≤10 | No overly complex functions | ☐ |
+| 45 | No code duplication | DRY principle followed | ☐ |
+
+#### Section 4: Coverage & Mutation (15 points)
+
+| # | Check | Command | Pass |
+|---|-------|---------|------|
+| 46 | Line coverage ≥95% | `cargo llvm-cov --lcov` | ☐ |
+| 47 | Branch coverage ≥90% | `cargo llvm-cov --branch` | ☐ |
+| 48 | Function coverage 100% | All public functions tested | ☐ |
+| 49 | Mutation score ≥80% | `cargo mutants --minimum-score 0.80` | ☐ |
+| 50 | No trivial mutants | All mutations are meaningful | ☐ |
+| 51 | Coverage report gen | `cargo llvm-cov --html` succeeds | ☐ |
+| 52 | LCOV report valid | LCOV file parses correctly | ☐ |
+| 53 | Cobertura report valid | XML validates against schema | ☐ |
+| 54 | Coverage trending up | Compare to previous release | ☐ |
+| 55 | New code ≥95% covered | Changed files meet threshold | ☐ |
+| 56 | Critical paths 100% | Core logic fully covered | ☐ |
+| 57 | Error paths covered | All error branches tested | ☐ |
+| 58 | Edge cases covered | Boundary conditions tested | ☐ |
+| 59 | Integration coverage | Cross-module paths covered | ☐ |
+| 60 | No coverage gaps | Continuous coverage map | ☐ |
+
+#### Section 5: Documentation (10 points)
+
+| # | Check | Command | Pass |
+|---|-------|---------|------|
+| 61 | All public items documented | `cargo doc 2>&1 \| grep "missing"` = 0 | ☐ |
+| 62 | README complete | All features documented | ☐ |
+| 63 | CHANGELOG updated | Version changes documented | ☐ |
+| 64 | Examples in docs | All APIs have examples | ☐ |
+| 65 | Book builds | `mdbook build` succeeds | ☐ |
+| 66 | Book has no broken links | `mdbook test` passes | ☐ |
+| 67 | API docs complete | All modules documented | ☐ |
+| 68 | CLI help complete | `probar --help` shows all commands | ☐ |
+| 69 | Error messages clear | All errors have actionable messages | ☐ |
+| 70 | Version numbers correct | Cargo.toml matches release | ☐ |
+
+#### Section 6: Examples (10 points)
+
+| # | Check | Command | Pass |
+|---|-------|---------|------|
+| 71 | All examples compile | `cargo build --examples` | ☐ |
+| 72 | All examples run | Each example executes | ☐ |
+| 73 | Examples are documented | Each has header comments | ☐ |
+| 74 | Examples are idiomatic | Follow Rust best practices | ☐ |
+| 75 | Examples cover all features | 24 feature examples exist | ☐ |
+| 76 | Examples are self-contained | No external dependencies | ☐ |
+| 77 | Examples show best practices | Toyota Way applied | ☐ |
+| 78 | Examples include error handling | Proper Result usage | ☐ |
+| 79 | Examples are testable | Can run in CI | ☐ |
+| 80 | Examples match docs | Book examples match code | ☐ |
+
+#### Section 7: CI/CD & Release (10 points)
+
+| # | Check | Command | Pass |
+|---|-------|---------|------|
+| 81 | CI pipeline passes | GitHub Actions green | ☐ |
+| 82 | All platforms build | Linux, macOS, Windows | ☐ |
+| 83 | WASM CI passes | wasm32 target in CI | ☐ |
+| 84 | Cargo.toml valid | `cargo package --list` succeeds | ☐ |
+| 85 | No unpublished deps | All deps on crates.io | ☐ |
+| 86 | Version bumped | Semantic versioning followed | ☐ |
+| 87 | License correct | MIT/Apache-2.0 | ☐ |
+| 88 | Keywords set | Cargo.toml has keywords | ☐ |
+| 89 | Categories set | Cargo.toml has categories | ☐ |
+| 90 | Publish dry-run passes | `cargo publish --dry-run` | ☐ |
+
+#### Section 8: Performance & Security (10 points)
+
+| # | Check | Command | Pass |
+|---|-------|---------|------|
+| 91 | No memory leaks | `cargo valgrind test` passes | ☐ |
+| 92 | No stack overflow | Deep recursion tested | ☐ |
+| 93 | Benchmarks pass | `cargo bench` succeeds | ☐ |
+| 94 | No perf regressions | Compare to baseline | ☐ |
+| 95 | Dependencies audited | `cargo audit` clean | ☐ |
+| 96 | No vulnerable deps | `cargo deny check` passes | ☐ |
+| 97 | WASM size <2MB | Binary size check | ☐ |
+| 98 | Startup time <500ms | Mobile target check | ☐ |
+| 99 | 60 FPS maintained | Frame budget check | ☐ |
+| 100 | No GC pauses | Zero allocation hot paths | ☐ |
+
+### QA Gate Summary
+
+| Section | Points | Required | Status |
+|---------|--------|----------|--------|
+| Build & Compilation | 10 | 10/10 | ☐ |
+| Test Suite | 20 | 18/20 | ☐ |
+| Code Quality | 15 | 14/15 | ☐ |
+| Coverage & Mutation | 15 | 13/15 | ☐ |
+| Documentation | 10 | 9/10 | ☐ |
+| Examples | 10 | 9/10 | ☐ |
+| CI/CD & Release | 10 | 10/10 | ☐ |
+| Performance & Security | 10 | 9/10 | ☐ |
+| **TOTAL** | **100** | **92/100** | ☐ |
+
+**Release Criteria**: Must score ≥92/100 to release
+
+---
+
 ## Document History
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0.0 | 2025-01-XX | Probar Team | Initial specification |
+| 1.1.0 | 2025-12-12 | Probar Team | Added examples, book updates, 100-point QA checklist |
 
 ---
 

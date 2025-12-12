@@ -107,7 +107,9 @@ impl PageObjectBuilder {
     /// Add a locator with a name
     #[must_use]
     pub fn with_locator(mut self, name: impl Into<String>, selector: Selector) -> Self {
-        let _ = self.locators.insert(name.into(), Locator::from_selector(selector));
+        let _ = self
+            .locators
+            .insert(name.into(), Locator::from_selector(selector));
         self
     }
 
@@ -156,7 +158,9 @@ impl SimplePageObject {
 
     /// Add a locator
     pub fn add_locator(&mut self, name: impl Into<String>, selector: Selector) {
-        let _ = self.locators.insert(name.into(), Locator::from_selector(selector));
+        let _ = self
+            .locators
+            .insert(name.into(), Locator::from_selector(selector));
     }
 
     /// Get all locator names

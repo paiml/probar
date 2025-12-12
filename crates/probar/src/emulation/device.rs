@@ -241,7 +241,7 @@ impl DeviceEmulator {
             .with_viewport_size(390, 844)
             .with_user_agent(
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) \
-                AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+                AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
             )
             .with_device_scale_factor(3.0)
             .with_mobile(true)
@@ -256,7 +256,7 @@ impl DeviceEmulator {
             .with_viewport_size(393, 852)
             .with_user_agent(
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) \
-                AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+                AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
             )
             .with_device_scale_factor(3.0)
             .with_mobile(true)
@@ -271,7 +271,7 @@ impl DeviceEmulator {
             .with_viewport_size(430, 932)
             .with_user_agent(
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) \
-                AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+                AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
             )
             .with_device_scale_factor(3.0)
             .with_mobile(true)
@@ -290,7 +290,7 @@ impl DeviceEmulator {
             .with_viewport_size(1024, 1366)
             .with_user_agent(
                 "Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X) \
-                AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+                AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
             )
             .with_device_scale_factor(2.0)
             .with_mobile(true)
@@ -305,7 +305,7 @@ impl DeviceEmulator {
             .with_viewport_size(768, 1024)
             .with_user_agent(
                 "Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X) \
-                AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+                AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
             )
             .with_device_scale_factor(2.0)
             .with_mobile(true)
@@ -324,7 +324,7 @@ impl DeviceEmulator {
             .with_viewport_size(412, 915)
             .with_user_agent(
                 "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 \
-                (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
+                (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
             )
             .with_device_scale_factor(2.625)
             .with_mobile(true)
@@ -339,7 +339,7 @@ impl DeviceEmulator {
             .with_viewport_size(412, 892)
             .with_user_agent(
                 "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) AppleWebKit/537.36 \
-                (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
+                (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
             )
             .with_device_scale_factor(3.5)
             .with_mobile(true)
@@ -354,7 +354,7 @@ impl DeviceEmulator {
             .with_viewport_size(360, 780)
             .with_user_agent(
                 "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 \
-                (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
+                (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
             )
             .with_device_scale_factor(3.0)
             .with_mobile(true)
@@ -373,7 +373,7 @@ impl DeviceEmulator {
             .with_viewport_size(1920, 1080)
             .with_user_agent(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-                (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+                (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
             )
             .with_device_scale_factor(1.0)
             .with_mobile(false)
@@ -388,7 +388,7 @@ impl DeviceEmulator {
             .with_viewport_size(2560, 1440)
             .with_user_agent(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-                (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+                (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
             )
             .with_device_scale_factor(1.0)
             .with_mobile(false)
@@ -403,7 +403,7 @@ impl DeviceEmulator {
             .with_viewport_size(3840, 2160)
             .with_user_agent(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-                (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+                (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
             )
             .with_device_scale_factor(1.5)
             .with_mobile(false)
@@ -529,8 +529,7 @@ mod tests {
         #[test]
         fn test_with_viewport() {
             let viewport = Viewport::new(400, 800);
-            let device = DeviceDescriptor::new("Test")
-                .with_viewport(viewport);
+            let device = DeviceDescriptor::new("Test").with_viewport(viewport);
             assert_eq!(device.viewport, viewport);
         }
     }
@@ -563,8 +562,7 @@ mod tests {
         #[test]
         fn test_register_custom_preset() {
             let mut emulator = DeviceEmulator::new();
-            let custom = DeviceDescriptor::new("My Device")
-                .with_viewport_size(500, 900);
+            let custom = DeviceDescriptor::new("My Device").with_viewport_size(500, 900);
 
             emulator.register_preset(custom);
 

@@ -100,12 +100,12 @@ impl CoverageReport {
 
     /// Set source location for a block
     pub fn set_source_location(&mut self, block: BlockId, location: &str) {
-        self.source_locations.insert(block, location.to_string());
+        let _ = self.source_locations.insert(block, location.to_string());
     }
 
     /// Set function name for a block
     pub fn set_function_name(&mut self, block: BlockId, name: &str) {
-        self.function_names.insert(block, name.to_string());
+        let _ = self.function_names.insert(block, name.to_string());
     }
 
     /// Get the hit count for a block
@@ -224,12 +224,12 @@ impl CoverageReport {
         }
         for (block, location) in &other.source_locations {
             if !self.source_locations.contains_key(block) {
-                self.source_locations.insert(*block, location.clone());
+                let _ = self.source_locations.insert(*block, location.clone());
             }
         }
         for (block, name) in &other.function_names {
             if !self.function_names.contains_key(block) {
-                self.function_names.insert(*block, name.clone());
+                let _ = self.function_names.insert(*block, name.clone());
             }
         }
         for test in &other.tests {

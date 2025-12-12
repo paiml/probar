@@ -198,20 +198,28 @@ impl SvgExporter {
              viewBox=\"0 0 {width} {height}\" \
              preserveAspectRatio=\"{preserve_aspect}\">"
         )
-        .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+        .map_err(|e| ProbarError::ImageProcessing {
+            message: e.to_string(),
+        })?;
         svg.push_str(newline);
 
         // Title for accessibility
         if let Some(ref title) = self.config.title {
-            write!(svg, "{indent}<title>{}</title>", escape_xml(title))
-                .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+            write!(svg, "{indent}<title>{}</title>", escape_xml(title)).map_err(|e| {
+                ProbarError::ImageProcessing {
+                    message: e.to_string(),
+                }
+            })?;
             svg.push_str(newline);
         }
 
         // Description for accessibility
         if let Some(ref desc) = self.config.description {
-            write!(svg, "{indent}<desc>{}</desc>", escape_xml(desc))
-                .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+            write!(svg, "{indent}<desc>{}</desc>", escape_xml(desc)).map_err(|e| {
+                ProbarError::ImageProcessing {
+                    message: e.to_string(),
+                }
+            })?;
             svg.push_str(newline);
         }
 
@@ -222,21 +230,27 @@ impl SvgExporter {
             "{indent}<image x=\"0\" y=\"0\" width=\"{width}\" height=\"{height}\" \
              xlink:href=\"data:image/png;base64,{base64_data}\"/>"
         )
-        .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+        .map_err(|e| ProbarError::ImageProcessing {
+            message: e.to_string(),
+        })?;
         svg.push_str(newline);
 
         // Annotations group
         if !annotations.is_empty() {
-            write!(svg, "{indent}<g id=\"annotations\">")
-                .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+            write!(svg, "{indent}<g id=\"annotations\">").map_err(|e| {
+                ProbarError::ImageProcessing {
+                    message: e.to_string(),
+                }
+            })?;
             svg.push_str(newline);
 
             for annotation in annotations {
                 self.render_annotation(&mut svg, annotation, &format!("{indent}{indent}"))?;
             }
 
-            write!(svg, "{indent}</g>")
-                .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+            write!(svg, "{indent}</g>").map_err(|e| ProbarError::ImageProcessing {
+                message: e.to_string(),
+            })?;
             svg.push_str(newline);
         }
 
@@ -278,20 +292,28 @@ impl SvgExporter {
              viewBox=\"0 0 {width} {height}\" \
              preserveAspectRatio=\"{preserve_aspect}\">"
         )
-        .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+        .map_err(|e| ProbarError::ImageProcessing {
+            message: e.to_string(),
+        })?;
         svg.push_str(newline);
 
         // Title
         if let Some(ref title) = self.config.title {
-            write!(svg, "{indent}<title>{}</title>", escape_xml(title))
-                .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+            write!(svg, "{indent}<title>{}</title>", escape_xml(title)).map_err(|e| {
+                ProbarError::ImageProcessing {
+                    message: e.to_string(),
+                }
+            })?;
             svg.push_str(newline);
         }
 
         // Description
         if let Some(ref desc) = self.config.description {
-            write!(svg, "{indent}<desc>{}</desc>", escape_xml(desc))
-                .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+            write!(svg, "{indent}<desc>{}</desc>", escape_xml(desc)).map_err(|e| {
+                ProbarError::ImageProcessing {
+                    message: e.to_string(),
+                }
+            })?;
             svg.push_str(newline);
         }
 
@@ -353,7 +375,9 @@ impl SvgExporter {
                      fill=\"none\" stroke=\"{color}\" stroke-width=\"2\"/>",
                     annotation.x, annotation.y, annotation.width, annotation.height
                 )
-                .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+                .map_err(|e| ProbarError::ImageProcessing {
+                    message: e.to_string(),
+                })?;
             }
             AnnotationKind::FilledRectangle => {
                 write!(
@@ -361,7 +385,9 @@ impl SvgExporter {
                     "{indent}<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{color}\"/>",
                     annotation.x, annotation.y, annotation.width, annotation.height
                 )
-                .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+                .map_err(|e| ProbarError::ImageProcessing {
+                    message: e.to_string(),
+                })?;
             }
             AnnotationKind::Circle => {
                 // Use width as diameter for circle
@@ -373,7 +399,9 @@ impl SvgExporter {
                     "{indent}<circle cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\" \
                      fill=\"none\" stroke=\"{color}\" stroke-width=\"2\"/>"
                 )
-                .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+                .map_err(|e| ProbarError::ImageProcessing {
+                    message: e.to_string(),
+                })?;
             }
             AnnotationKind::Arrow => {
                 // Arrow from (x, y) to (x + width, y + height)
@@ -393,7 +421,9 @@ impl SvgExporter {
                      stroke=\"{color}\" stroke-width=\"2\" marker-end=\"url(#arrowhead-{})\"/>",
                     annotation.x, annotation.x
                 )
-                .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+                .map_err(|e| ProbarError::ImageProcessing {
+                    message: e.to_string(),
+                })?;
             }
             AnnotationKind::Highlight => {
                 // Semi-transparent highlight
@@ -403,7 +433,9 @@ impl SvgExporter {
                      fill=\"{color}\" fill-opacity=\"0.3\"/>",
                     annotation.x, annotation.y, annotation.width, annotation.height
                 )
-                .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+                .map_err(|e| ProbarError::ImageProcessing {
+                    message: e.to_string(),
+                })?;
             }
         }
 
@@ -417,7 +449,9 @@ impl SvgExporter {
                 annotation.y.saturating_sub(5),
                 escape_xml(label)
             )
-            .map_err(|e| ProbarError::ImageProcessing { message: e.to_string() })?;
+            .map_err(|e| ProbarError::ImageProcessing {
+                message: e.to_string(),
+            })?;
         }
 
         svg.push_str(newline);
@@ -434,8 +468,21 @@ impl SvgExporter {
         }
 
         match shape {
-            SvgShape::Rect { x, y, width, height, fill, stroke, stroke_width, rx, ry } => {
-                w!(svg, "{indent}<rect x=\"{x}\" y=\"{y}\" width=\"{width}\" height=\"{height}\"")?;
+            SvgShape::Rect {
+                x,
+                y,
+                width,
+                height,
+                fill,
+                stroke,
+                stroke_width,
+                rx,
+                ry,
+            } => {
+                w!(
+                    svg,
+                    "{indent}<rect x=\"{x}\" y=\"{y}\" width=\"{width}\" height=\"{height}\""
+                )?;
                 if let Some(fill) = fill {
                     w!(svg, " fill=\"{fill}\"")?;
                 }
@@ -453,7 +500,14 @@ impl SvgExporter {
                 }
                 w!(svg, "/>")?;
             }
-            SvgShape::Circle { cx, cy, r, fill, stroke, stroke_width } => {
+            SvgShape::Circle {
+                cx,
+                cy,
+                r,
+                fill,
+                stroke,
+                stroke_width,
+            } => {
                 w!(svg, "{indent}<circle cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\"")?;
                 if let Some(fill) = fill {
                     w!(svg, " fill=\"{fill}\"")?;
@@ -466,8 +520,19 @@ impl SvgExporter {
                 }
                 w!(svg, "/>")?;
             }
-            SvgShape::Ellipse { cx, cy, rx, ry, fill, stroke, stroke_width } => {
-                w!(svg, "{indent}<ellipse cx=\"{cx}\" cy=\"{cy}\" rx=\"{rx}\" ry=\"{ry}\"")?;
+            SvgShape::Ellipse {
+                cx,
+                cy,
+                rx,
+                ry,
+                fill,
+                stroke,
+                stroke_width,
+            } => {
+                w!(
+                    svg,
+                    "{indent}<ellipse cx=\"{cx}\" cy=\"{cy}\" rx=\"{rx}\" ry=\"{ry}\""
+                )?;
                 if let Some(fill) = fill {
                     w!(svg, " fill=\"{fill}\"")?;
                 }
@@ -479,8 +544,18 @@ impl SvgExporter {
                 }
                 w!(svg, "/>")?;
             }
-            SvgShape::Line { x1, y1, x2, y2, stroke, stroke_width } => {
-                w!(svg, "{indent}<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\"")?;
+            SvgShape::Line {
+                x1,
+                y1,
+                x2,
+                y2,
+                stroke,
+                stroke_width,
+            } => {
+                w!(
+                    svg,
+                    "{indent}<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\""
+                )?;
                 if let Some(stroke) = stroke {
                     w!(svg, " stroke=\"{stroke}\"")?;
                 }
@@ -489,7 +564,12 @@ impl SvgExporter {
                 }
                 w!(svg, "/>")?;
             }
-            SvgShape::Polyline { points, stroke, stroke_width, fill } => {
+            SvgShape::Polyline {
+                points,
+                stroke,
+                stroke_width,
+                fill,
+            } => {
                 let points_str: String = points
                     .iter()
                     .map(|(x, y)| format!("{x},{y}"))
@@ -509,7 +589,12 @@ impl SvgExporter {
                 }
                 w!(svg, "/>")?;
             }
-            SvgShape::Polygon { points, fill, stroke, stroke_width } => {
+            SvgShape::Polygon {
+                points,
+                fill,
+                stroke,
+                stroke_width,
+            } => {
                 let points_str: String = points
                     .iter()
                     .map(|(x, y)| format!("{x},{y}"))
@@ -527,7 +612,12 @@ impl SvgExporter {
                 }
                 w!(svg, "/>")?;
             }
-            SvgShape::Path { d, fill, stroke, stroke_width } => {
+            SvgShape::Path {
+                d,
+                fill,
+                stroke,
+                stroke_width,
+            } => {
                 w!(svg, "{indent}<path d=\"{d}\"")?;
                 if let Some(fill) = fill {
                     w!(svg, " fill=\"{fill}\"")?;
@@ -540,7 +630,14 @@ impl SvgExporter {
                 }
                 w!(svg, "/>")?;
             }
-            SvgShape::Text { x, y, content, font_size, fill, font_family } => {
+            SvgShape::Text {
+                x,
+                y,
+                content,
+                font_size,
+                fill,
+                font_family,
+            } => {
                 w!(svg, "{indent}<text x=\"{x}\" y=\"{y}\"")?;
                 if let Some(size) = font_size {
                     w!(svg, " font-size=\"{size}\"")?;
@@ -575,6 +672,7 @@ impl SvgExporter {
 
 /// SVG shape primitives
 #[derive(Debug, Clone)]
+#[allow(missing_docs)]
 pub enum SvgShape {
     /// Rectangle
     Rect {
@@ -745,13 +843,27 @@ impl SvgShape {
     #[must_use]
     pub fn with_stroke_width(mut self, width: f64) -> Self {
         match &mut self {
-            Self::Rect { stroke_width: sw, .. }
-            | Self::Circle { stroke_width: sw, .. }
-            | Self::Ellipse { stroke_width: sw, .. }
-            | Self::Line { stroke_width: sw, .. }
-            | Self::Polyline { stroke_width: sw, .. }
-            | Self::Polygon { stroke_width: sw, .. }
-            | Self::Path { stroke_width: sw, .. } => *sw = Some(width),
+            Self::Rect {
+                stroke_width: sw, ..
+            }
+            | Self::Circle {
+                stroke_width: sw, ..
+            }
+            | Self::Ellipse {
+                stroke_width: sw, ..
+            }
+            | Self::Line {
+                stroke_width: sw, ..
+            }
+            | Self::Polyline {
+                stroke_width: sw, ..
+            }
+            | Self::Polygon {
+                stroke_width: sw, ..
+            }
+            | Self::Path {
+                stroke_width: sw, ..
+            } => *sw = Some(width),
             Self::Text { .. } | Self::Group { .. } => {}
         }
         self
@@ -760,7 +872,13 @@ impl SvgShape {
 
 /// Convert annotation color to SVG color string
 fn color_to_svg(color: &[u8; 4]) -> String {
-    format!("rgba({},{},{},{})", color[0], color[1], color[2], f64::from(color[3]) / 255.0)
+    format!(
+        "rgba({},{},{},{})",
+        color[0],
+        color[1],
+        color[2],
+        f64::from(color[3]) / 255.0
+    )
 }
 
 /// Escape XML special characters
@@ -774,17 +892,19 @@ fn escape_xml(s: &str) -> String {
 
 /// Base64 encode data
 fn base64_encode(data: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
     let mut result = String::with_capacity((data.len() + 2) / 3 * 4);
 
     for chunk in data.chunks(3) {
+        // Safety: chunks(3) on non-empty slice produces chunks of 1, 2, or 3 elements
+        // The 0 case handles the (impossible) edge case to satisfy exhaustiveness
         let n = match chunk.len() {
             3 => (u32::from(chunk[0]) << 16) | (u32::from(chunk[1]) << 8) | u32::from(chunk[2]),
             2 => (u32::from(chunk[0]) << 16) | (u32::from(chunk[1]) << 8),
             1 => u32::from(chunk[0]) << 16,
-            _ => unreachable!(),
+            0 => continue, // Empty chunk - skip (cannot happen with chunks(3) on non-empty data)
+            _ => (u32::from(chunk[0]) << 16) | (u32::from(chunk[1]) << 8) | u32::from(chunk[2]),
         };
 
         result.push(char::from(ALPHABET[(n >> 18) as usize & 0x3F]));
@@ -893,12 +1013,12 @@ mod tests {
         #[test]
         fn test_from_screenshot_with_annotations() {
             let screenshot = test_screenshot();
-            let annotations = vec![
-                Annotation::rectangle(10, 10, 50, 30),
-            ];
+            let annotations = vec![Annotation::rectangle(10, 10, 50, 30)];
             let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
 
-            let svg = exporter.from_screenshot_with_annotations(&screenshot, &annotations).unwrap();
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
 
             assert!(svg.contains("<g id=\"annotations\">"));
             assert!(svg.contains("<rect"));
@@ -943,13 +1063,11 @@ mod tests {
                     .with_fill("blue")
                     .with_stroke("black")
                     .with_stroke_width(2.0),
-                SvgShape::circle(150.0, 50.0, 25.0)
-                    .with_fill("red"),
+                SvgShape::circle(150.0, 50.0, 25.0).with_fill("red"),
                 SvgShape::line(200.0, 10.0, 300.0, 60.0)
                     .with_stroke("green")
                     .with_stroke_width(3.0),
-                SvgShape::text(10.0, 100.0, "Hello SVG")
-                    .with_fill("black"),
+                SvgShape::text(10.0, 100.0, "Hello SVG").with_fill("black"),
             ];
 
             let exporter = SvgExporter::with_config(SvgConfig::new(400, 150));
@@ -969,10 +1087,27 @@ mod tests {
             assert!(matches!(rect, SvgShape::Rect { x: _, y: _, .. }));
 
             let circle = SvgShape::circle(50.0, 50.0, 25.0);
-            assert!(matches!(circle, SvgShape::Circle { cx: _, cy: _, r: _, .. }));
+            assert!(matches!(
+                circle,
+                SvgShape::Circle {
+                    cx: _,
+                    cy: _,
+                    r: _,
+                    ..
+                }
+            ));
 
             let line = SvgShape::line(0.0, 0.0, 100.0, 100.0);
-            assert!(matches!(line, SvgShape::Line { x1: _, y1: _, x2: _, y2: _, .. }));
+            assert!(matches!(
+                line,
+                SvgShape::Line {
+                    x1: _,
+                    y1: _,
+                    x2: _,
+                    y2: _,
+                    ..
+                }
+            ));
 
             let text = SvgShape::text(10.0, 20.0, "Test");
             assert!(matches!(text, SvgShape::Text { x: _, y: _, .. }));
@@ -980,15 +1115,13 @@ mod tests {
 
         #[test]
         fn test_group_shapes() {
-            let shapes = vec![
-                SvgShape::Group {
-                    id: Some("my-group".to_string()),
-                    children: vec![
-                        SvgShape::rect(0.0, 0.0, 50.0, 50.0).with_fill("blue"),
-                        SvgShape::circle(25.0, 25.0, 10.0).with_fill("red"),
-                    ],
-                },
-            ];
+            let shapes = vec![SvgShape::Group {
+                id: Some("my-group".to_string()),
+                children: vec![
+                    SvgShape::rect(0.0, 0.0, 50.0, 50.0).with_fill("blue"),
+                    SvgShape::circle(25.0, 25.0, 10.0).with_fill("red"),
+                ],
+            }];
 
             let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
             let svg = exporter.from_shapes(&shapes).unwrap();
@@ -1015,7 +1148,9 @@ mod tests {
             ];
 
             let exporter = SvgExporter::with_config(SvgConfig::new(200, 200));
-            let svg = exporter.from_screenshot_with_annotations(&screenshot, &annotations).unwrap();
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
 
             // Check all annotation types are rendered
             assert!(svg.contains("<rect")); // Rectangle, FilledRectangle, and Highlight
@@ -1027,12 +1162,12 @@ mod tests {
         #[test]
         fn test_annotation_with_label() {
             let screenshot = test_screenshot();
-            let annotations = vec![
-                Annotation::rectangle(10, 20, 50, 30).with_label("Test Label"),
-            ];
+            let annotations = vec![Annotation::rectangle(10, 20, 50, 30).with_label("Test Label")];
 
             let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
-            let svg = exporter.from_screenshot_with_annotations(&screenshot, &annotations).unwrap();
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
 
             assert!(svg.contains("<text"));
             assert!(svg.contains("Test Label"));
@@ -1046,14 +1181,19 @@ mod tests {
         fn test_escape_xml() {
             assert_eq!(escape_xml("<>&\"'"), "&lt;&gt;&amp;&quot;&apos;");
             assert_eq!(escape_xml("normal text"), "normal text");
-            assert_eq!(escape_xml("<script>alert('xss')</script>"),
-                       "&lt;script&gt;alert(&apos;xss&apos;)&lt;/script&gt;");
+            assert_eq!(
+                escape_xml("<script>alert('xss')</script>"),
+                "&lt;script&gt;alert(&apos;xss&apos;)&lt;/script&gt;"
+            );
         }
 
         #[test]
         fn test_color_to_svg() {
             assert_eq!(color_to_svg(&[255, 0, 0, 255]), "rgba(255,0,0,1)");
-            assert_eq!(color_to_svg(&[0, 255, 0, 128]), "rgba(0,255,0,0.5019607843137255)");
+            assert_eq!(
+                color_to_svg(&[0, 255, 0, 128]),
+                "rgba(0,255,0,0.5019607843137255)"
+            );
             assert_eq!(color_to_svg(&[0, 0, 0, 0]), "rgba(0,0,0,0)");
         }
 

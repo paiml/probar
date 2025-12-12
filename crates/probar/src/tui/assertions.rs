@@ -10,8 +10,8 @@
 //! - **Muda**: Fail-fast on first mismatch
 //! - **Jidoka**: Clear error messages with visual diff
 
-use crate::result::{ProbarError, ProbarResult};
 use super::backend::TuiFrame;
+use crate::result::{ProbarError, ProbarResult};
 use std::collections::HashMap;
 
 /// Frame assertion builder (Playwright-style API)
@@ -215,6 +215,7 @@ impl<'a> FrameAssertion<'a> {
 
 /// Create a frame assertion
 #[must_use]
+#[allow(dead_code)] // API for future use
 pub fn expect_frame(frame: &TuiFrame) -> FrameAssertion<'_> {
     FrameAssertion::new(frame)
 }
@@ -304,10 +305,7 @@ impl<T: Clone + PartialEq> ValueTracker<T> {
         if self.values.len() < 2 {
             return 0;
         }
-        self.values
-            .windows(2)
-            .filter(|w| w[0].1 != w[1].1)
-            .count()
+        self.values.windows(2).filter(|w| w[0].1 != w[1].1).count()
     }
 }
 
@@ -396,10 +394,12 @@ impl ValueTracker<i64> {
 
 /// Multi-value tracker for monitoring multiple named values
 #[derive(Debug, Default)]
+#[allow(dead_code)] // API for future use
 pub struct MultiValueTracker {
     trackers: HashMap<String, ValueTracker<f64>>,
 }
 
+#[allow(dead_code)] // API for future use
 impl MultiValueTracker {
     /// Create a new multi-value tracker
     #[must_use]

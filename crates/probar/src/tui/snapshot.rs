@@ -10,8 +10,8 @@
 //! - **Muda**: YAML format for human-readable diffs
 //! - **Genchi Genbutsu**: Snapshot files are source of truth
 
-use crate::result::{ProbarError, ProbarResult};
 use super::backend::TuiFrame;
+use crate::result::{ProbarError, ProbarResult};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -24,8 +24,9 @@ pub struct TuiSnapshot {
     pub name: String,
     /// Content hash for quick comparison
     pub hash: String,
-    /// Frame dimensions
+    /// Frame width
     pub width: u16,
+    /// Frame height
     pub height: u16,
     /// Frame content as lines
     pub content: Vec<String>,
@@ -54,7 +55,7 @@ impl TuiSnapshot {
     /// Create a snapshot from raw lines
     #[must_use]
     pub fn from_lines(name: &str, lines: &[&str]) -> Self {
-        let content: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
+        let content: Vec<String> = lines.iter().map(|s| (*s).to_string()).collect();
         let hash = Self::compute_hash(&content);
         let width = content.iter().map(|l| l.len()).max().unwrap_or(0) as u16;
         let height = content.len() as u16;
@@ -102,9 +103,10 @@ impl TuiSnapshot {
 
     /// Save snapshot to a YAML file
     pub fn save(&self, path: &Path) -> ProbarResult<()> {
-        let yaml = serde_yaml::to_string(self).map_err(|e| ProbarError::SnapshotSerializationError {
-            message: format!("Failed to serialize snapshot: {e}"),
-        })?;
+        let yaml =
+            serde_yaml::to_string(self).map_err(|e| ProbarError::SnapshotSerializationError {
+                message: format!("Failed to serialize snapshot: {e}"),
+            })?;
 
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -145,6 +147,7 @@ impl TuiSnapshot {
 
 /// Snapshot manager for organizing and comparing snapshots
 #[derive(Debug)]
+#[allow(dead_code)] // API for future use
 pub struct SnapshotManager {
     /// Directory for snapshot files
     snapshot_dir: PathBuf,
@@ -152,6 +155,7 @@ pub struct SnapshotManager {
     update_mode: bool,
 }
 
+#[allow(dead_code)] // API for future use
 impl SnapshotManager {
     /// Create a new snapshot manager
     #[must_use]
@@ -353,9 +357,10 @@ impl FrameSequence {
 
     /// Save sequence to YAML file
     pub fn save(&self, path: &Path) -> ProbarResult<()> {
-        let yaml = serde_yaml::to_string(self).map_err(|e| ProbarError::SnapshotSerializationError {
-            message: format!("Failed to serialize frame sequence: {e}"),
-        })?;
+        let yaml =
+            serde_yaml::to_string(self).map_err(|e| ProbarError::SnapshotSerializationError {
+                message: format!("Failed to serialize frame sequence: {e}"),
+            })?;
 
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -453,8 +458,8 @@ mod tests {
             let temp_dir = TempDir::new().unwrap();
             let path = temp_dir.path().join("test.snap.yaml");
 
-            let snap = TuiSnapshot::from_lines("test", &["Hello", "World"])
-                .with_metadata("key", "value");
+            let snap =
+                TuiSnapshot::from_lines("test", &["Hello", "World"]).with_metadata("key", "value");
 
             snap.save(&path).unwrap();
             assert!(path.exists());

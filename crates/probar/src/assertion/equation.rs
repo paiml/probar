@@ -232,13 +232,7 @@ impl EquationVerifier {
     }
 
     /// Verify a value is within a range
-    pub fn verify_in_range(
-        &mut self,
-        name: &str,
-        value: f64,
-        min: f64,
-        max: f64,
-    ) -> &mut Self {
+    pub fn verify_in_range(&mut self, name: &str, value: f64, min: f64, max: f64) -> &mut Self {
         let passed = value >= min && value <= max;
         let midpoint = (min + max) / 2.0;
         let difference = if passed {
@@ -350,11 +344,7 @@ impl EquationVerifier {
         if self.all_passed() {
             Ok(())
         } else {
-            let failures: Vec<String> = self
-                .failures()
-                .iter()
-                .map(|r| r.message.clone())
-                .collect();
+            let failures: Vec<String> = self.failures().iter().map(|r| r.message.clone()).collect();
             Err(ProbarError::AssertionFailed {
                 message: format!(
                     "Equation verification '{}' failed:\n{}",
@@ -400,10 +390,10 @@ impl KinematicVerifier {
     /// Verify v = v0 + at
     pub fn verify_velocity(
         &mut self,
-        v: f64,      // final velocity
-        v0: f64,     // initial velocity
-        a: f64,      // acceleration
-        t: f64,      // time
+        v: f64,  // final velocity
+        v0: f64, // initial velocity
+        a: f64,  // acceleration
+        t: f64,  // time
     ) -> &mut Self {
         let expected = v0 + a * t;
         self.verifier.verify_eq("v = v0 + at", expected, v);
@@ -413,28 +403,30 @@ impl KinematicVerifier {
     /// Verify x = x0 + v0*t + 0.5*a*t²
     pub fn verify_position(
         &mut self,
-        x: f64,      // final position
-        x0: f64,     // initial position
-        v0: f64,     // initial velocity
-        a: f64,      // acceleration
-        t: f64,      // time
+        x: f64,  // final position
+        x0: f64, // initial position
+        v0: f64, // initial velocity
+        a: f64,  // acceleration
+        t: f64,  // time
     ) -> &mut Self {
         let expected = x0 + v0 * t + 0.5 * a * t * t;
-        self.verifier.verify_eq("x = x0 + v0*t + 0.5*a*t²", expected, x);
+        self.verifier
+            .verify_eq("x = x0 + v0*t + 0.5*a*t²", expected, x);
         self
     }
 
     /// Verify v² = v0² + 2a(x - x0)
     pub fn verify_velocity_squared(
         &mut self,
-        v: f64,      // final velocity
-        v0: f64,     // initial velocity
-        a: f64,      // acceleration
-        x: f64,      // final position
-        x0: f64,     // initial position
+        v: f64,  // final velocity
+        v0: f64, // initial velocity
+        a: f64,  // acceleration
+        x: f64,  // final position
+        x0: f64, // initial position
     ) -> &mut Self {
         let expected = v0 * v0 + 2.0 * a * (x - x0);
-        self.verifier.verify_eq("v² = v0² + 2a(x-x0)", expected, v * v);
+        self.verifier
+            .verify_eq("v² = v0² + 2a(x-x0)", expected, v * v);
         self
     }
 
@@ -481,9 +473,9 @@ impl EnergyVerifier {
     /// Verify kinetic energy: KE = 0.5 * m * v²
     pub fn verify_kinetic_energy(
         &mut self,
-        ke: f64,     // kinetic energy
-        m: f64,      // mass
-        v: f64,      // velocity
+        ke: f64, // kinetic energy
+        m: f64,  // mass
+        v: f64,  // velocity
     ) -> &mut Self {
         let expected = 0.5 * m * v * v;
         self.verifier.verify_eq("KE = 0.5*m*v²", expected, ke);
@@ -493,10 +485,10 @@ impl EnergyVerifier {
     /// Verify potential energy: PE = m * g * h
     pub fn verify_potential_energy(
         &mut self,
-        pe: f64,     // potential energy
-        m: f64,      // mass
-        g: f64,      // gravity
-        h: f64,      // height
+        pe: f64, // potential energy
+        m: f64,  // mass
+        g: f64,  // gravity
+        h: f64,  // height
     ) -> &mut Self {
         let expected = m * g * h;
         self.verifier.verify_eq("PE = m*g*h", expected, pe);
@@ -513,17 +505,13 @@ impl EnergyVerifier {
     ) -> &mut Self {
         let total_initial = ke_initial + pe_initial;
         let total_final = ke_final + pe_final;
-        self.verifier.verify_eq("E_total conserved", total_initial, total_final);
+        self.verifier
+            .verify_eq("E_total conserved", total_initial, total_final);
         self
     }
 
     /// Verify work-energy theorem: W = ΔKE
-    pub fn verify_work_energy(
-        &mut self,
-        work: f64,
-        ke_initial: f64,
-        ke_final: f64,
-    ) -> &mut Self {
+    pub fn verify_work_energy(&mut self, work: f64, ke_initial: f64, ke_final: f64) -> &mut Self {
         let delta_ke = ke_final - ke_initial;
         self.verifier.verify_eq("W = ΔKE", work, delta_ke);
         self
@@ -572,9 +560,9 @@ impl MomentumVerifier {
     /// Verify momentum: p = m * v
     pub fn verify_momentum(
         &mut self,
-        p: f64,      // momentum
-        m: f64,      // mass
-        v: f64,      // velocity
+        p: f64, // momentum
+        m: f64, // mass
+        v: f64, // velocity
     ) -> &mut Self {
         let expected = m * v;
         self.verifier.verify_eq("p = m*v", expected, p);
@@ -584,22 +572,29 @@ impl MomentumVerifier {
     /// Verify momentum conservation in collision
     pub fn verify_conservation(
         &mut self,
-        m1: f64, v1_initial: f64,
-        m2: f64, v2_initial: f64,
-        v1_final: f64, v2_final: f64,
+        m1: f64,
+        v1_initial: f64,
+        m2: f64,
+        v2_initial: f64,
+        v1_final: f64,
+        v2_final: f64,
     ) -> &mut Self {
         let p_initial = m1 * v1_initial + m2 * v2_initial;
         let p_final = m1 * v1_final + m2 * v2_final;
-        self.verifier.verify_eq("p_total conserved", p_initial, p_final);
+        self.verifier
+            .verify_eq("p_total conserved", p_initial, p_final);
         self
     }
 
     /// Verify elastic collision (both momentum and KE conserved)
     pub fn verify_elastic_collision(
         &mut self,
-        m1: f64, v1_initial: f64,
-        m2: f64, v2_initial: f64,
-        v1_final: f64, v2_final: f64,
+        m1: f64,
+        v1_initial: f64,
+        m2: f64,
+        v2_initial: f64,
+        v1_final: f64,
+        v2_final: f64,
     ) -> &mut Self {
         // Momentum conservation
         self.verify_conservation(m1, v1_initial, m2, v2_initial, v1_final, v2_final);
@@ -607,7 +602,8 @@ impl MomentumVerifier {
         // Kinetic energy conservation
         let ke_initial = 0.5 * m1 * v1_initial * v1_initial + 0.5 * m2 * v2_initial * v2_initial;
         let ke_final = 0.5 * m1 * v1_final * v1_final + 0.5 * m2 * v2_final * v2_final;
-        self.verifier.verify_eq("KE conserved (elastic)", ke_initial, ke_final);
+        self.verifier
+            .verify_eq("KE conserved (elastic)", ke_initial, ke_final);
         self
     }
 
@@ -659,16 +655,20 @@ impl InvariantVerifier {
 
     /// Verify health is in valid range [0, max_health]
     pub fn verify_health(&mut self, health: f64, max_health: f64) -> &mut Self {
-        self.verifier.verify_in_range("health", health, 0.0, max_health);
+        self.verifier
+            .verify_in_range("health", health, 0.0, max_health);
         self
     }
 
     /// Verify position is within bounds
     pub fn verify_position_bounds(
         &mut self,
-        x: f64, y: f64,
-        min_x: f64, max_x: f64,
-        min_y: f64, max_y: f64,
+        x: f64,
+        y: f64,
+        min_x: f64,
+        max_x: f64,
+        min_y: f64,
+        max_y: f64,
     ) -> &mut Self {
         self.verifier.verify_in_range("x position", x, min_x, max_x);
         self.verifier.verify_in_range("y position", y, min_y, max_y);
@@ -678,13 +678,15 @@ impl InvariantVerifier {
     /// Verify velocity is within speed limit
     pub fn verify_speed_limit(&mut self, vx: f64, vy: f64, max_speed: f64) -> &mut Self {
         let speed = (vx * vx + vy * vy).sqrt();
-        self.verifier.verify_in_range("speed", speed, 0.0, max_speed);
+        self.verifier
+            .verify_in_range("speed", speed, 0.0, max_speed);
         self
     }
 
     /// Verify entity count invariant
     pub fn verify_entity_count(&mut self, count: usize, expected: usize) -> &mut Self {
-        self.verifier.verify_eq("entity count", expected as f64, count as f64);
+        self.verifier
+            .verify_eq("entity count", expected as f64, count as f64);
         self
     }
 
@@ -758,10 +760,7 @@ mod tests {
 
         #[test]
         fn test_from_variables() {
-            let vars = vec![
-                Variable::new("x", 1.0),
-                Variable::new("y", 2.0),
-            ];
+            let vars = vec![Variable::new("x", 1.0), Variable::new("y", 2.0)];
             let ctx = EquationContext::from_variables(&vars);
 
             assert_eq!(ctx.get("x"), Some(1.0));
@@ -1028,7 +1027,9 @@ mod tests {
             let ke_initial = 0.5 * ball_mass * ball_v_initial * ball_v_initial;
             let ke_final = 0.5 * ball_mass * ball_v_final * ball_v_final;
 
-            verifier.verifier.verify_eq("KE conserved", ke_initial, ke_final);
+            verifier
+                .verifier
+                .verify_eq("KE conserved", ke_initial, ke_final);
             assert!(verifier.assert_all().is_ok());
         }
     }

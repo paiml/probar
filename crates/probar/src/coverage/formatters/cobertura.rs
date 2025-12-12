@@ -79,10 +79,7 @@ impl<'a> CoberturaFormatter<'a> {
         let _ = write!(
             xml,
             r#"<coverage line-rate="{:.4}" branch-rate="0" lines-covered="{}" lines-valid="{}" version="{}">"#,
-            line_rate,
-            summary.covered_blocks,
-            summary.total_blocks,
-            self.version,
+            line_rate, summary.covered_blocks, summary.total_blocks, self.version,
         );
         xml.push('\n');
 
@@ -374,7 +371,10 @@ mod tests {
 
     #[test]
     fn test_extract_class_name() {
-        assert_eq!(CoberturaFormatter::extract_class_name("src/game.rs"), "game");
+        assert_eq!(
+            CoberturaFormatter::extract_class_name("src/game.rs"),
+            "game"
+        );
         assert_eq!(
             CoberturaFormatter::extract_class_name("src/player/movement.rs"),
             "movement"

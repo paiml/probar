@@ -268,7 +268,11 @@ impl UxCoverageTracker {
         let element = ElementId::new("input", id);
         self.register_element(
             element,
-            &[InteractionType::Focus, InteractionType::Input, InteractionType::Blur],
+            &[
+                InteractionType::Focus,
+                InteractionType::Input,
+                InteractionType::Blur,
+            ],
         );
     }
 
@@ -331,7 +335,8 @@ impl UxCoverageTracker {
     /// End current journey and start a new one
     pub fn end_journey(&mut self) {
         if !self.current_journey.is_empty() {
-            self.journeys.push(std::mem::take(&mut self.current_journey));
+            self.journeys
+                .push(std::mem::take(&mut self.current_journey));
         }
     }
 
@@ -341,7 +346,11 @@ impl UxCoverageTracker {
         if self.elements.is_empty() {
             return 1.0;
         }
-        let total_coverage: f64 = self.elements.values().map(ElementCoverage::coverage_ratio).sum();
+        let total_coverage: f64 = self
+            .elements
+            .values()
+            .map(ElementCoverage::coverage_ratio)
+            .sum();
         total_coverage / self.elements.len() as f64
     }
 
@@ -414,7 +423,11 @@ impl UxCoverageTracker {
             element_coverage: self.element_coverage(),
             state_coverage: self.state_coverage(),
             total_elements: self.elements.len(),
-            covered_elements: self.elements.values().filter(|e| e.is_fully_covered()).count(),
+            covered_elements: self
+                .elements
+                .values()
+                .filter(|e| e.is_fully_covered())
+                .count(),
             total_states: self.expected_states.len(),
             covered_states: self.visited_states.len(),
             total_interactions: self.interaction_counts.values().sum(),
@@ -507,7 +520,11 @@ impl UxCoverageReport {
             self.total_states,
             self.total_interactions,
             self.unique_journeys,
-            if self.is_complete { "COMPLETE" } else { "INCOMPLETE" }
+            if self.is_complete {
+                "COMPLETE"
+            } else {
+                "INCOMPLETE"
+            }
         )
     }
 }
@@ -631,8 +648,14 @@ mod tests {
         fn test_display() {
             assert_eq!(format!("{}", InteractionType::Click), "click");
             assert_eq!(format!("{}", InteractionType::Focus), "focus");
-            assert_eq!(format!("{}", InteractionType::KeyPress("Enter".to_string())), "keypress:Enter");
-            assert_eq!(format!("{}", InteractionType::Custom("swipe".to_string())), "custom:swipe");
+            assert_eq!(
+                format!("{}", InteractionType::KeyPress("Enter".to_string())),
+                "keypress:Enter"
+            );
+            assert_eq!(
+                format!("{}", InteractionType::Custom("swipe".to_string())),
+                "custom:swipe"
+            );
         }
     }
 
@@ -899,7 +922,10 @@ mod tests {
             // Simulate a test session that covers everything
             // Title screen
             tracker.record_state(StateId::new("screen", "title"));
-            tracker.record_interaction(&ElementId::new("button", "start_game"), InteractionType::Click);
+            tracker.record_interaction(
+                &ElementId::new("button", "start_game"),
+                InteractionType::Click,
+            );
 
             // Playing
             tracker.record_state(StateId::new("screen", "playing"));
@@ -911,7 +937,8 @@ mod tests {
 
             // Resume and game over
             tracker.record_state(StateId::new("screen", "game_over"));
-            tracker.record_interaction(&ElementId::new("button", "restart"), InteractionType::Click);
+            tracker
+                .record_interaction(&ElementId::new("button", "restart"), InteractionType::Click);
 
             // Verify 100% coverage
             assert!(tracker.assert_complete().is_ok());
@@ -928,7 +955,10 @@ mod tests {
 
             // Only cover some things
             tracker.record_state(StateId::new("screen", "title"));
-            tracker.record_interaction(&ElementId::new("button", "start_game"), InteractionType::Click);
+            tracker.record_interaction(
+                &ElementId::new("button", "start_game"),
+                InteractionType::Click,
+            );
 
             let report = tracker.generate_report();
             assert!(!report.is_complete);

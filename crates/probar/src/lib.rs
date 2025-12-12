@@ -18,10 +18,7 @@
 //! ```
 
 #![warn(missing_docs)]
-#![warn(clippy::all)]
-#![warn(clippy::pedantic)]
-#![warn(clippy::nursery)]
-#![allow(clippy::module_name_repetitions)]
+// Lints are configured in workspace Cargo.toml [workspace.lints.clippy]
 
 #[allow(
     clippy::suboptimal_flops,
@@ -108,6 +105,7 @@ mod page_object;
 mod fixture;
 
 /// TUI Testing Support (Feature 21 - EDD Compliance)
+#[cfg(feature = "tui")]
 #[allow(
     clippy::missing_errors_doc,
     clippy::must_use_candidate,
@@ -153,6 +151,62 @@ pub mod emulation;
 )]
 pub mod media;
 
+/// Watch Mode with Hot Reload (Feature 6)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod watch;
+
+/// Execution Tracing (Feature 9)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown,
+    clippy::cast_possible_truncation
+)]
+pub mod tracing_support;
+
+/// Network Request Interception (Feature 7)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod network;
+
+/// WebSocket Monitoring (Feature 8)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod websocket;
+
+/// Performance Profiling (Feature 10)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown,
+    clippy::cast_possible_truncation
+)]
+pub mod performance;
+
+/// Multi-Browser Context Management (Feature 14)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod context;
+
 /// WASM Coverage Tooling (spec: probar-wasm-coverage-tooling.md)
 #[allow(
     clippy::module_name_repetitions,
@@ -178,17 +232,21 @@ pub use accessibility::{
     Severity, MIN_CONTRAST_LARGE, MIN_CONTRAST_NORMAL, MIN_CONTRAST_UI,
 };
 pub use assertion::{
-    retry_contains, retry_eq, retry_none, retry_some, retry_true, Assertion,
-    AssertionCheckResult, AssertionFailure, AssertionMode, AssertionResult, AssertionSummary,
-    EnergyVerifier, EquationContext, EquationResult, EquationVerifier, InvariantVerifier,
-    KinematicVerifier, MomentumVerifier, RetryAssertion, RetryConfig, RetryError, RetryResult,
-    SoftAssertionError, SoftAssertions, Variable,
+    retry_contains, retry_eq, retry_none, retry_some, retry_true, Assertion, AssertionCheckResult,
+    AssertionFailure, AssertionMode, AssertionResult, AssertionSummary, EnergyVerifier,
+    EquationContext, EquationResult, EquationVerifier, InvariantVerifier, KinematicVerifier,
+    MomentumVerifier, RetryAssertion, RetryConfig, RetryError, RetryResult, SoftAssertionError,
+    SoftAssertions, Variable,
 };
 pub use bridge::{
     BridgeConnection, DiffRegion, EntitySnapshot, GameStateData, GameStateSnapshot, SnapshotCache,
     StateBridge, VisualDiff,
 };
 pub use browser::{Browser, BrowserConfig, Page};
+pub use context::{
+    BrowserContext, ContextConfig, ContextManager, ContextPool, ContextPoolStats, ContextState,
+    Cookie, Geolocation, SameSite, StorageState,
+};
 #[cfg(feature = "browser")]
 pub use driver::{BrowserController, ProbarDriver};
 pub use driver::{
@@ -196,14 +254,32 @@ pub use driver::{
     PageMetrics, Screenshot,
 };
 pub use event::{InputEvent, Touch, TouchAction};
+pub use fixture::{
+    Fixture, FixtureBuilder, FixtureManager, FixtureScope, FixtureState, SimpleFixture,
+};
 pub use fuzzer::{
     FuzzerConfig, InputFuzzer, InvariantCheck, InvariantChecker, InvariantViolation, Seed,
 };
-pub use harness::{TestHarness, TestResult, TestSuite};
+pub use harness::{TestCase, TestHarness, TestResult, TestSuite};
 pub use locator::{
     expect, BoundingBox, DragBuilder, DragOperation, Expect, ExpectAssertion, Locator,
     LocatorAction, LocatorOptions, LocatorQuery, Point, Selector, DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_TIMEOUT_MS,
+};
+pub use network::{
+    CapturedRequest, HttpMethod, MockResponse, NetworkInterception, NetworkInterceptionBuilder,
+    Route, UrlPattern,
+};
+pub use page_object::{
+    PageObject, PageObjectBuilder, PageObjectInfo, PageRegistry, SimplePageObject, UrlMatcher,
+};
+pub use performance::{
+    Measurement, MetricStats, MetricType, PerformanceMonitor, PerformanceProfile,
+    PerformanceProfiler, PerformanceProfilerBuilder, PerformanceSummary, PerformanceThreshold,
+};
+pub use replay::{
+    Replay, ReplayHeader, ReplayPlayer, ReplayRecorder, StateCheckpoint, TimedInput,
+    VerificationResult, REPLAY_FORMAT_VERSION,
 };
 pub use reporter::{
     AndonCordPulled, FailureMode, Reporter, TestResultEntry, TestStatus, TraceData,
@@ -218,19 +294,24 @@ pub use simulation::{
     SimulationConfig, SimulationRecording,
 };
 pub use snapshot::{Snapshot, SnapshotConfig, SnapshotDiff};
-pub use visual_regression::{ImageDiffResult, VisualRegressionConfig, VisualRegressionTester};
-pub use page_object::{
-    PageObject, PageObjectBuilder, PageObjectInfo, PageRegistry, SimplePageObject, UrlMatcher,
+pub use tracing_support::{
+    ConsoleLevel, ConsoleMessage, EventCategory, EventLevel, ExecutionTracer, NetworkEvent,
+    SpanStatus, TraceArchive, TraceMetadata, TracedEvent, TracedSpan, TracingConfig,
 };
-pub use fixture::{Fixture, FixtureBuilder, FixtureManager, FixtureScope, FixtureState, SimpleFixture};
-pub use tui::{TuiTestBackend, TuiFrame, FrameAssertion, ValueTracker, TuiSnapshot, FrameSequence};
-pub use replay::{
-    Replay, ReplayHeader, ReplayPlayer, ReplayRecorder, StateCheckpoint, TimedInput,
-    VerificationResult, REPLAY_FORMAT_VERSION,
-};
+#[cfg(feature = "tui")]
+pub use tui::{FrameAssertion, FrameSequence, TuiFrame, TuiSnapshot, TuiTestBackend, ValueTracker};
 pub use ux_coverage::{
-    ElementCoverage, ElementId, InteractionType, StateId, TrackedInteraction,
-    UxCoverageBuilder, UxCoverageReport, UxCoverageTracker,
+    ElementCoverage, ElementId, InteractionType, StateId, TrackedInteraction, UxCoverageBuilder,
+    UxCoverageReport, UxCoverageTracker,
+};
+pub use visual_regression::{ImageDiffResult, VisualRegressionConfig, VisualRegressionTester};
+pub use watch::{
+    FileChange, FileChangeKind, FileWatcher, FnWatchHandler, WatchBuilder, WatchConfig,
+    WatchHandler, WatchStats,
+};
+pub use websocket::{
+    MessageDirection, MessageType, MockWebSocketResponse, WebSocketConnection, WebSocketMessage,
+    WebSocketMock, WebSocketMonitor, WebSocketMonitorBuilder, WebSocketState,
 };
 
 /// Prelude for convenient imports
@@ -239,22 +320,29 @@ pub mod prelude {
     pub use super::assertion::*;
     pub use super::bridge::*;
     pub use super::browser::*;
+    pub use super::context::*;
     pub use super::driver::*;
     pub use super::event::*;
     pub use super::fixture::*;
     pub use super::fuzzer::*;
     pub use super::harness::*;
     pub use super::locator::*;
+    pub use super::network::*;
     pub use super::page_object::*;
+    pub use super::performance::*;
+    pub use super::replay::*;
     pub use super::reporter::*;
     pub use super::result::*;
     pub use super::runtime::*;
     pub use super::simulation::*;
     pub use super::snapshot::*;
+    pub use super::tracing_support::*;
+    #[cfg(feature = "tui")]
     pub use super::tui::*;
-    pub use super::replay::*;
     pub use super::ux_coverage::*;
     pub use super::visual_regression::*;
+    pub use super::watch::*;
+    pub use super::websocket::*;
 }
 
 /// Standard invariants for game testing

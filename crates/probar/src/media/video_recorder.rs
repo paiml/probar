@@ -276,12 +276,7 @@ impl VideoRecorder {
     }
 
     /// Capture a raw frame (RGBA data)
-    pub fn capture_raw_frame(
-        &mut self,
-        data: &[u8],
-        width: u32,
-        height: u32,
-    ) -> ProbarResult<()> {
+    pub fn capture_raw_frame(&mut self, data: &[u8], width: u32, height: u32) -> ProbarResult<()> {
         if self.state != RecordingState::Recording {
             return Err(ProbarError::VideoRecording {
                 message: "Recording not started".to_string(),
@@ -369,11 +364,10 @@ impl VideoRecorder {
     fn encode_frame(&self, screenshot: &Screenshot) -> ProbarResult<Vec<u8>> {
         // Load the screenshot as an image
         let cursor = Cursor::new(&screenshot.data);
-        let img = image::load(cursor, ImageFormat::Png).map_err(|e| {
-            ProbarError::VideoRecording {
+        let img =
+            image::load(cursor, ImageFormat::Png).map_err(|e| ProbarError::VideoRecording {
                 message: format!("Failed to decode screenshot: {e}"),
-            }
-        })?;
+            })?;
 
         // Resize if needed
         let img = if img.width() != self.config.width || img.height() != self.config.height {
@@ -423,14 +417,16 @@ impl VideoRecorder {
                     &mut buffer,
                     self.config.jpeg_quality,
                 );
-                encoder.encode(
-                    rgb.as_raw(),
-                    self.config.width,
-                    self.config.height,
-                    image::ExtendedColorType::Rgb8,
-                ).map_err(|e| ProbarError::VideoRecording {
-                    message: format!("JPEG encoding failed: {e}"),
-                })?;
+                encoder
+                    .encode(
+                        rgb.as_raw(),
+                        self.config.width,
+                        self.config.height,
+                        image::ExtendedColorType::Rgb8,
+                    )
+                    .map_err(|e| ProbarError::VideoRecording {
+                        message: format!("JPEG encoding failed: {e}"),
+                    })?;
                 Ok(buffer.into_inner())
             }
             VideoCodec::Raw => {
@@ -528,9 +524,7 @@ impl VideoRecorder {
         // Reserved
         content.write_all(&[0u8; 10])?;
         // Matrix (identity)
-        let matrix: [u32; 9] = [
-            0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000,
-        ];
+        let matrix: [u32; 9] = [0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000];
         for val in &matrix {
             content.write_all(&val.to_be_bytes())?;
         }
@@ -589,16 +583,14 @@ impl VideoRecorder {
         // Reserved
         content.write_all(&0u16.to_be_bytes())?;
         // Matrix (identity)
-        let matrix: [u32; 9] = [
-            0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000,
-        ];
+        let matrix: [u32; 9] = [0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000];
         for val in &matrix {
             content.write_all(&val.to_be_bytes())?;
         }
         // Width (fixed point)
-        content.write_all(&((self.config.width as u32) << 16).to_be_bytes())?;
+        content.write_all(&(self.config.width << 16).to_be_bytes())?;
         // Height (fixed point)
-        content.write_all(&((self.config.height as u32) << 16).to_be_bytes())?;
+        content.write_all(&(self.config.height << 16).to_be_bytes())?;
 
         let size = 8 + content.len();
         self.write_box_header(out, size as u32, b"tkhd")?;
@@ -906,7 +898,12 @@ impl VideoRecorder {
     }
 
     /// Write box header (size + type)
-    fn write_box_header(&self, out: &mut Vec<u8>, size: u32, box_type: &[u8; 4]) -> ProbarResult<()> {
+    fn write_box_header(
+        &self,
+        out: &mut Vec<u8>,
+        size: u32,
+        box_type: &[u8; 4],
+    ) -> ProbarResult<()> {
         out.write_all(&size.to_be_bytes())?;
         out.write_all(box_type)?;
         Ok(())

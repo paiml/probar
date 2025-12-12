@@ -12,11 +12,58 @@
 
 - [Locators](./probar/locators.md)
 - [Assertions](./probar/assertions.md)
+  - [Soft Assertions](./probar/assertions-soft.md)
+  - [Retry Assertions](./probar/assertions-retry.md)
+  - [Equation Verification](./probar/assertions-equation.md)
 - [Simulation](./probar/simulation.md)
 - [Deterministic Replay](./probar/deterministic-replay.md)
+
+# Media & Recording
+
+- [Media Recording](./probar/media-recording.md)
+  - [GIF Recording](./probar/media-gif.md)
+  - [PNG Screenshots](./probar/media-png.md)
+  - [SVG Export](./probar/media-svg.md)
+  - [MP4 Video](./probar/media-mp4.md)
+
+# Network & Protocol
+
+- [Network Interception](./probar/network-interception.md)
+- [WebSocket Testing](./probar/websocket-testing.md)
+
+# Browser Automation
+
+- [Browser Contexts](./probar/browser-contexts.md)
+- [Device Emulation](./probar/device-emulation.md)
+- [Geolocation Mocking](./probar/geolocation-mocking.md)
+
+# Testing Patterns
+
+- [Page Objects](./probar/page-objects.md)
+- [Fixtures](./probar/fixtures.md)
+- [TUI Testing](./probar/tui-testing.md)
+
+# Analysis & Debugging
+
+- [Execution Tracing](./probar/execution-tracing.md)
+- [Performance Profiling](./probar/performance-profiling.md)
+- [Watch Mode](./probar/watch-mode.md)
+
+# Coverage & Reports
+
+- [Coverage Tooling](./probar/coverage-tooling.md)
+- [LCOV Reports](./probar/coverage-lcov.md)
+- [HTML Reports](./probar/coverage-html.md)
+- [Cobertura XML](./probar/coverage-cobertura.md)
+- [UX Coverage](./probar/ux-coverage.md)
 
 # Advanced Topics
 
 - [Fuzzing](./probar/fuzzing.md)
 - [Accessibility Testing](./probar/accessibility.md)
-- [Coverage Tooling](./probar/coverage-tooling.md)
+
+# Reference
+
+- [API Reference](./probar/api-reference.md)
+- [CLI Reference](./probar/cli-reference.md)
+- [Configuration](./probar/configuration.md)

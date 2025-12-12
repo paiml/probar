@@ -131,7 +131,7 @@ impl TaintedBlocks {
 
     /// Mark block as tainted (Soft Jidoka)
     pub fn taint(&mut self, block: BlockId, violation: CoverageViolation) {
-        self.tainted.insert(block);
+        let _ = self.tainted.insert(block);
         self.violations.push((block, violation.clone()));
         self.all_violations.push(violation);
     }

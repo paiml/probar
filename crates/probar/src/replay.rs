@@ -114,7 +114,11 @@ impl StateCheckpoint {
 
     /// Create a checkpoint with state data
     #[must_use]
-    pub fn with_data(frame: u64, state_hash: &str, data: HashMap<String, serde_json::Value>) -> Self {
+    pub fn with_data(
+        frame: u64,
+        state_hash: &str,
+        data: HashMap<String, serde_json::Value>,
+    ) -> Self {
         Self {
             frame,
             state_hash: state_hash.to_string(),
@@ -226,9 +230,10 @@ impl Replay {
 
     /// Save replay to YAML file
     pub fn save_yaml(&self, path: &Path) -> ProbarResult<()> {
-        let yaml = serde_yaml::to_string(self).map_err(|e| ProbarError::SnapshotSerializationError {
-            message: format!("Failed to serialize replay: {e}"),
-        })?;
+        let yaml =
+            serde_yaml::to_string(self).map_err(|e| ProbarError::SnapshotSerializationError {
+                message: format!("Failed to serialize replay: {e}"),
+            })?;
 
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -329,18 +334,24 @@ impl ReplayRecorder {
         // Record checkpoint if at interval
         if let Some(hash) = state_hash {
             if self.current_frame % self.checkpoint_interval == 0 {
-                self.replay.add_checkpoint(StateCheckpoint::new(self.current_frame, hash));
+                self.replay
+                    .add_checkpoint(StateCheckpoint::new(self.current_frame, hash));
             }
         }
     }
 
     /// Record a checkpoint at current frame
     pub fn checkpoint(&mut self, state_hash: &str) {
-        self.replay.add_checkpoint(StateCheckpoint::new(self.current_frame, state_hash));
+        self.replay
+            .add_checkpoint(StateCheckpoint::new(self.current_frame, state_hash));
     }
 
     /// Record a checkpoint with state data
-    pub fn checkpoint_with_data(&mut self, state_hash: &str, data: HashMap<String, serde_json::Value>) {
+    pub fn checkpoint_with_data(
+        &mut self,
+        state_hash: &str,
+        data: HashMap<String, serde_json::Value>,
+    ) {
         self.replay.add_checkpoint(StateCheckpoint::with_data(
             self.current_frame,
             state_hash,
@@ -747,8 +758,7 @@ mod tests {
 
         #[test]
         fn test_checkpoint() {
-            let mut recorder = ReplayRecorder::new("game", "1.0", 42)
-                .with_checkpoint_interval(10);
+            let mut recorder = ReplayRecorder::new("game", "1.0", 42).with_checkpoint_interval(10);
 
             for i in 0..25 {
                 recorder.next_frame(Some(&format!("hash{}", i)));
