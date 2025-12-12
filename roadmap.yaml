@@ -1,0 +1,48 @@
+# Probar Roadmap - PMAT Work Items
+# Tracking via: pmat work status
+
+version: "1.0"
+project: probar
+description: "Rust-native testing framework for WASM games"
+
+milestones:
+  - id: M1
+    name: "Zero JavaScript Foundation"
+    status: in_progress
+    tickets:
+      - id: PROBAR-001
+        title: "Enforce Zero JavaScript Policy"
+        description: |
+          Apply ABSOLUTE ZERO JAVASCRIPT policy to probar codebase:
+          - No .js/.ts files in production
+          - No npm/node_modules/package.json
+          - All browser APIs via web-sys (Rust bindings)
+          - Single .wasm binary output
+        priority: critical
+        status: in_progress
+        acceptance_criteria:
+          - CLAUDE.md documents zero JS policy
+          - Pre-commit hook fails on JS files
+          - CI validates zero JS compliance
+          - All examples use web-sys only
+
+  - id: M2
+    name: "Crates.io Release"
+    status: completed
+    tickets:
+      - id: PROBAR-002
+        title: "Publish jugar-probar v0.2.0"
+        description: "Publish to crates.io with zero path dependencies"
+        priority: high
+        status: completed
+        completed_at: "2025-12-12"
+
+  - id: M3
+    name: "Quality Gates"
+    status: planned
+    tickets:
+      - id: PROBAR-003
+        title: "PMAT Quality Gate Enforcement"
+        description: "Add .pmat-gates.toml with strict thresholds"
+        priority: high
+        status: planned

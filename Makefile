@@ -22,17 +22,24 @@ MAKEFLAGS += -j$(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || ech
 all: validate build
 
 # ============================================================================
+# ZERO JAVASCRIPT ENFORCEMENT
+# ============================================================================
+
+zero-js: ## Check ABSOLUTE ZERO JAVASCRIPT compliance
+	@./scripts/check-zero-js.sh
+
+# ============================================================================
 # TIER 1: ON-SAVE - Sub-second feedback
 # ============================================================================
 
-tier1: check
+tier1: zero-js check
 	@echo "✓ Tier 1 passed"
 
 # ============================================================================
 # TIER 2: ON-COMMIT - Full validation (1-5 min)
 # ============================================================================
 
-tier2: format-check lint-check test-fast
+tier2: zero-js format-check lint-check test-fast
 	@echo "✓ Tier 2 passed"
 
 # ============================================================================
