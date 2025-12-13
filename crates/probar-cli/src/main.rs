@@ -134,10 +134,9 @@ fn run_coverage(_config: &CliConfig, args: &probar_cli::CoverageArgs) -> CliResu
     println!("Generating coverage heatmap...");
 
     // Load coverage data from input file or use sample data
-    let cells: Vec<Vec<CoverageCell>> = if let Some(ref _input) = args.input {
-        // TODO: Load from JSON file
-        println!("Loading coverage data from input file...");
-        create_sample_coverage_data()
+    let cells: Vec<Vec<CoverageCell>> = if let Some(ref input) = args.input {
+        println!("Loading coverage data from {}...", input.display());
+        load_coverage_from_json(input)?
     } else {
         println!("No input file specified, using sample data");
         create_sample_coverage_data()
@@ -199,36 +198,69 @@ fn run_coverage(_config: &CliConfig, args: &probar_cli::CoverageArgs) -> CliResu
     Ok(())
 }
 
-/// Create sample coverage data for demonstration
-fn create_sample_coverage_data() -> Vec<Vec<CoverageCell>> {
-    use jugar_probar::pixel_coverage::CoverageCell;
+/// Load coverage data from a JSON file
+fn load_coverage_from_json(path: &std::path::Path) -> CliResult<Vec<Vec<CoverageCell>>> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| probar_cli::CliError::report_generation(format!("Failed to read {}: {}", path.display(), e)))?;
 
-    let rows = 10;
-    let cols = 15;
-    let mut cells = Vec::with_capacity(rows);
-
-    for row in 0..rows {
-        let mut row_cells = Vec::with_capacity(cols);
-        for col in 0..cols {
-            let coverage = if row == 5 && (col == 5 || col == 6 || col == 7) {
-                0.0 // Gap in the middle
-            } else if row == 2 && col > 10 {
-                0.0 // Another gap
-            } else {
-                let x_factor = col as f32 / (cols - 1) as f32;
-                let y_factor = row as f32 / (rows - 1) as f32;
-                (x_factor + y_factor) / 2.0
-            };
-
-            row_cells.push(CoverageCell {
-                coverage,
-                hit_count: (coverage * 10.0) as u64,
-            });
-        }
-        cells.push(row_cells);
+    // Expected JSON format: { "cells": [[{coverage: f32, hit_count: u64}, ...], ...] }
+    // or just: [[{coverage: f32, hit_count: u64}, ...], ...]
+    #[derive(serde::Deserialize)]
+    struct CoverageData {
+        cells: Option<Vec<Vec<CoverageCell>>>,
+        #[serde(flatten)]
+        _extra: std::collections::HashMap<String, serde_json::Value>,
     }
 
-    cells
+    // Try parsing as wrapped format first
+    if let Ok(data) = serde_json::from_str::<CoverageData>(&content) {
+        if let Some(cells) = data.cells {
+            return Ok(cells);
+        }
+    }
+
+    // Try parsing as bare array
+    serde_json::from_str::<Vec<Vec<CoverageCell>>>(&content)
+        .map_err(|e| probar_cli::CliError::report_generation(format!("Invalid JSON format: {}", e)))
+}
+
+/// Check if a cell is in a gap region (no coverage)
+fn is_gap_cell(row: usize, col: usize) -> bool {
+    // Gap in the middle of row 5
+    let middle_gap = row == 5 && (5..=7).contains(&col);
+    // Gap at the end of row 2
+    let end_gap = row == 2 && col > 10;
+    middle_gap || end_gap
+}
+
+/// Calculate coverage value for a cell based on position
+fn calculate_coverage(row: usize, col: usize, rows: usize, cols: usize) -> f32 {
+    if is_gap_cell(row, col) {
+        return 0.0;
+    }
+    let x_factor = col as f32 / (cols - 1) as f32;
+    let y_factor = row as f32 / (rows - 1) as f32;
+    (x_factor + y_factor) / 2.0
+}
+
+/// Create sample coverage data for demonstration
+fn create_sample_coverage_data() -> Vec<Vec<CoverageCell>> {
+    const ROWS: usize = 10;
+    const COLS: usize = 15;
+
+    (0..ROWS)
+        .map(|row| {
+            (0..COLS)
+                .map(|col| {
+                    let coverage = calculate_coverage(row, col, ROWS, COLS);
+                    CoverageCell {
+                        coverage,
+                        hit_count: (coverage * 10.0) as u64,
+                    }
+                })
+                .collect()
+        })
+        .collect()
 }
 
 /// Generate coverage report from cells

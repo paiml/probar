@@ -155,7 +155,7 @@ pub struct EncodedFrame {
 /// # Example
 ///
 /// ```ignore
-/// use probar::media::{VideoRecorder, VideoConfig};
+/// use jugar_probar::media::{VideoRecorder, VideoConfig};
 ///
 /// let config = VideoConfig::new(1280, 720).with_fps(30);
 /// let mut recorder = VideoRecorder::new(config);

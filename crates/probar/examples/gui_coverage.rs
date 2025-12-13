@@ -209,8 +209,8 @@ fn main() -> ProbarResult<()> {
         0.95,
     );
     let pixel_ci = ConfidenceInterval::wilson_score(
-        custom_pixel_report.covered_cells as u32,
-        custom_pixel_report.total_cells as u32,
+        custom_pixel_report.covered_cells,
+        custom_pixel_report.total_cells,
         0.95,
     );
 
@@ -247,7 +247,7 @@ fn main() -> ProbarResult<()> {
     let gui_bar = ScoreBar::new("GUI", full_report.overall_coverage as f32, 1.0);
     let pixel_bar = ScoreBar::new("Pixels", full_pixel_report.overall_coverage, 1.0);
 
-    println!("   {}", gui_bar.render(mode.clone()));
+    println!("   {}", gui_bar.render(mode));
     println!("   {}", pixel_bar.render(mode));
     println!("   Complete: {}", full.is_complete() && full_pixel_report.meets_threshold);
 

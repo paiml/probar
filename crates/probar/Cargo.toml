@@ -1,6 +1,6 @@
 [package]
 name = "jugar-probar"
-version = "0.3.0"
+version = "0.3.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Probar: Rust-native testing framework for WASM games"
@@ -12,7 +12,7 @@ categories = ["development-tools::testing", "wasm"]
 [features]
 default = ["tui"]
 # Enable real browser control (requires chromium)
-browser = ["chromiumoxide", "tokio", "futures"]
+browser = ["chromiumoxide", "tokio", "futures", "async-trait"]
 # Enable WASM runtime for logic testing (Phase 1)
 runtime = ["wasmtime", "async-trait"]
 # Enable derive macros for type-safe selectors (Phase 4)
@@ -44,29 +44,28 @@ serde_yaml = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 
-# Watch mode (Phase 6) - not available on WASM
+# Optional derive macros for type-safe selectors (Phase 4)
+jugar-probar-derive = { version = "0.1.0", optional = true }
+
+# Native-only dependencies (not available on WASM)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Watch mode (Phase 6)
 notify = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+# Optional CDP browser control
+chromiumoxide = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+# Optional WASM runtime for logic testing
+wasmtime = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
 
 # WASM-specific dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlCanvasElement", "CanvasRenderingContext2d", "Performance"] }
 wasm-bindgen = "0.2"
 js-sys = "0.3"
-
-# Optional CDP browser control
-chromiumoxide = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
-futures = { workspace = true, optional = true }
-
-# Optional WASM runtime for logic testing (Phase 1)
-wasmtime = { workspace = true, optional = true }
-async-trait = { workspace = true, optional = true }
-
-# Optional derive macros for type-safe selectors (Phase 4)
-jugar-probar-derive = { version = "0.1.0", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

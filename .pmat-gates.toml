@@ -66,3 +66,14 @@ min_doc_coverage = 80
 forbidden_extensions = [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"]
 forbidden_files = ["package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"]
 forbidden_dirs = ["node_modules"]
+
+[exclusions]
+# Directories to exclude from analysis
+# book/book/ contains auto-generated mdbook output (JS files)
+paths = ["book/book", "target"]
+
+[quality_gate]
+# Required checks that must pass for quality gate
+required_checks = ["complexity", "satd", "security", "duplicates", "coverage", "sections"]
+# Optional checks that generate warnings but don't fail the gate
+optional_checks = ["dead-code", "entropy", "provability"]

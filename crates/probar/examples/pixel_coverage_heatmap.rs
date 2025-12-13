@@ -83,8 +83,8 @@ fn main() {
     // Wilson Score CI
     println!("\n  Wilson Score CI (95%):");
     let ci = ConfidenceInterval::wilson_score(
-        report.covered_cells as u32,
-        report.total_cells as u32,
+        report.covered_cells,
+        report.total_cells,
         0.95,
     );
     println!("    Coverage: [{:.1}%, {:.1}%]", ci.lower * 100.0, ci.upper * 100.0);
@@ -157,7 +157,7 @@ fn main() {
         20,   // covered elements
     );
 
-    let combined = CombinedCoverageReport::from_parts(line_report, report.clone());
+    let combined = CombinedCoverageReport::from_parts(line_report, report);
     println!("{}", combined.summary());
 
     // Step 6b: Generate combined PNG with stats panel
@@ -271,35 +271,39 @@ fn print_gap_analysis(cells: &[Vec<CoverageCell>]) {
     }
 }
 
+/// Check if a position is in a gap region
+fn is_gap_position(row: usize, col: usize) -> bool {
+    let middle_gap = row == 5 && (5..=7).contains(&col);
+    let end_gap = row == 2 && col > 10;
+    middle_gap || end_gap
+}
+
+/// Calculate gradient coverage value
+fn gradient_coverage(row: usize, col: usize, rows: usize, cols: usize) -> f32 {
+    if is_gap_position(row, col) {
+        return 0.0;
+    }
+    let x_factor = col as f32 / (cols - 1) as f32;
+    let y_factor = row as f32 / (rows - 1) as f32;
+    (x_factor + y_factor) / 2.0
+}
+
 /// Create a pattern of cells showing gradient and gaps.
 fn create_pattern_cells() -> Vec<Vec<CoverageCell>> {
-    let rows = 10;
-    let cols = 15;
-    let mut cells = Vec::with_capacity(rows);
+    const ROWS: usize = 10;
+    const COLS: usize = 15;
 
-    for row in 0..rows {
-        let mut row_cells = Vec::with_capacity(cols);
-        for col in 0..cols {
-            let coverage = if row == 5 && (col == 5 || col == 6 || col == 7) {
-                // Gap in the middle
-                0.0
-            } else if row == 2 && col > 10 {
-                // Another gap
-                0.0
-            } else {
-                // Gradient based on position
-                let x_factor = col as f32 / (cols - 1) as f32;
-                let y_factor = row as f32 / (rows - 1) as f32;
-                (x_factor + y_factor) / 2.0
-            };
-
-            row_cells.push(CoverageCell {
-                coverage,
-                hit_count: (coverage * 10.0) as u64,
-            });
-        }
-        cells.push(row_cells);
-    }
-
-    cells
+    (0..ROWS)
+        .map(|row| {
+            (0..COLS)
+                .map(|col| {
+                    let coverage = gradient_coverage(row, col, ROWS, COLS);
+                    CoverageCell {
+                        coverage,
+                        hit_count: (coverage * 10.0) as u64,
+                    }
+                })
+                .collect()
+        })
+        .collect()
 }

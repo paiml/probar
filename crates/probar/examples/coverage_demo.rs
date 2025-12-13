@@ -493,8 +493,8 @@ fn demo_pixel_perfect_coverage() {
     // Wilson Score Confidence Intervals
     println!("\n  Wilson Score Confidence Interval (95%):");
     let ci = ConfidenceInterval::wilson_score(
-        report.covered_cells as u32,
-        report.total_cells as u32,
+        report.covered_cells,
+        report.total_cells,
         0.95,
     );
     println!("    Lower: {:.1}%", ci.lower * 100.0);
@@ -505,7 +505,7 @@ fn demo_pixel_perfect_coverage() {
     println!("\n  Visual Score Bars:");
     let mode = OutputMode::from_env();
     let coverage_bar = ScoreBar::new("Pixel", report.overall_coverage, 0.85);
-    println!("    {}", coverage_bar.render(mode.clone()));
+    println!("    {}", coverage_bar.render(mode));
 
     // Combined Coverage Report
     println!("\n  Combined Coverage Report:");

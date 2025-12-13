@@ -15,8 +15,8 @@
 //! ## Simple Usage
 //!
 //! ```rust
-//! use probar::gui_coverage;
-//! use probar::ux_coverage::*;
+//! use jugar_probar::gui_coverage;
+//! use jugar_probar::ux_coverage::*;
 //!
 //! // Define your GUI elements once
 //! let mut tracker = gui_coverage! {
@@ -500,7 +500,7 @@ impl UxCoverageTracker {
     ///
     /// # Example
     /// ```rust
-    /// # use probar::ux_coverage::UxCoverageTracker;
+    /// # use jugar_probar::ux_coverage::UxCoverageTracker;
     /// let mut tracker = UxCoverageTracker::new();
     /// tracker.register_button("submit");
     /// tracker.click("submit");
@@ -714,7 +714,7 @@ impl UxCoverageBuilder {
 /// # Example
 ///
 /// ```rust
-/// use probar::gui_coverage;
+/// use jugar_probar::gui_coverage;
 ///
 /// // Define what needs to be tested
 /// let mut gui = gui_coverage! {

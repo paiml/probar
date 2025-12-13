@@ -12,28 +12,29 @@
 
 use jugar_probar::pixel_coverage::{
     CombinedCoverageReport, ConfidenceInterval, FalsifiabilityGate, FalsifiableHypothesis,
-    LineCoverageReport, OutputMode, PixelCoverageTracker, PixelRegion, ScoreBar,
+    LineCoverageReport, OutputMode, PixelCoverageReport, PixelCoverageTracker, PixelRegion,
+    ScoreBar,
 };
-use jugar_probar::UxCoverageBuilder;
+use jugar_probar::{UxCoverageBuilder, UxCoverageReport, UxCoverageTracker};
 use showcase_calculator::prelude::*;
 
-fn main() {
-    println!("===============================================================");
-    println!("    SHOWCASE CALCULATOR - PIXEL-PERFECT COVERAGE (v2.1)        ");
-    println!("===============================================================\n");
+/// Calculate button region position in the 4x6 grid (80x80 pixel buttons)
+fn button_region(col: u32, row: u32) -> PixelRegion {
+    PixelRegion::new(col * 80, row * 80, 80, 80)
+}
 
-    // =========================================================================
-    // PIXEL-001 v2.1: Initialize Pixel Coverage Tracker
-    // Calculator layout: 320x480 (4 cols x 6 rows of buttons + display)
-    // =========================================================================
-    let mut pixel_tracker = PixelCoverageTracker::builder()
+/// Initialize the pixel coverage tracker for the calculator layout
+fn init_pixel_tracker() -> PixelCoverageTracker {
+    PixelCoverageTracker::builder()
         .resolution(320, 480)
         .grid_size(4, 6) // 4 columns, 6 rows (matches calculator keypad layout)
         .threshold(1.0)  // Require 100% coverage
-        .build();
+        .build()
+}
 
-    // Create comprehensive GUI coverage tracker
-    let mut gui = UxCoverageBuilder::new()
+/// Initialize the GUI coverage tracker with all calculator elements
+fn init_gui_tracker() -> UxCoverageTracker {
+    UxCoverageBuilder::new()
         // All 20 keypad buttons
         .button("btn-0").button("btn-1").button("btn-2").button("btn-3")
         .button("btn-4").button("btn-5").button("btn-6").button("btn-7")
@@ -44,24 +45,31 @@ fn main() {
         .input("calc-input")
         .screen("calculator").screen("result-display")
         .screen("history-panel").screen("anomaly-panel")
-        .build();
+        .build()
+}
 
-    let mut driver = WasmDriver::new();
-
-    // =========================================================================
-    // Button Position Mapping (4x6 grid, 80x80 pixel buttons)
-    // Row 0: Display (y=0-80)
-    // Row 1: 7,8,9,/  Row 2: 4,5,6,*  Row 3: 1,2,3,-  Row 4: 0,.,=,+  Row 5: (,),^,C
-    // =========================================================================
-    let button_region = |col: u32, row: u32| PixelRegion::new(col * 80, row * 80, 80, 80);
-
-    // =========================================================================
-    // Test Suite 1: Basic Arithmetic (with pixel tracking)
-    // =========================================================================
-    println!("Running Test Suite 1: Basic Arithmetic...");
-
+/// Run all test suites and record coverage
+fn run_test_suites(
+    driver: &mut WasmDriver,
+    gui: &mut UxCoverageTracker,
+    pixel_tracker: &mut PixelCoverageTracker,
+) {
     // Cover display area first (row 0)
     pixel_tracker.record_region(PixelRegion::new(0, 0, 320, 80));
+
+    run_basic_arithmetic(driver, gui, pixel_tracker);
+    run_advanced_operations(driver, gui, pixel_tracker);
+    run_digit_coverage(driver, gui, pixel_tracker);
+    run_screen_coverage(gui);
+}
+
+/// Test Suite 1: Basic Arithmetic
+fn run_basic_arithmetic(
+    driver: &mut WasmDriver,
+    gui: &mut UxCoverageTracker,
+    pixel_tracker: &mut PixelCoverageTracker,
+) {
+    println!("Running Test Suite 1: Basic Arithmetic...");
 
     // Addition: 5 + 3 = 8
     driver.type_input("5 + 3");
@@ -103,10 +111,14 @@ fn main() {
     driver.click_clear();
 
     println!("   [OK] Basic arithmetic: PASS");
+}
 
-    // =========================================================================
-    // Test Suite 2: Advanced Operations
-    // =========================================================================
+/// Test Suite 2: Advanced Operations
+fn run_advanced_operations(
+    driver: &mut WasmDriver,
+    gui: &mut UxCoverageTracker,
+    pixel_tracker: &mut PixelCoverageTracker,
+) {
     println!("Running Test Suite 2: Advanced Operations...");
 
     // Power: 2^8 = 256
@@ -132,19 +144,23 @@ fn main() {
     driver.click_clear();
 
     println!("   [OK] Advanced operations: PASS");
+}
 
-    // =========================================================================
-    // Test Suite 3: All Digits
-    // =========================================================================
+/// Test Suite 3: All Digits
+fn run_digit_coverage(
+    driver: &mut WasmDriver,
+    gui: &mut UxCoverageTracker,
+    pixel_tracker: &mut PixelCoverageTracker,
+) {
     println!("Running Test Suite 3: All Digits...");
     driver.type_input("9");
     gui.click("btn-9"); pixel_tracker.record_region(button_region(2, 1));
     driver.click_clear();
     println!("   [OK] All digits covered: PASS");
+}
 
-    // =========================================================================
-    // Test Suite 4: Screen Coverage
-    // =========================================================================
+/// Test Suite 4: Screen Coverage
+fn run_screen_coverage(gui: &mut UxCoverageTracker) {
     println!("Running Test Suite 4: Screen Coverage...");
     gui.input("calc-input");
     gui.visit("calculator");
@@ -152,36 +168,47 @@ fn main() {
     gui.visit("history-panel");
     gui.visit("anomaly-panel");
     println!("   [OK] All screens visited: PASS");
+}
 
-    // =========================================================================
-    // PIXEL-001 v2.1: COMPREHENSIVE COVERAGE REPORT
-    // =========================================================================
-    println!("\n===============================================================");
-    println!("           PIXEL-001 v2.1 COVERAGE RESULTS                      ");
-    println!("===============================================================\n");
-
+/// Print the coverage report
+fn print_coverage_report(gui: &UxCoverageTracker, pixel_tracker: &PixelCoverageTracker) {
     let gui_report = gui.generate_report();
     let pixel_report = pixel_tracker.generate_report();
     let mode = OutputMode::from_env();
 
-    // -------------------------------------------------------------------------
-    // Section 1: GUI Element Coverage
-    // -------------------------------------------------------------------------
+    println!("\n===============================================================");
+    println!("           PIXEL-001 v2.1 COVERAGE RESULTS                      ");
+    println!("===============================================================\n");
+
+    print_gui_element_coverage(&gui_report, mode);
+    print_pixel_coverage(&pixel_report, pixel_tracker, mode);
+    print_statistical_rigor(&gui_report, &pixel_report);
+    print_popperian_falsification(&gui_report, &pixel_report);
+    print_combined_summary(&gui_report, &pixel_report);
+    print_final_status(gui, &gui_report, &pixel_report);
+}
+
+/// Section 1: GUI Element Coverage
+fn print_gui_element_coverage(gui_report: &UxCoverageReport, mode: OutputMode) {
     println!("--- GUI ELEMENT COVERAGE ---");
     let element_bar = ScoreBar::new("Elements", gui_report.element_coverage as f32, 1.0);
-    println!("  {}", element_bar.render(mode.clone()));
+    println!("  {}", element_bar.render(mode));
     let state_bar = ScoreBar::new("Screens", gui_report.state_coverage as f32, 1.0);
-    println!("  {}", state_bar.render(mode.clone()));
+    println!("  {}", state_bar.render(mode));
     println!("  Covered: {}/{} elements, {}/{} screens\n",
         gui_report.covered_elements, gui_report.total_elements,
         gui_report.covered_states, gui_report.total_states);
+}
 
-    // -------------------------------------------------------------------------
-    // Section 2: Pixel-Level Coverage with Heatmap
-    // -------------------------------------------------------------------------
+/// Section 2: Pixel-Level Coverage with Heatmap
+fn print_pixel_coverage(
+    pixel_report: &PixelCoverageReport,
+    pixel_tracker: &PixelCoverageTracker,
+    mode: OutputMode,
+) {
     println!("--- PIXEL-LEVEL COVERAGE ---");
     let pixel_bar = ScoreBar::new("Pixels", pixel_report.overall_coverage, 1.0);
-    println!("  {}", pixel_bar.render(mode.clone()));
+    println!("  {}", pixel_bar.render(mode));
     println!("  Cells: {}/{} covered\n", pixel_report.covered_cells, pixel_report.total_cells);
 
     println!("  Pixel Heatmap (4x6 grid):");
@@ -190,15 +217,15 @@ fn main() {
         println!("    {}", line);
     }
     println!();
+}
 
-    // -------------------------------------------------------------------------
-    // Section 3: Wilson Score Confidence Intervals
-    // -------------------------------------------------------------------------
+/// Section 3: Wilson Score Confidence Intervals
+fn print_statistical_rigor(gui_report: &UxCoverageReport, pixel_report: &PixelCoverageReport) {
     println!("--- STATISTICAL RIGOR (Wilson Score 95% CI) ---");
     let pixel_pct = pixel_report.overall_coverage * 100.0;
     let ci = ConfidenceInterval::wilson_score(
-        pixel_report.covered_cells as u32,
-        pixel_report.total_cells as u32,
+        pixel_report.covered_cells,
+        pixel_report.total_cells,
         0.95,
     );
     println!("  Pixel Coverage: {:.1}% [{:.1}%, {:.1}%]",
@@ -212,14 +239,13 @@ fn main() {
     );
     println!("  GUI Coverage:   {:.1}% [{:.1}%, {:.1}%]\n",
         gui_pct, gui_ci.lower * 100.0, gui_ci.upper * 100.0);
+}
 
-    // -------------------------------------------------------------------------
-    // Section 4: Popperian Falsification Gate
-    // -------------------------------------------------------------------------
+/// Section 4: Popperian Falsification Gate
+fn print_popperian_falsification(gui_report: &UxCoverageReport, pixel_report: &PixelCoverageReport) {
     println!("--- POPPERIAN FALSIFICATION ---");
-    let gate = FalsifiabilityGate::new(15.0); // Gateway threshold
+    let gate = FalsifiabilityGate::new(15.0);
 
-    // Build falsifiable hypotheses using coverage_threshold and evaluate with actual values
     let h1_template = FalsifiableHypothesis::coverage_threshold("H0-PIX-CALC-01", 1.0);
     let h1 = h1_template.evaluate(pixel_report.overall_coverage);
 
@@ -243,10 +269,10 @@ fn main() {
         gate_result.score(), gate.gateway_threshold);
     println!("  Gate Status: {}\n",
         if gate_result.is_passed() { "[PASSED]" } else { "[FAILED]" });
+}
 
-    // -------------------------------------------------------------------------
-    // Section 5: Combined Coverage Report
-    // -------------------------------------------------------------------------
+/// Section 5: Combined Coverage Summary
+fn print_combined_summary(gui_report: &UxCoverageReport, pixel_report: &PixelCoverageReport) {
     let line_report = LineCoverageReport::new(
         gui_report.element_coverage as f32,
         gui_report.state_coverage as f32,
@@ -260,10 +286,19 @@ fn main() {
     println!("  Overall Score: {:.1}%", combined.overall_score * 100.0);
     println!("  Meets Threshold (80%): {}\n",
         if combined.meets_threshold { "[YES]" } else { "[NO]" });
+}
 
-    // -------------------------------------------------------------------------
-    // Final Status
-    // -------------------------------------------------------------------------
+/// Final Status output
+fn print_final_status(
+    gui: &UxCoverageTracker,
+    gui_report: &UxCoverageReport,
+    pixel_report: &PixelCoverageReport,
+) {
+    let gate = FalsifiabilityGate::new(15.0);
+    let h1_template = FalsifiableHypothesis::coverage_threshold("H0-PIX-CALC-01", 1.0);
+    let h1 = h1_template.evaluate(pixel_report.overall_coverage);
+    let gate_result = gate.evaluate(&h1);
+
     let all_complete = gui_report.is_complete
         && pixel_report.meets_threshold
         && gate_result.is_passed();
@@ -292,4 +327,17 @@ fn main() {
         }
     }
     println!("===============================================================\n");
+}
+
+fn main() {
+    println!("===============================================================");
+    println!("    SHOWCASE CALCULATOR - PIXEL-PERFECT COVERAGE (v2.1)        ");
+    println!("===============================================================\n");
+
+    let mut pixel_tracker = init_pixel_tracker();
+    let mut gui = init_gui_tracker();
+    let mut driver = WasmDriver::new();
+
+    run_test_suites(&mut driver, &mut gui, &mut pixel_tracker);
+    print_coverage_report(&gui, &pixel_tracker);
 }

@@ -92,7 +92,7 @@ struct FixtureEntry {
 /// # Example
 ///
 /// ```ignore
-/// use probar::fixture::{FixtureManager, Fixture};
+/// use jugar_probar::fixture::{FixtureManager, Fixture};
 ///
 /// let mut manager = FixtureManager::new();
 /// manager.register(BrowserFixture::new());

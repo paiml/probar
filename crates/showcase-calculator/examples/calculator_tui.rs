@@ -41,6 +41,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Handle a single key action and return whether to quit
+fn handle_action(app: &mut CalculatorApp, action: KeyAction) -> bool {
+    match action {
+        KeyAction::InsertChar(c) if InputHandler::is_valid_char(c) => app.insert_char(c),
+        KeyAction::Backspace => app.delete_char(),
+        KeyAction::Delete => app.delete_char_forward(),
+        KeyAction::CursorLeft => app.move_cursor_left(),
+        KeyAction::CursorRight => app.move_cursor_right(),
+        KeyAction::CursorHome => app.move_cursor_start(),
+        KeyAction::CursorEnd => app.move_cursor_end(),
+        KeyAction::Evaluate => app.evaluate(),
+        KeyAction::Clear => app.clear(),
+        KeyAction::ClearAll => app.clear_all(),
+        KeyAction::RecallLast => app.recall_last(),
+        KeyAction::Quit => return true,
+        KeyAction::InsertChar(_) | KeyAction::None => {}
+    }
+    false
+}
+
 fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -51,24 +71,8 @@ fn run_app<B: ratatui::backend::Backend>(
         terminal.draw(|f| render(&app, f))?;
 
         if let Event::Key(key) = event::read()? {
-            match input_handler.handle_key(key) {
-                KeyAction::InsertChar(c) => {
-                    if InputHandler::is_valid_char(c) {
-                        app.insert_char(c);
-                    }
-                }
-                KeyAction::Backspace => app.delete_char(),
-                KeyAction::Delete => app.delete_char_forward(),
-                KeyAction::CursorLeft => app.move_cursor_left(),
-                KeyAction::CursorRight => app.move_cursor_right(),
-                KeyAction::CursorHome => app.move_cursor_start(),
-                KeyAction::CursorEnd => app.move_cursor_end(),
-                KeyAction::Evaluate => app.evaluate(),
-                KeyAction::Clear => app.clear(),
-                KeyAction::ClearAll => app.clear_all(),
-                KeyAction::RecallLast => app.recall_last(),
-                KeyAction::Quit => break,
-                KeyAction::None => {}
+            if handle_action(&mut app, input_handler.handle_key(key)) {
+                break;
             }
         }
 

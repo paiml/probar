@@ -487,8 +487,8 @@ fn demo_pixel_perfect_pong() {
     // Wilson Score Confidence Interval
     println!("\nWilson Score CI (95%):");
     let ci = ConfidenceInterval::wilson_score(
-        report.covered_cells as u32,
-        report.total_cells as u32,
+        report.covered_cells,
+        report.total_cells,
         0.95,
     );
     println!("  [{:.1}%, {:.1}%]", ci.lower * 100.0, ci.upper * 100.0);
