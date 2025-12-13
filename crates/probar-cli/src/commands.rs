@@ -46,6 +46,15 @@ pub enum Commands {
 
     /// Show configuration
     Config(ConfigArgs),
+
+    /// Start WASM development server
+    Serve(ServeArgs),
+
+    /// Build WASM package
+    Build(BuildArgs),
+
+    /// Watch for changes and rebuild
+    Watch(WatchArgs),
 }
 
 /// Arguments for the test command
@@ -232,6 +241,113 @@ pub struct ConfigArgs {
     /// Reset to default configuration
     #[arg(long)]
     pub reset: bool,
+}
+
+/// Arguments for the serve command
+#[derive(Parser, Debug)]
+pub struct ServeArgs {
+    /// Directory to serve (default: current directory)
+    #[arg(default_value = ".")]
+    pub directory: PathBuf,
+
+    /// HTTP port to listen on
+    #[arg(short, long, default_value = "8080")]
+    pub port: u16,
+
+    /// WebSocket port for hot reload
+    #[arg(long, default_value = "8081")]
+    pub ws_port: u16,
+
+    /// Open browser automatically
+    #[arg(long)]
+    pub open: bool,
+
+    /// Enable CORS for cross-origin requests
+    #[arg(long)]
+    pub cors: bool,
+}
+
+/// Arguments for the build command
+#[derive(Parser, Debug)]
+pub struct BuildArgs {
+    /// Package directory (default: current directory)
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Build target (web, bundler, nodejs, no-modules)
+    #[arg(short, long, default_value = "web")]
+    pub target: WasmTarget,
+
+    /// Build in release mode
+    #[arg(long)]
+    pub release: bool,
+
+    /// Output directory (default: pkg)
+    #[arg(short, long)]
+    pub out_dir: Option<PathBuf>,
+
+    /// Enable profiling (adds names section to WASM)
+    #[arg(long)]
+    pub profiling: bool,
+}
+
+/// WASM build target
+#[derive(ValueEnum, Clone, Debug, Default)]
+pub enum WasmTarget {
+    /// ES modules for web browsers
+    #[default]
+    Web,
+    /// `CommonJS` for bundlers like webpack
+    Bundler,
+    /// `Node.js` modules
+    Nodejs,
+    /// No ES modules (legacy)
+    NoModules,
+}
+
+impl WasmTarget {
+    /// Get `wasm-pack` target string
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Web => "web",
+            Self::Bundler => "bundler",
+            Self::Nodejs => "nodejs",
+            Self::NoModules => "no-modules",
+        }
+    }
+}
+
+/// Arguments for the watch command
+#[derive(Parser, Debug)]
+pub struct WatchArgs {
+    /// Package directory to watch (default: current directory)
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Also start the dev server
+    #[arg(long)]
+    pub serve: bool,
+
+    /// Server port (when --serve is used)
+    #[arg(short, long, default_value = "8080")]
+    pub port: u16,
+
+    /// WebSocket port for hot reload
+    #[arg(long, default_value = "8081")]
+    pub ws_port: u16,
+
+    /// Build target
+    #[arg(short, long, default_value = "web")]
+    pub target: WasmTarget,
+
+    /// Build in release mode
+    #[arg(long)]
+    pub release: bool,
+
+    /// Debounce delay in milliseconds
+    #[arg(long, default_value = "500")]
+    pub debounce: u64,
 }
 
 /// Color argument for CLI
@@ -679,14 +795,20 @@ mod tests {
         #[test]
         fn test_parse_coverage_full_options() {
             let cli = Cli::parse_from([
-                "probar", "coverage",
-                "--png", "heatmap.png",
-                "--palette", "heat",
+                "probar",
+                "coverage",
+                "--png",
+                "heatmap.png",
+                "--palette",
+                "heat",
                 "--legend",
                 "--gaps",
-                "--title", "Test Coverage",
-                "--width", "1920",
-                "--height", "1080",
+                "--title",
+                "Test Coverage",
+                "--width",
+                "1920",
+                "--height",
+                "1080",
             ]);
             if let Commands::Coverage(args) = cli.command {
                 assert_eq!(args.png, Some(PathBuf::from("heatmap.png")));

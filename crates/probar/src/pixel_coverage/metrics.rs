@@ -68,7 +68,13 @@ impl SsimMetric {
     /// Compare two images represented as RGB pixel arrays
     /// Images must have same dimensions
     #[must_use]
-    pub fn compare(&self, reference: &[Rgb], generated: &[Rgb], width: u32, height: u32) -> SsimResult {
+    pub fn compare(
+        &self,
+        reference: &[Rgb],
+        generated: &[Rgb],
+        width: u32,
+        height: u32,
+    ) -> SsimResult {
         if reference.len() != generated.len() {
             return SsimResult {
                 score: 0.0,
@@ -102,7 +108,13 @@ impl SsimMetric {
     }
 
     /// Calculate SSIM for a single channel
-    fn calculate_channel_ssim(&self, reference: &[f32], generated: &[f32], _width: u32, _height: u32) -> f32 {
+    fn calculate_channel_ssim(
+        &self,
+        reference: &[f32],
+        generated: &[f32],
+        _width: u32,
+        _height: u32,
+    ) -> f32 {
         // SSIM constants (for 8-bit images)
         let k1: f32 = 0.01;
         let k2: f32 = 0.03;
@@ -119,8 +131,16 @@ impl SsimMetric {
         let mean_gen: f32 = generated.iter().sum::<f32>() / n;
 
         // Variance and covariance
-        let var_ref: f32 = reference.iter().map(|&x| (x - mean_ref).powi(2)).sum::<f32>() / n;
-        let var_gen: f32 = generated.iter().map(|&x| (x - mean_gen).powi(2)).sum::<f32>() / n;
+        let var_ref: f32 = reference
+            .iter()
+            .map(|&x| (x - mean_ref).powi(2))
+            .sum::<f32>()
+            / n;
+        let var_gen: f32 = generated
+            .iter()
+            .map(|&x| (x - mean_gen).powi(2))
+            .sum::<f32>()
+            / n;
         let covar: f32 = reference
             .iter()
             .zip(generated.iter())
@@ -130,8 +150,7 @@ impl SsimMetric {
 
         // SSIM formula
         let numerator = (2.0 * mean_ref * mean_gen + c1) * (2.0 * covar + c2);
-        let denominator =
-            (mean_ref.powi(2) + mean_gen.powi(2) + c1) * (var_ref + var_gen + c2);
+        let denominator = (mean_ref.powi(2) + mean_gen.powi(2) + c1) * (var_ref + var_gen + c2);
 
         if denominator > 0.0 {
             numerator / denominator
@@ -233,7 +252,11 @@ impl PsnrMetric {
             (psnr, quality)
         };
 
-        PsnrResult { psnr_db, mse, quality }
+        PsnrResult {
+            psnr_db,
+            mse,
+            quality,
+        }
     }
 }
 
@@ -432,8 +455,7 @@ impl CieDe2000Metric {
         };
 
         // Weighting functions
-        let t = 1.0
-            - 0.17 * (h_prime_avg - 30.0).to_radians().cos()
+        let t = 1.0 - 0.17 * (h_prime_avg - 30.0).to_radians().cos()
             + 0.24 * (2.0 * h_prime_avg).to_radians().cos()
             + 0.32 * (3.0 * h_prime_avg + 6.0).to_radians().cos()
             - 0.20 * (4.0 * h_prime_avg - 63.0).to_radians().cos();
@@ -647,7 +669,14 @@ impl PerceptualHash {
     }
 
     /// Resize to grayscale
-    fn resize_grayscale(&self, image: &[Rgb], width: u32, height: u32, new_width: u32, new_height: u32) -> Vec<f32> {
+    fn resize_grayscale(
+        &self,
+        image: &[Rgb],
+        width: u32,
+        height: u32,
+        new_width: u32,
+        new_height: u32,
+    ) -> Vec<f32> {
         let mut result = vec![0.0f32; (new_width * new_height) as usize];
 
         let x_ratio = width as f32 / new_width as f32;
@@ -662,7 +691,8 @@ impl PerceptualHash {
                 if src_idx < image.len() {
                     let pixel = &image[src_idx];
                     // Luminance conversion
-                    let gray = 0.299 * pixel.r as f32 + 0.587 * pixel.g as f32 + 0.114 * pixel.b as f32;
+                    let gray =
+                        0.299 * pixel.r as f32 + 0.587 * pixel.g as f32 + 0.114 * pixel.b as f32;
                     result[(y * new_width + x) as usize] = gray;
                 }
             }

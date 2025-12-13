@@ -72,10 +72,7 @@ impl Default for WasmRunnerConfig {
             preserve_state: true,
             source_maps: true,
             opt_level: OptLevel::Debug,
-            watch_patterns: vec![
-                "src/**/*.rs".to_string(),
-                "Cargo.toml".to_string(),
-            ],
+            watch_patterns: vec!["src/**/*.rs".to_string(), "Cargo.toml".to_string()],
             output_dir: PathBuf::from("target/wasm32-unknown-unknown/debug"),
             static_dir: None,
             wasm_filename: "app.wasm".to_string(),

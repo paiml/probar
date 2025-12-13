@@ -17,9 +17,9 @@
 //! Run with: `cargo run --example pixel_coverage_heatmap -p jugar-probar`
 
 use jugar_probar::pixel_coverage::{
-    ColorPalette, CombinedCoverageReport, ConfidenceInterval, CoverageCell,
-    FalsifiabilityGate, FalsifiableHypothesis, LineCoverageReport, OutputMode, PngHeatmap,
-    PixelCoverageTracker, PixelRegion, ScoreBar,
+    ColorPalette, CombinedCoverageReport, ConfidenceInterval, CoverageCell, FalsifiabilityGate,
+    FalsifiableHypothesis, LineCoverageReport, OutputMode, PixelCoverageTracker, PixelRegion,
+    PngHeatmap, ScoreBar,
 };
 
 fn main() {
@@ -54,10 +54,19 @@ fn main() {
     // Generate report
     let report = tracker.generate_report();
     println!("\nStep 3: Coverage Report");
-    println!("  Overall Coverage: {:.1}%", report.overall_coverage * 100.0);
-    println!("  Covered Cells: {}/{}", report.covered_cells, report.total_cells);
+    println!(
+        "  Overall Coverage: {:.1}%",
+        report.overall_coverage * 100.0
+    );
+    println!(
+        "  Covered Cells: {}/{}",
+        report.covered_cells, report.total_cells
+    );
     println!("  Uncovered Regions: {}", report.uncovered_regions.len());
-    println!("  Meets Threshold: {}", if report.meets_threshold { "✓" } else { "✗" });
+    println!(
+        "  Meets Threshold: {}",
+        if report.meets_threshold { "✓" } else { "✗" }
+    );
 
     // Step 3b: PIXEL-001 v2.1 - Popperian Falsification
     println!("\nStep 3b: PIXEL-001 v2.1 Verification...");
@@ -71,23 +80,41 @@ fn main() {
     let h2 = FalsifiableHypothesis::max_gap_size("H0-HEATMAP-GAP", 8.0)
         .evaluate(report.uncovered_regions.len() as f32);
 
-    println!("  H0-HEATMAP-COV (≥75%): {}",
-        if h1.falsified { "FALSIFIED" } else { "NOT FALSIFIED" });
-    println!("  H0-HEATMAP-GAP (≤8 gaps): {}",
-        if h2.falsified { "FALSIFIED" } else { "NOT FALSIFIED" });
+    println!(
+        "  H0-HEATMAP-COV (≥75%): {}",
+        if h1.falsified {
+            "FALSIFIED"
+        } else {
+            "NOT FALSIFIED"
+        }
+    );
+    println!(
+        "  H0-HEATMAP-GAP (≤8 gaps): {}",
+        if h2.falsified {
+            "FALSIFIED"
+        } else {
+            "NOT FALSIFIED"
+        }
+    );
 
     let gate_result = gate.evaluate(&h1);
-    println!("  FalsifiabilityGate: {}",
-        if gate_result.is_passed() { "PASSED" } else { "FAILED" });
+    println!(
+        "  FalsifiabilityGate: {}",
+        if gate_result.is_passed() {
+            "PASSED"
+        } else {
+            "FAILED"
+        }
+    );
 
     // Wilson Score CI
     println!("\n  Wilson Score CI (95%):");
-    let ci = ConfidenceInterval::wilson_score(
-        report.covered_cells,
-        report.total_cells,
-        0.95,
+    let ci = ConfidenceInterval::wilson_score(report.covered_cells, report.total_cells, 0.95);
+    println!(
+        "    Coverage: [{:.1}%, {:.1}%]",
+        ci.lower * 100.0,
+        ci.upper * 100.0
     );
-    println!("    Coverage: [{:.1}%, {:.1}%]", ci.lower * 100.0, ci.upper * 100.0);
 
     // Score Bars
     println!("\n  Score Bars:");
@@ -201,7 +228,11 @@ fn main() {
     println!("\n✅ Pixel coverage heatmap example completed (PIXEL-001 v2.1)!");
     println!("\nGenerated PNG files:");
     for name in ["viridis", "magma", "heat", "combined", "pattern"] {
-        println!("  • {}/coverage_{}.png", std::env::temp_dir().display(), name);
+        println!(
+            "  • {}/coverage_{}.png",
+            std::env::temp_dir().display(),
+            name
+        );
     }
 
     // PIXEL-001 v2.1 Summary
@@ -227,7 +258,7 @@ fn print_ascii_heatmap(cells: &[Vec<CoverageCell>]) {
         print!("  │");
         for cell in row {
             let ch = match cell.coverage {
-                c if c <= 0.0 => '·',  // Gap
+                c if c <= 0.0 => '·', // Gap
                 c if c <= 0.25 => '░',
                 c if c <= 0.50 => '▒',
                 c if c <= 0.75 => '▓',
@@ -258,7 +289,10 @@ fn print_gap_analysis(cells: &[Vec<CoverageCell>]) {
 
     println!("  Total Cells:    {}", total_cells);
     println!("  Covered Cells:  {}", covered);
-    println!("  Gap Cells:      {} (highlighted in red on PNG)", gaps.len());
+    println!(
+        "  Gap Cells:      {} (highlighted in red on PNG)",
+        gaps.len()
+    );
     println!("  Coverage:       {:.1}%", coverage_pct);
 
     if !gaps.is_empty() {

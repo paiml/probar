@@ -6,12 +6,15 @@
 #![cfg(feature = "wasm")]
 
 use wasm_bindgen::prelude::*;
-use web_sys::{console, Document, Element, HtmlButtonElement, HtmlInputElement, Window};
+use web_sys::console;
 
-use crate::core::{AnomalyValidator, Evaluator, History};
+use crate::core::evaluator::Evaluator;
+use crate::core::history::History;
+use crate::core::AnomalyValidator;
 use crate::wasm::keypad::{KeypadAction, WasmKeypad};
 
 /// Browser Calculator - the main WASM entry point
+#[derive(Debug)]
 #[wasm_bindgen]
 pub struct BrowserCalculator {
     evaluator: Evaluator,
@@ -91,13 +94,13 @@ impl BrowserCalculator {
         match self.evaluator.evaluate_str(&self.input) {
             Ok(val) => {
                 let formatted = format_number(val);
-                self.history.record(self.input.clone(), formatted.clone());
+                self.history.record(&self.input, val);
                 self.result = Some(Ok(val));
                 self.input.clear();
                 formatted
             }
             Err(e) => {
-                let err_msg = e.to_string();
+                let err_msg: String = e.to_string();
                 self.result = Some(Err(err_msg.clone()));
                 err_msg
             }
@@ -168,7 +171,7 @@ impl BrowserCalculator {
 
     /// Get a history entry
     pub fn history_entry(&self, index: usize) -> Option<String> {
-        self.history.get(index).map(|e| format!("{}", e))
+        self.history.get(index).map(|e| e.display())
     }
 
     /// Get Anomaly status as a string
@@ -196,7 +199,7 @@ impl BrowserCalculator {
         }
 
         if let Some(v) = validator {
-            status.push(format!("Max magnitude: {:.0e}", v.max_magnitude()));
+            status.push(format!("Max magnitude: {:.0e}", v.max_magnitude));
         }
 
         status.join("\n")

@@ -2,6 +2,8 @@
 
 Get started with Probar testing in 5 minutes.
 
+![Coverage Visualization](../assets/coverage_viridis.png)
+
 ## Add Dependency
 
 ```toml

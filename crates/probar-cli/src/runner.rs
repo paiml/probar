@@ -182,29 +182,64 @@ impl TestRunner {
         Ok(results)
     }
 
-    /// Discover tests matching the filter
-    #[allow(clippy::missing_const_for_fn)]
+    /// Discover tests matching the filter using `cargo test --list`
     fn discover_tests(filter: Option<&str>) -> Vec<String> {
-        // Placeholder implementation - actual implementation would:
-        // 1. Scan for test files
-        // 2. Parse test attributes
-        // 3. Apply filter pattern
-        //
-        // For now, return empty list (no tests discovered)
-        let _ = filter;
-        Vec::new()
+        let mut cmd = std::process::Command::new("cargo");
+        cmd.args(["test", "--", "--list", "--format", "terse"]);
+
+        if let Some(pattern) = filter {
+            cmd.arg(pattern);
+        }
+
+        match cmd.output() {
+            Ok(output) => {
+                if output.status.success() {
+                    String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .filter(|line| line.ends_with(": test"))
+                        .map(|line| line.trim_end_matches(": test").to_string())
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            }
+            Err(_) => Vec::new(),
+        }
     }
 
-    /// Run a single test
+    /// Run a single test using `cargo test`
     fn run_single_test(name: &str, start: Instant) -> TestResult {
-        // Placeholder implementation - actual implementation would:
-        // 1. Load the test
-        // 2. Set up browser/WASM runtime
-        // 3. Execute test
-        // 4. Collect results
-        //
-        // For now, return a passing result
-        TestResult::pass(name, start.elapsed())
+        let output = std::process::Command::new("cargo")
+            .args(["test", "--", "--exact", name, "--nocapture"])
+            .output();
+
+        match output {
+            Ok(result) => {
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                let combined_output = format!("{stdout}\n{stderr}");
+
+                if result.status.success() {
+                    TestResult::pass(name, start.elapsed()).with_output(&combined_output)
+                } else {
+                    let error_msg = if stderr.contains("FAILED") {
+                        stderr
+                            .lines()
+                            .find(|l| l.contains("FAILED") || l.contains("panicked"))
+                            .unwrap_or("Test failed")
+                            .to_string()
+                    } else {
+                        "Test execution failed".to_string()
+                    };
+                    TestResult::fail(name, error_msg, start.elapsed()).with_output(&combined_output)
+                }
+            }
+            Err(e) => TestResult::fail(
+                name,
+                format!("Failed to execute test: {e}"),
+                start.elapsed(),
+            ),
+        }
     }
 
     /// Get the reporter (for testing)

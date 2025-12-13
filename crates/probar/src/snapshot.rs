@@ -291,8 +291,7 @@ mod tests {
 
         #[test]
         fn h0_snap_20_snapshot_dimensions_chain() {
-            let snap = Snapshot::new("test", vec![0; 100])
-                .with_dimensions(10, 10);
+            let snap = Snapshot::new("test", vec![0; 100]).with_dimensions(10, 10);
             assert_eq!(snap.width * snap.height, 100);
         }
     }

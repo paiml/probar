@@ -2,6 +2,10 @@
 
 Probar includes fuzzing support for finding edge cases in game logic.
 
+![Coverage Gap Detection](../assets/coverage_pattern.png)
+
+*Fuzzing helps identify coverage gaps (shown as darker regions in the heatmap above)*
+
 ## Random Walk Agent
 
 ```rust

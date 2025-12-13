@@ -1480,7 +1480,10 @@ mod tests {
 
         #[test]
         fn h0_network_03_abort_reason_access_denied() {
-            assert_eq!(AbortReason::AccessDenied.message(), "net::ERR_ACCESS_DENIED");
+            assert_eq!(
+                AbortReason::AccessDenied.message(),
+                "net::ERR_ACCESS_DENIED"
+            );
         }
 
         #[test]
@@ -1770,22 +1773,15 @@ mod tests {
 
         #[test]
         fn h0_network_44_route_record_match() {
-            let mut route = Route::new(
-                UrlPattern::Any,
-                HttpMethod::Get,
-                MockResponse::text("data"),
-            );
+            let mut route =
+                Route::new(UrlPattern::Any, HttpMethod::Get, MockResponse::text("data"));
             route.record_match();
             assert_eq!(route.match_count, 1);
         }
 
         #[test]
         fn h0_network_45_captured_request_new() {
-            let request = CapturedRequest::new(
-                "https://api.com/users",
-                HttpMethod::Get,
-                1000,
-            );
+            let request = CapturedRequest::new("https://api.com/users", HttpMethod::Get, 1000);
             assert_eq!(request.url, "https://api.com/users");
             assert_eq!(request.method, HttpMethod::Get);
         }

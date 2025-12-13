@@ -2,6 +2,8 @@
 
 **Probar** (Spanish: "to test/prove") is a Rust-native testing framework for WASM games, providing a pure Rust alternative to Playwright/Puppeteer.
 
+![Probar Coverage Visualization](probar/assets/coverage_viridis.png)
+
 ## Features
 
 - **Browser Automation**: Chrome DevTools Protocol (CDP) via chromiumoxide

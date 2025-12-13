@@ -30,6 +30,16 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+# HTTP Server for WASM dev
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tokio-tungstenite = { workspace = true }
+mime_guess = { workspace = true }
+notify = { workspace = true }
+futures = { workspace = true }
+chrono = "0.4"
+
 [dev-dependencies]
 tempfile = { workspace = true }
 assert_cmd = "2.0"

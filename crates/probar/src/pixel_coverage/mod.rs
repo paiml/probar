@@ -20,7 +20,9 @@ pub use falsification::{
     ComparisonOperator, FalsifiabilityGate, FalsifiableHypothesis, FalsifiableHypothesisBuilder,
     FalsificationCondition, FalsificationLayer, GateResult,
 };
-pub use heatmap::{BitmapFont, ColorPalette, HeatmapRenderer, PngHeatmap, Rgb, StatsPanel, TerminalHeatmap};
+pub use heatmap::{
+    BitmapFont, ColorPalette, HeatmapRenderer, PngHeatmap, Rgb, StatsPanel, TerminalHeatmap,
+};
 pub use metrics::{
     CieDe2000Metric, DeltaEClassification, DeltaEResult, Lab, PerceptualHash, PhashAlgorithm,
     PixelVerificationResult, PixelVerificationSuite, PsnrMetric, PsnrQuality, PsnrResult,

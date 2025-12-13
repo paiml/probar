@@ -5,15 +5,15 @@
 
 #![allow(clippy::redundant_pub_crate)]
 
+mod export;
+mod metrics;
 mod span;
 mod trace;
-mod metrics;
-mod export;
 
+pub use export::{ChromeTrace, CiMetrics, FlameGraph};
+pub use metrics::{FrameMetrics, MemoryMetrics, PerformanceMetrics, Statistics};
 pub use span::{Span, SpanGuard, SpanId};
 pub use trace::{Trace, TraceConfig, Tracer};
-pub use metrics::{FrameMetrics, MemoryMetrics, PerformanceMetrics, Statistics};
-pub use export::{ChromeTrace, FlameGraph, CiMetrics};
 
 /// Default sample rate (Hz)
 pub const DEFAULT_SAMPLE_RATE: u32 = 1000;

@@ -2,6 +2,8 @@
 
 Probar includes advanced coverage instrumentation for WASM games.
 
+![Coverage Heatmap Example](../assets/coverage_viridis.png)
+
 ## Overview
 
 Traditional coverage tools (LLVM, gcov) don't work well with WASM. Probar implements a **renderfarm-inspired block coverage model** where:
@@ -189,6 +191,75 @@ Superblock 1: blocks [63..125]
 
 ✅ Coverage demo complete!
 ```
+
+## llvm-cov + nextest Workflow Pattern
+
+The recommended coverage workflow combines `llvm-cov` with `nextest` for faster, more reliable coverage:
+
+### Makefile Pattern
+
+```makefile
+coverage:
+	@cargo llvm-cov clean --workspace
+	@mkdir -p target/coverage
+	# Mold linker breaks coverage - temporarily disable
+	@test -f ~/.cargo/config.toml && mv ~/.cargo/config.toml ~/.cargo/config.toml.cov-backup || true
+	@cargo llvm-cov --no-report nextest --no-tests=warn --workspace
+	@cargo llvm-cov report --html --output-dir target/coverage/html
+	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info
+	@test -f ~/.cargo/config.toml.cov-backup && mv ~/.cargo/config.toml.cov-backup ~/.cargo/config.toml || true
+	@cargo llvm-cov report --summary-only
+```
+
+### Key Insights
+
+1. **Use nextest with llvm-cov**: `cargo llvm-cov --no-report nextest` runs tests with coverage instrumentation while benefiting from nextest's parallel execution
+2. **Mold linker workaround**: The mold linker (`~/.cargo/config.toml`) can break coverage instrumentation. Temporarily move the config during coverage runs.
+3. **Two-phase approach**: Use `--no-report` first to collect data, then `report` to generate outputs
+4. **GUI coverage integration**: Tests using probar's `UxCoverageTracker` are automatically instrumented
+5. **Pixel coverage**: Image comparison tests (SSIM/PSNR/CIEDE2000) are also instrumented
+
+### UxCoverageTracker Integration
+
+Probar's `UxCoverageTracker` automatically integrates with llvm-cov:
+
+```rust
+use jugar_probar::prelude::*;
+
+fn test_calculator_coverage() {
+    let mut tracker = game_coverage();
+
+    // Click operations are tracked
+    tracker.click("btn-7");
+    tracker.click("btn-plus");
+    tracker.click("btn-3");
+    tracker.click("btn-equals");
+
+    // Generate coverage report
+    let report = tracker.coverage_report();
+    assert!(report.button_coverage() >= 0.8);
+}
+```
+
+This test counts toward both:
+- Traditional Rust line/branch coverage (via llvm-cov)
+- GUI/UX coverage (via UxCoverageTracker)
+
+## Visual Coverage Reports
+
+Probar generates visual coverage heatmaps with multiple color palettes:
+
+### Viridis Palette (Default)
+![Viridis Coverage Heatmap](../assets/coverage_viridis.png)
+
+### Magma Palette
+![Magma Coverage Heatmap](../assets/coverage_magma.png)
+
+### Heat Palette
+![Heat Coverage Heatmap](../assets/coverage_heat.png)
+
+### Combined Coverage Report
+![Combined Coverage Report](../assets/coverage_combined.png)
 
 ## Integration with CI
 

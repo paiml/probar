@@ -46,8 +46,11 @@ impl ChromeTrace {
             if let Some(dur_ns) = span.duration_ns() {
                 events.push(ChromeTraceEvent {
                     name: span.name.clone(),
-                    cat: span.category.clone().unwrap_or_else(|| "default".to_string()),
-                    ph: "X".to_string(), // Complete event
+                    cat: span
+                        .category
+                        .clone()
+                        .unwrap_or_else(|| "default".to_string()),
+                    ph: "X".to_string(),      // Complete event
                     ts: span.start_ns / 1000, // Convert to microseconds
                     dur: Some(dur_ns / 1000),
                     pid: 1,
@@ -61,7 +64,9 @@ impl ChromeTrace {
             }
         }
 
-        Self { trace_events: events }
+        Self {
+            trace_events: events,
+        }
     }
 
     /// Export to JSON string
@@ -146,13 +151,15 @@ impl FlameGraph {
             width, height, width, height
         );
 
-        svg.push_str(r#"
+        svg.push_str(
+            r#"
   <style>
     .frame { stroke: #333; stroke-width: 0.5; }
     .frame:hover { stroke: #000; stroke-width: 1; }
     text { font-family: monospace; font-size: 10px; fill: #333; }
   </style>
-"#);
+"#,
+        );
 
         // Simple rendering: each span as a rectangle
         let total_value: f64 = self.stacks.iter().map(|s| s.value).sum();
@@ -182,7 +189,9 @@ impl FlameGraph {
 
 /// Generate a deterministic color from a string
 fn random_color(s: &str) -> String {
-    let hash: u32 = s.bytes().fold(0, |acc, b| acc.wrapping_add(b as u32).wrapping_mul(31));
+    let hash: u32 = s
+        .bytes()
+        .fold(0, |acc, b| acc.wrapping_add(b as u32).wrapping_mul(31));
     let hue = hash % 360;
     format!("hsl({}, 70%, 60%)", hue)
 }
@@ -237,7 +246,10 @@ impl CiMetrics {
 
         Self {
             span_count: trace.span_count(),
-            duration_ms: trace.duration.map(|d| d.as_secs_f64() * 1000.0).unwrap_or(0.0),
+            duration_ms: trace
+                .duration
+                .map(|d| d.as_secs_f64() * 1000.0)
+                .unwrap_or(0.0),
             functions,
             passed: true,
             failures: Vec::new(),

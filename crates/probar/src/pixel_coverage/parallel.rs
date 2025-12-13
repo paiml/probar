@@ -134,7 +134,12 @@ impl BatchProcessor {
 
     /// Process pixel pairs computing Delta E values
     #[must_use]
-    pub fn compute_delta_e_batch(&self, reference: &[Rgb], generated: &[Rgb], metric: &CieDe2000Metric) -> DeltaEBatchResult {
+    pub fn compute_delta_e_batch(
+        &self,
+        reference: &[Rgb],
+        generated: &[Rgb],
+        metric: &CieDe2000Metric,
+    ) -> DeltaEBatchResult {
         if reference.len() != generated.len() {
             return DeltaEBatchResult::default();
         }
@@ -153,8 +158,14 @@ impl BatchProcessor {
         let max = delta_es.iter().cloned().fold(0.0f32, f32::max);
         let count = delta_es.len();
 
-        let imperceptible = delta_es.iter().filter(|&&de| de < metric.jnd_threshold).count();
-        let acceptable = delta_es.iter().filter(|&&de| de < metric.accept_threshold).count();
+        let imperceptible = delta_es
+            .iter()
+            .filter(|&&de| de < metric.jnd_threshold)
+            .count();
+        let acceptable = delta_es
+            .iter()
+            .filter(|&&de| de < metric.accept_threshold)
+            .count();
 
         DeltaEBatchResult {
             mean: if count > 0 { sum / count as f32 } else { 0.0 },
@@ -167,7 +178,14 @@ impl BatchProcessor {
 
     /// Process image comparison in batches for memory efficiency
     #[must_use]
-    pub fn compute_ssim_batched(&self, reference: &[Rgb], generated: &[Rgb], width: u32, height: u32, metric: &SsimMetric) -> SsimBatchResult {
+    pub fn compute_ssim_batched(
+        &self,
+        reference: &[Rgb],
+        generated: &[Rgb],
+        width: u32,
+        height: u32,
+        metric: &SsimMetric,
+    ) -> SsimBatchResult {
         if reference.len() != generated.len() {
             return SsimBatchResult::default();
         }

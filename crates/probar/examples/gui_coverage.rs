@@ -9,8 +9,8 @@
 //! Probar: Complete UX verification with minimal boilerplate
 
 use jugar_probar::pixel_coverage::{
-    ConfidenceInterval, FalsifiabilityGate, FalsifiableHypothesis, LineCoverageReport,
-    CombinedCoverageReport, OutputMode, PixelCoverageTracker, PixelRegion, ScoreBar,
+    CombinedCoverageReport, ConfidenceInterval, FalsifiabilityGate, FalsifiableHypothesis,
+    LineCoverageReport, OutputMode, PixelCoverageTracker, PixelRegion, ScoreBar,
 };
 use jugar_probar::prelude::*;
 
@@ -45,10 +45,12 @@ fn main() -> ProbarResult<()> {
     pixels.record_region(PixelRegion::new(0, 100, 400, 200)); // Game area
 
     println!("   GUI: {}", gui.summary());
-    println!("   Pixels: {:.1}% ({}/{} cells)",
+    println!(
+        "   Pixels: {:.1}% ({}/{} cells)",
         pixels.generate_report().overall_coverage * 100.0,
         pixels.generate_report().covered_cells,
-        pixels.generate_report().total_cells);
+        pixels.generate_report().total_cells
+    );
 
     // =========================================================================
     // 2. Calculator with Full Pixel Coverage
@@ -72,31 +74,51 @@ fn main() -> ProbarResult<()> {
     for i in 0..=9 {
         calc.click(&format!("btn-{}", i));
         let (col, row) = match i {
-            7 => (0, 1), 8 => (1, 1), 9 => (2, 1),
-            4 => (0, 2), 5 => (1, 2), 6 => (2, 2),
-            1 => (0, 3), 2 => (1, 3), 3 => (2, 3),
-            0 => (0, 4), _ => (0, 0),
+            7 => (0, 1),
+            8 => (1, 1),
+            9 => (2, 1),
+            4 => (0, 2),
+            5 => (1, 2),
+            6 => (2, 2),
+            1 => (0, 3),
+            2 => (1, 3),
+            3 => (2, 3),
+            0 => (0, 4),
+            _ => (0, 0),
         };
         calc_pixels.record_region(btn(col, row));
     }
 
     // Operators
-    calc.click("btn-plus"); calc_pixels.record_region(btn(3, 4));
-    calc.click("btn-minus"); calc_pixels.record_region(btn(3, 3));
-    calc.click("btn-times"); calc_pixels.record_region(btn(3, 2));
-    calc.click("btn-divide"); calc_pixels.record_region(btn(3, 1));
-    calc.click("btn-equals"); calc_pixels.record_region(btn(2, 4));
-    calc.click("btn-clear"); calc_pixels.record_region(btn(3, 5));
-    calc.click("btn-decimal"); calc_pixels.record_region(btn(1, 4));
-    calc.click("btn-power"); calc_pixels.record_region(btn(2, 5));
-    calc.click("btn-open-paren"); calc_pixels.record_region(btn(0, 5));
-    calc.click("btn-close-paren"); calc_pixels.record_region(btn(1, 5));
+    calc.click("btn-plus");
+    calc_pixels.record_region(btn(3, 4));
+    calc.click("btn-minus");
+    calc_pixels.record_region(btn(3, 3));
+    calc.click("btn-times");
+    calc_pixels.record_region(btn(3, 2));
+    calc.click("btn-divide");
+    calc_pixels.record_region(btn(3, 1));
+    calc.click("btn-equals");
+    calc_pixels.record_region(btn(2, 4));
+    calc.click("btn-clear");
+    calc_pixels.record_region(btn(3, 5));
+    calc.click("btn-decimal");
+    calc_pixels.record_region(btn(1, 4));
+    calc.click("btn-power");
+    calc_pixels.record_region(btn(2, 5));
+    calc.click("btn-open-paren");
+    calc_pixels.record_region(btn(0, 5));
+    calc.click("btn-close-paren");
+    calc_pixels.record_region(btn(1, 5));
 
     calc.visit("calculator");
 
     let calc_pixel_report = calc_pixels.generate_report();
     println!("   GUI: {}", calc.summary());
-    println!("   Pixels: {:.1}% coverage", calc_pixel_report.overall_coverage * 100.0);
+    println!(
+        "   Pixels: {:.1}% coverage",
+        calc_pixel_report.overall_coverage * 100.0
+    );
 
     // =========================================================================
     // 3. Game Coverage with Popperian Falsification
@@ -153,14 +175,36 @@ fn main() -> ProbarResult<()> {
         .evaluate(pixel_report.overall_coverage);
 
     println!("   GUI: {}", game.summary());
-    println!("   Pixels: {:.1}% coverage", pixel_report.overall_coverage * 100.0);
-    println!("   H0-GAME-GUI: {} (actual: {:.1}%)",
-        if h1.falsified { "FALSIFIED" } else { "NOT FALSIFIED" },
-        h1.actual.unwrap_or(0.0) * 100.0);
-    println!("   H0-GAME-PIX: {} (actual: {:.1}%)",
-        if h2.falsified { "FALSIFIED" } else { "NOT FALSIFIED" },
-        h2.actual.unwrap_or(0.0) * 100.0);
-    println!("   Gate: {}", if gate.evaluate(&h1).is_passed() { "PASSED" } else { "FAILED" });
+    println!(
+        "   Pixels: {:.1}% coverage",
+        pixel_report.overall_coverage * 100.0
+    );
+    println!(
+        "   H0-GAME-GUI: {} (actual: {:.1}%)",
+        if h1.falsified {
+            "FALSIFIED"
+        } else {
+            "NOT FALSIFIED"
+        },
+        h1.actual.unwrap_or(0.0) * 100.0
+    );
+    println!(
+        "   H0-GAME-PIX: {} (actual: {:.1}%)",
+        if h2.falsified {
+            "FALSIFIED"
+        } else {
+            "NOT FALSIFIED"
+        },
+        h2.actual.unwrap_or(0.0) * 100.0
+    );
+    println!(
+        "   Gate: {}",
+        if gate.evaluate(&h1).is_passed() {
+            "PASSED"
+        } else {
+            "FAILED"
+        }
+    );
 
     // =========================================================================
     // 4. Custom Coverage with Wilson Confidence Intervals
@@ -215,9 +259,20 @@ fn main() -> ProbarResult<()> {
     );
 
     println!("   GUI: {}", custom.summary());
-    println!("   GUI 95% CI: [{:.1}%, {:.1}%]", gui_ci.lower * 100.0, gui_ci.upper * 100.0);
-    println!("   Pixels: {:.1}%", custom_pixel_report.overall_coverage * 100.0);
-    println!("   Pixel 95% CI: [{:.1}%, {:.1}%]", pixel_ci.lower * 100.0, pixel_ci.upper * 100.0);
+    println!(
+        "   GUI 95% CI: [{:.1}%, {:.1}%]",
+        gui_ci.lower * 100.0,
+        gui_ci.upper * 100.0
+    );
+    println!(
+        "   Pixels: {:.1}%",
+        custom_pixel_report.overall_coverage * 100.0
+    );
+    println!(
+        "   Pixel 95% CI: [{:.1}%, {:.1}%]",
+        pixel_ci.lower * 100.0,
+        pixel_ci.upper * 100.0
+    );
 
     // =========================================================================
     // 5. Full Coverage with Score Bars
@@ -235,10 +290,14 @@ fn main() -> ProbarResult<()> {
         .threshold(1.0)
         .build();
 
-    full.click("a"); full_pixels.record_region(PixelRegion::new(0, 100, 100, 100));
-    full.click("b"); full_pixels.record_region(PixelRegion::new(100, 100, 100, 100));
-    full.click("c"); full_pixels.record_region(PixelRegion::new(200, 100, 100, 100));
-    full.visit("home"); full_pixels.record_region(PixelRegion::new(0, 0, 300, 100));
+    full.click("a");
+    full_pixels.record_region(PixelRegion::new(0, 100, 100, 100));
+    full.click("b");
+    full_pixels.record_region(PixelRegion::new(100, 100, 100, 100));
+    full.click("c");
+    full_pixels.record_region(PixelRegion::new(200, 100, 100, 100));
+    full.visit("home");
+    full_pixels.record_region(PixelRegion::new(0, 0, 300, 100));
 
     let full_report = full.generate_report();
     let full_pixel_report = full_pixels.generate_report();
@@ -249,7 +308,10 @@ fn main() -> ProbarResult<()> {
 
     println!("   {}", gui_bar.render(mode));
     println!("   {}", pixel_bar.render(mode));
-    println!("   Complete: {}", full.is_complete() && full_pixel_report.meets_threshold);
+    println!(
+        "   Complete: {}",
+        full.is_complete() && full_pixel_report.meets_threshold
+    );
 
     full.assert_complete()?;
 

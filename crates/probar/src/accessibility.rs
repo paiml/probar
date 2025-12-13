@@ -1120,14 +1120,22 @@ mod tests {
         #[test]
         fn h0_a11y_34_audit_add_critical_issue() {
             let mut audit = AccessibilityAudit::new();
-            audit.add_issue(AccessibilityIssue::new("2.4.7", "No focus", Severity::Critical));
+            audit.add_issue(AccessibilityIssue::new(
+                "2.4.7",
+                "No focus",
+                Severity::Critical,
+            ));
             assert_eq!(audit.score, 70);
         }
 
         #[test]
         fn h0_a11y_35_audit_add_major_issue() {
             let mut audit = AccessibilityAudit::new();
-            audit.add_issue(AccessibilityIssue::new("1.4.3", "Low contrast", Severity::Major));
+            audit.add_issue(AccessibilityIssue::new(
+                "1.4.3",
+                "Low contrast",
+                Severity::Major,
+            ));
             assert_eq!(audit.score, 80);
         }
 
@@ -1327,18 +1335,22 @@ mod tests {
         #[test]
         fn h0_a11y_63_validator_analyze_contrast_pass() {
             let validator = AccessibilityValidator::new();
-            let result = validator.analyze_contrast(&[
-                (Color::new(0, 0, 0), Color::new(255, 255, 255), "text"),
-            ]);
+            let result = validator.analyze_contrast(&[(
+                Color::new(0, 0, 0),
+                Color::new(255, 255, 255),
+                "text",
+            )]);
             assert!(result.passes_wcag_aa);
         }
 
         #[test]
         fn h0_a11y_64_validator_analyze_contrast_fail() {
             let validator = AccessibilityValidator::new();
-            let result = validator.analyze_contrast(&[
-                (Color::new(200, 200, 200), Color::new(255, 255, 255), "text"),
-            ]);
+            let result = validator.analyze_contrast(&[(
+                Color::new(200, 200, 200),
+                Color::new(255, 255, 255),
+                "text",
+            )]);
             assert!(!result.passes_wcag_aa);
         }
 

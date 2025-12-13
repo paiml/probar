@@ -420,7 +420,8 @@ mod tests {
 
     #[test]
     fn h0_cond_01_less_than() {
-        let cond = FalsificationCondition::new("Coverage < 85%", ComparisonOperator::LessThan, 0.85);
+        let cond =
+            FalsificationCondition::new("Coverage < 85%", ComparisonOperator::LessThan, 0.85);
         assert!(cond.is_falsified(0.80)); // 80% < 85%, falsified
         assert!(!cond.is_falsified(0.90)); // 90% >= 85%, not falsified
     }
@@ -512,8 +513,12 @@ mod tests {
     #[test]
     fn h0_layer_02_descriptions() {
         assert!(FalsificationLayer::Unit.description().contains("assertion"));
-        assert!(FalsificationLayer::Property.description().contains("proptest"));
-        assert!(FalsificationLayer::Mutation.description().contains("mutation"));
+        assert!(FalsificationLayer::Property
+            .description()
+            .contains("proptest"));
+        assert!(FalsificationLayer::Mutation
+            .description()
+            .contains("mutation"));
     }
 
     // =========================================================================

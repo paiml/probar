@@ -34,7 +34,7 @@ base64 = "0.22"
 
 # CDP/Browser testing (optional)
 chromiumoxide = { version = "0.8", default-features = false, features = ["tokio-runtime"] }
-tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process", "io-util"] }
 futures = "0.3"
 
 # WASM runtime for logic testing (optional)
@@ -54,6 +54,13 @@ console = "0.15"
 
 # File watching (Phase 6)
 notify = "7.0"
+
+# HTTP Server (for WASM dev server)
+axum = { version = "0.8", features = ["ws"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "cors"] }
+tokio-tungstenite = "0.26"
+mime_guess = "2.0"
 
 # Tracing (Phase 3)
 tracing = "0.1"

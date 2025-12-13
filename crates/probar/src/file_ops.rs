@@ -165,7 +165,11 @@ impl Download {
 
     /// Create a completed download with contents
     #[must_use]
-    pub fn completed(url: impl Into<String>, filename: impl Into<String>, contents: Vec<u8>) -> Self {
+    pub fn completed(
+        url: impl Into<String>,
+        filename: impl Into<String>,
+        contents: Vec<u8>,
+    ) -> Self {
         Self {
             suggested_filename: filename.into(),
             url: url.into(),
@@ -429,9 +433,7 @@ impl DownloadManager {
     /// Find download by filename
     #[must_use]
     pub fn find_by_name(&self, name: &str) -> Option<&Download> {
-        self.downloads
-            .iter()
-            .find(|d| d.suggested_filename == name)
+        self.downloads.iter().find(|d| d.suggested_filename == name)
     }
 
     /// Clear all downloads
@@ -593,11 +595,8 @@ mod tests {
 
     #[test]
     fn h0_file_13_download_completed() {
-        let download = Download::completed(
-            "http://example.com/data.json",
-            "data.json",
-            b"{}".to_vec(),
-        );
+        let download =
+            Download::completed("http://example.com/data.json", "data.json", b"{}".to_vec());
         assert!(download.is_complete());
         assert_eq!(download.size(), 2);
     }
@@ -628,7 +627,10 @@ mod tests {
         download.fail("Network error");
 
         assert!(download.is_failed());
-        assert_eq!(download.state, DownloadState::Failed("Network error".to_string()));
+        assert_eq!(
+            download.state,
+            DownloadState::Failed("Network error".to_string())
+        );
     }
 
     #[test]

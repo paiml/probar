@@ -212,11 +212,11 @@ impl TerminalHeatmap {
     /// Convert coverage value to Unicode block character
     fn coverage_to_char(coverage: f32) -> char {
         match coverage {
-            c if c <= 0.0 => ' ',    // Empty
-            c if c <= 0.25 => '░',   // Light shade
-            c if c <= 0.50 => '▒',   // Medium shade
-            c if c <= 0.75 => '▓',   // Dark shade
-            _ => '█',                // Full block
+            c if c <= 0.0 => ' ',  // Empty
+            c if c <= 0.25 => '░', // Light shade
+            c if c <= 0.50 => '▒', // Medium shade
+            c if c <= 0.75 => '▓', // Dark shade
+            _ => '█',              // Full block
         }
     }
 
@@ -447,9 +447,9 @@ impl PngHeatmap {
         // Calculate plot area (with margins, trueno-viz style)
         let legend_space = if self.show_legend { 30 } else { 0 };
         let plot_width = self.width.saturating_sub(2 * self.margin);
-        let plot_height = self.height.saturating_sub(
-            2 * self.margin + legend_space + title_space + stats_space,
-        );
+        let plot_height = self
+            .height
+            .saturating_sub(2 * self.margin + legend_space + title_space + stats_space);
 
         // Render title if present
         let content_y_offset = self.margin + title_space;
@@ -475,7 +475,11 @@ impl PngHeatmap {
         let cell_width = plot_width / cols as u32;
         let cell_height = plot_height / rows as u32;
 
-        let border_rgb = ImageRgb([self.border_color.r, self.border_color.g, self.border_color.b]);
+        let border_rgb = ImageRgb([
+            self.border_color.r,
+            self.border_color.g,
+            self.border_color.b,
+        ]);
 
         // Fill cells within the plot area
         for (row_idx, row) in cells.iter().enumerate() {
@@ -572,7 +576,9 @@ impl PngHeatmap {
         // Draw legend color bar if enabled
         if self.show_legend {
             let legend_height = 20;
-            let legend_y = self.height.saturating_sub(self.margin / 2 + legend_height + stats_space);
+            let legend_y = self
+                .height
+                .saturating_sub(self.margin / 2 + legend_height + stats_space);
             let legend_width = plot_width;
             let legend_x_start = self.margin;
 
@@ -586,7 +592,13 @@ impl PngHeatmap {
             }
 
             // Draw legend labels
-            font.render_text(&mut img, "0%", legend_x_start, legend_y + legend_height + 2, text_color);
+            font.render_text(
+                &mut img,
+                "0%",
+                legend_x_start,
+                legend_y + legend_height + 2,
+                text_color,
+            );
             let label_100 = "100%";
             let label_width = font.text_width(label_100);
             font.render_text(
@@ -619,7 +631,11 @@ impl PngHeatmap {
 
             // Overall score
             let overall_text = format!("Overall: {:.1}%", stats.overall_score);
-            let threshold_indicator = if stats.meets_threshold { " PASS" } else { " FAIL" };
+            let threshold_indicator = if stats.meets_threshold {
+                " PASS"
+            } else {
+                " FAIL"
+            };
             let full_text = format!("{}{}", overall_text, threshold_indicator);
             font.render_text(&mut img, &full_text, stats_x, stats_y + 24, text_color);
         }
@@ -785,75 +801,172 @@ impl BitmapFont {
     const fn char_bitmap(c: char) -> [u8; 7] {
         match c {
             // Uppercase letters
-            'A' => [0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001],
-            'B' => [0b11110, 0b10001, 0b11110, 0b10001, 0b10001, 0b10001, 0b11110],
-            'C' => [0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110],
-            'D' => [0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110],
-            'E' => [0b11111, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000, 0b11111],
-            'F' => [0b11111, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000, 0b10000],
-            'G' => [0b01110, 0b10001, 0b10000, 0b10111, 0b10001, 0b10001, 0b01110],
-            'H' => [0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001, 0b10001],
-            'I' => [0b01110, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110],
-            'J' => [0b00111, 0b00010, 0b00010, 0b00010, 0b10010, 0b10010, 0b01100],
-            'K' => [0b10001, 0b10010, 0b11100, 0b10010, 0b10001, 0b10001, 0b10001],
-            'L' => [0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111],
-            'M' => [0b10001, 0b11011, 0b10101, 0b10001, 0b10001, 0b10001, 0b10001],
-            'N' => [0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001],
-            'O' => [0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110],
-            'P' => [0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000],
-            'Q' => [0b01110, 0b10001, 0b10001, 0b10001, 0b10101, 0b01110, 0b00001],
-            'R' => [0b11110, 0b10001, 0b10001, 0b11110, 0b10010, 0b10001, 0b10001],
-            'S' => [0b01110, 0b10001, 0b10000, 0b01110, 0b00001, 0b10001, 0b01110],
-            'T' => [0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100],
-            'U' => [0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110],
-            'V' => [0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01010, 0b00100],
-            'W' => [0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b11011, 0b10001],
-            'X' => [0b10001, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0b10001],
-            'Y' => [0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100],
-            'Z' => [0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b11111],
+            'A' => [
+                0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001,
+            ],
+            'B' => [
+                0b11110, 0b10001, 0b11110, 0b10001, 0b10001, 0b10001, 0b11110,
+            ],
+            'C' => [
+                0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110,
+            ],
+            'D' => [
+                0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110,
+            ],
+            'E' => [
+                0b11111, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000, 0b11111,
+            ],
+            'F' => [
+                0b11111, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000, 0b10000,
+            ],
+            'G' => [
+                0b01110, 0b10001, 0b10000, 0b10111, 0b10001, 0b10001, 0b01110,
+            ],
+            'H' => [
+                0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001, 0b10001,
+            ],
+            'I' => [
+                0b01110, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110,
+            ],
+            'J' => [
+                0b00111, 0b00010, 0b00010, 0b00010, 0b10010, 0b10010, 0b01100,
+            ],
+            'K' => [
+                0b10001, 0b10010, 0b11100, 0b10010, 0b10001, 0b10001, 0b10001,
+            ],
+            'L' => [
+                0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111,
+            ],
+            'M' => [
+                0b10001, 0b11011, 0b10101, 0b10001, 0b10001, 0b10001, 0b10001,
+            ],
+            'N' => [
+                0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001,
+            ],
+            'O' => [
+                0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110,
+            ],
+            'P' => [
+                0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000,
+            ],
+            'Q' => [
+                0b01110, 0b10001, 0b10001, 0b10001, 0b10101, 0b01110, 0b00001,
+            ],
+            'R' => [
+                0b11110, 0b10001, 0b10001, 0b11110, 0b10010, 0b10001, 0b10001,
+            ],
+            'S' => [
+                0b01110, 0b10001, 0b10000, 0b01110, 0b00001, 0b10001, 0b01110,
+            ],
+            'T' => [
+                0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100,
+            ],
+            'U' => [
+                0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110,
+            ],
+            'V' => [
+                0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01010, 0b00100,
+            ],
+            'W' => [
+                0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b11011, 0b10001,
+            ],
+            'X' => [
+                0b10001, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0b10001,
+            ],
+            'Y' => [
+                0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100,
+            ],
+            'Z' => [
+                0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b11111,
+            ],
             // Lowercase (map to uppercase for simplicity)
             'a'..='z' => Self::char_bitmap((c as u8 - 32) as char),
             // Digits
-            '0' => [0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110],
-            '1' => [0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110],
-            '2' => [0b01110, 0b10001, 0b00001, 0b00110, 0b01000, 0b10000, 0b11111],
-            '3' => [0b01110, 0b10001, 0b00001, 0b00110, 0b00001, 0b10001, 0b01110],
-            '4' => [0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010],
-            '5' => [0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110],
-            '6' => [0b01110, 0b10000, 0b11110, 0b10001, 0b10001, 0b10001, 0b01110],
-            '7' => [0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000],
-            '8' => [0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110],
-            '9' => [0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00001, 0b01110],
+            '0' => [
+                0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110,
+            ],
+            '1' => [
+                0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110,
+            ],
+            '2' => [
+                0b01110, 0b10001, 0b00001, 0b00110, 0b01000, 0b10000, 0b11111,
+            ],
+            '3' => [
+                0b01110, 0b10001, 0b00001, 0b00110, 0b00001, 0b10001, 0b01110,
+            ],
+            '4' => [
+                0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010,
+            ],
+            '5' => [
+                0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110,
+            ],
+            '6' => [
+                0b01110, 0b10000, 0b11110, 0b10001, 0b10001, 0b10001, 0b01110,
+            ],
+            '7' => [
+                0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000,
+            ],
+            '8' => [
+                0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110,
+            ],
+            '9' => [
+                0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00001, 0b01110,
+            ],
             // Punctuation and symbols
-            ' ' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000],
-            '.' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b01100, 0b01100],
-            ',' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00110, 0b00100, 0b01000],
-            ':' => [0b00000, 0b01100, 0b01100, 0b00000, 0b01100, 0b01100, 0b00000],
-            '-' => [0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000],
-            '_' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b11111],
-            '/' => [0b00001, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b10000],
-            '%' => [0b11001, 0b11010, 0b00010, 0b00100, 0b01000, 0b01011, 0b10011],
-            '(' => [0b00010, 0b00100, 0b01000, 0b01000, 0b01000, 0b00100, 0b00010],
-            ')' => [0b01000, 0b00100, 0b00010, 0b00010, 0b00010, 0b00100, 0b01000],
-            '=' => [0b00000, 0b00000, 0b11111, 0b00000, 0b11111, 0b00000, 0b00000],
-            '+' => [0b00000, 0b00100, 0b00100, 0b11111, 0b00100, 0b00100, 0b00000],
-            '*' => [0b00000, 0b10101, 0b01110, 0b11111, 0b01110, 0b10101, 0b00000],
-            '!' => [0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00000, 0b00100],
-            '?' => [0b01110, 0b10001, 0b00001, 0b00110, 0b00100, 0b00000, 0b00100],
+            ' ' => [
+                0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000,
+            ],
+            '.' => [
+                0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b01100, 0b01100,
+            ],
+            ',' => [
+                0b00000, 0b00000, 0b00000, 0b00000, 0b00110, 0b00100, 0b01000,
+            ],
+            ':' => [
+                0b00000, 0b01100, 0b01100, 0b00000, 0b01100, 0b01100, 0b00000,
+            ],
+            '-' => [
+                0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000,
+            ],
+            '_' => [
+                0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b11111,
+            ],
+            '/' => [
+                0b00001, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b10000,
+            ],
+            '%' => [
+                0b11001, 0b11010, 0b00010, 0b00100, 0b01000, 0b01011, 0b10011,
+            ],
+            '(' => [
+                0b00010, 0b00100, 0b01000, 0b01000, 0b01000, 0b00100, 0b00010,
+            ],
+            ')' => [
+                0b01000, 0b00100, 0b00010, 0b00010, 0b00010, 0b00100, 0b01000,
+            ],
+            '=' => [
+                0b00000, 0b00000, 0b11111, 0b00000, 0b11111, 0b00000, 0b00000,
+            ],
+            '+' => [
+                0b00000, 0b00100, 0b00100, 0b11111, 0b00100, 0b00100, 0b00000,
+            ],
+            '*' => [
+                0b00000, 0b10101, 0b01110, 0b11111, 0b01110, 0b10101, 0b00000,
+            ],
+            '!' => [
+                0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00000, 0b00100,
+            ],
+            '?' => [
+                0b01110, 0b10001, 0b00001, 0b00110, 0b00100, 0b00000, 0b00100,
+            ],
             // Default: empty
-            _ => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000],
+            _ => [
+                0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000,
+            ],
         }
     }
 
     /// Render text to an image buffer at the specified position
-    pub fn render_text(
-        &self,
-        img: &mut image::RgbImage,
-        text: &str,
-        x: u32,
-        y: u32,
-        color: Rgb,
-    ) {
+    pub fn render_text(&self, img: &mut image::RgbImage, text: &str, x: u32, y: u32, color: Rgb) {
         use image::Rgb as ImageRgb;
 
         let text_color = ImageRgb([color.r, color.g, color.b]);
@@ -1116,7 +1229,11 @@ pub mod visual_regression {
     }
 
     /// Generate uniform cells for testing
-    pub fn reference_uniform_cells(rows: usize, cols: usize, coverage: f32) -> Vec<Vec<CoverageCell>> {
+    pub fn reference_uniform_cells(
+        rows: usize,
+        cols: usize,
+        coverage: f32,
+    ) -> Vec<Vec<CoverageCell>> {
         vec![
             vec![
                 CoverageCell {
@@ -1167,10 +1284,7 @@ mod tests {
 
     #[test]
     fn test_terminal_heatmap_render() {
-        let cells = vec![
-            vec![0.0, 0.25, 0.5],
-            vec![0.75, 1.0, 0.0],
-        ];
+        let cells = vec![vec![0.0, 0.25, 0.5], vec![0.75, 1.0, 0.0]];
 
         let heatmap = TerminalHeatmap::from_values(cells).without_color();
         let rendered = heatmap.render();
@@ -1181,10 +1295,7 @@ mod tests {
 
     #[test]
     fn test_terminal_heatmap_with_border() {
-        let cells = vec![
-            vec![1.0, 1.0],
-            vec![0.0, 0.0],
-        ];
+        let cells = vec![vec![1.0, 1.0], vec![0.0, 0.0]];
 
         let heatmap = TerminalHeatmap::from_values(cells).without_color();
         let rendered = heatmap.render_with_border();
@@ -1205,9 +1316,10 @@ mod tests {
 
     #[test]
     fn test_svg_export() {
-        let cells = vec![
-            vec![CoverageCell { hit_count: 1, coverage: 1.0 }],
-        ];
+        let cells = vec![vec![CoverageCell {
+            hit_count: 1,
+            coverage: 1.0,
+        }]];
 
         let svg = SvgHeatmap::new(100, 100).export(&cells);
 
@@ -1264,13 +1376,16 @@ mod tests {
 
     #[test]
     fn h0_png_03_gap_highlighting() {
-        let mut cells = vec![vec![
-            CoverageCell {
-                coverage: 1.0,
-                hit_count: 10,
-            };
+        let mut cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10,
+                };
+                10
+            ];
             10
-        ]; 10];
+        ];
         cells[5][5] = CoverageCell {
             coverage: 0.0,
             hit_count: 0,
@@ -1466,10 +1581,16 @@ mod tests {
 
     #[test]
     fn h0_txt_01_title_renders() {
-        let cells = vec![vec![CoverageCell {
-            coverage: 0.5,
-            hit_count: 5,
-        }; 5]; 5];
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5,
+                };
+                5
+            ];
+            5
+        ];
 
         let png = PngHeatmap::new(400, 300)
             .with_title("Test Coverage")
@@ -1482,10 +1603,16 @@ mod tests {
 
     #[test]
     fn h0_txt_02_title_with_legend() {
-        let cells = vec![vec![CoverageCell {
-            coverage: 1.0,
-            hit_count: 10,
-        }; 3]; 3];
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10,
+                };
+                3
+            ];
+            3
+        ];
 
         let png = PngHeatmap::new(400, 300)
             .with_title("Coverage Heatmap")
@@ -1518,15 +1645,24 @@ mod tests {
         let font = BitmapFont::default();
         let width = font.text_width("Hello");
         assert!(width > 0);
-        assert_eq!(width, 5 * (font.char_width() + font.spacing()) - font.spacing());
+        assert_eq!(
+            width,
+            5 * (font.char_width() + font.spacing()) - font.spacing()
+        );
     }
 
     #[test]
     fn h0_txt_06_metadata_subtitle() {
-        let cells = vec![vec![CoverageCell {
-            coverage: 0.75,
-            hit_count: 8,
-        }; 4]; 4];
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.75,
+                    hit_count: 8,
+                };
+                4
+            ];
+            4
+        ];
 
         let png = PngHeatmap::new(500, 400)
             .with_title("Main Title")
@@ -1567,12 +1703,20 @@ mod tests {
 
     #[test]
     fn h0_cmb_01_combined_heatmap() {
-        use super::super::tracker::{LineCoverageReport, PixelCoverageReport, CombinedCoverageReport};
+        use super::super::tracker::{
+            CombinedCoverageReport, LineCoverageReport, PixelCoverageReport,
+        };
 
-        let cells = vec![vec![CoverageCell {
-            coverage: 0.8,
-            hit_count: 8,
-        }; 10]; 10];
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.8,
+                    hit_count: 8,
+                };
+                10
+            ];
+            10
+        ];
 
         let line_report = LineCoverageReport::new(0.90, 1.0, 0.80, 22, 20);
         let pixel_report = PixelCoverageReport {
@@ -1596,7 +1740,9 @@ mod tests {
     #[test]
     fn h0_cmb_02_stats_panel_height() {
         // Stats panel should add extra height
-        use super::super::tracker::{LineCoverageReport, PixelCoverageReport, CombinedCoverageReport};
+        use super::super::tracker::{
+            CombinedCoverageReport, LineCoverageReport, PixelCoverageReport,
+        };
 
         let line_report = LineCoverageReport::new(0.90, 1.0, 0.80, 22, 20);
         let pixel_report = PixelCoverageReport::default();
@@ -1688,7 +1834,10 @@ mod tests {
         let result = compare_png_with_tolerance(&png_no_gaps, &png_with_gaps, 0).unwrap();
 
         // Should have some differences (the red gap borders)
-        assert!(result.diff_count > 0, "Gap highlighting should produce visible differences");
+        assert!(
+            result.diff_count > 0,
+            "Gap highlighting should produce visible differences"
+        );
     }
 
     #[test]
@@ -1707,7 +1856,10 @@ mod tests {
         // Legend should produce different output
         let result = compare_png_with_tolerance(&png_no_legend, &png_with_legend, 0).unwrap();
 
-        assert!(result.diff_count > 0, "Legend should produce visible differences");
+        assert!(
+            result.diff_count > 0,
+            "Legend should produce visible differences"
+        );
     }
 
     #[test]
@@ -1726,7 +1878,10 @@ mod tests {
         // Title should produce different output
         let result = compare_png_with_tolerance(&png_no_title, &png_with_title, 0).unwrap();
 
-        assert!(result.diff_count > 0, "Title should produce visible differences");
+        assert!(
+            result.diff_count > 0,
+            "Title should produce visible differences"
+        );
     }
 
     #[test]
@@ -1757,7 +1912,11 @@ mod tests {
             .export(&cells)
             .unwrap();
 
-        assert_eq!(compute_checksum(&png2), checksum, "Output should be deterministic");
+        assert_eq!(
+            compute_checksum(&png2),
+            checksum,
+            "Output should be deterministic"
+        );
     }
 
     #[test]
@@ -1783,7 +1942,11 @@ mod tests {
             .export(&cells)
             .unwrap();
 
-        assert_eq!(compute_checksum(&png2), checksum, "Magma gap output should be deterministic");
+        assert_eq!(
+            compute_checksum(&png2),
+            checksum,
+            "Magma gap output should be deterministic"
+        );
     }
 
     #[test]
@@ -1811,7 +1974,11 @@ mod tests {
             .export(&cells)
             .unwrap();
 
-        assert_eq!(compute_checksum(&png2), checksum, "Heat title output should be deterministic");
+        assert_eq!(
+            compute_checksum(&png2),
+            checksum,
+            "Heat title output should be deterministic"
+        );
     }
 
     #[test]
@@ -1834,8 +2001,10 @@ mod tests {
 
     #[test]
     fn h0_vis_11_combined_stats_determinism() {
+        use super::super::tracker::{
+            CombinedCoverageReport, LineCoverageReport, PixelCoverageReport,
+        };
         use super::visual_regression::*;
-        use super::super::tracker::{LineCoverageReport, PixelCoverageReport, CombinedCoverageReport};
 
         let cells = reference_gradient_cells(8, 10);
 
@@ -1878,7 +2047,11 @@ mod tests {
             .export(&cells)
             .unwrap();
 
-        assert_eq!(compute_checksum(&png2), checksum1, "Combined stats output should be deterministic");
+        assert_eq!(
+            compute_checksum(&png2),
+            checksum1,
+            "Combined stats output should be deterministic"
+        );
     }
 
     #[test]

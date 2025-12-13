@@ -481,22 +481,36 @@ fn demo_pixel_perfect_coverage() {
     let h2 = FalsifiableHypothesis::max_gap_size("H0-PIX-GAP", 5.0)
         .evaluate(report.uncovered_regions.len() as f32);
 
-    println!("    H0-PIX-COVERAGE (≥85%): {}",
-        if h1.falsified { "FALSIFIED" } else { "NOT FALSIFIED" });
-    println!("    H0-PIX-GAP (≤5 gaps): {}",
-        if h2.falsified { "FALSIFIED" } else { "NOT FALSIFIED" });
+    println!(
+        "    H0-PIX-COVERAGE (≥85%): {}",
+        if h1.falsified {
+            "FALSIFIED"
+        } else {
+            "NOT FALSIFIED"
+        }
+    );
+    println!(
+        "    H0-PIX-GAP (≤5 gaps): {}",
+        if h2.falsified {
+            "FALSIFIED"
+        } else {
+            "NOT FALSIFIED"
+        }
+    );
 
     let gate_result = gate.evaluate(&h1);
-    println!("    FalsifiabilityGate: {}",
-        if gate_result.is_passed() { "PASSED" } else { "FAILED" });
+    println!(
+        "    FalsifiabilityGate: {}",
+        if gate_result.is_passed() {
+            "PASSED"
+        } else {
+            "FAILED"
+        }
+    );
 
     // Wilson Score Confidence Intervals
     println!("\n  Wilson Score Confidence Interval (95%):");
-    let ci = ConfidenceInterval::wilson_score(
-        report.covered_cells,
-        report.total_cells,
-        0.95,
-    );
+    let ci = ConfidenceInterval::wilson_score(report.covered_cells, report.total_cells, 0.95);
     println!("    Lower: {:.1}%", ci.lower * 100.0);
     println!("    Upper: {:.1}%", ci.upper * 100.0);
     println!("    Level: {:.0}%", ci.level * 100.0);

@@ -1157,15 +1157,15 @@ mod tests {
 
         #[test]
         fn h0_trace_25_event_with_message() {
-            let event = TracedEvent::new("test", EventCategory::Test, 0)
-                .with_message("Hello world");
+            let event =
+                TracedEvent::new("test", EventCategory::Test, 0).with_message("Hello world");
             assert_eq!(event.message, "Hello world");
         }
 
         #[test]
         fn h0_trace_26_event_with_level() {
-            let event = TracedEvent::new("test", EventCategory::Test, 0)
-                .with_level(EventLevel::Error);
+            let event =
+                TracedEvent::new("test", EventCategory::Test, 0).with_level(EventLevel::Error);
             assert_eq!(event.level, EventLevel::Error);
         }
 
@@ -1396,8 +1396,12 @@ mod tests {
         #[test]
         fn h0_trace_53_archive_events_by_category() {
             let mut archive = TraceArchive::new(TraceMetadata::new("test"));
-            archive.events.push(TracedEvent::new("e1", EventCategory::Network, 0));
-            archive.events.push(TracedEvent::new("e2", EventCategory::Network, 50));
+            archive
+                .events
+                .push(TracedEvent::new("e1", EventCategory::Network, 0));
+            archive
+                .events
+                .push(TracedEvent::new("e2", EventCategory::Network, 50));
             let network = archive.events_by_category(EventCategory::Network);
             assert_eq!(network.len(), 2);
         }

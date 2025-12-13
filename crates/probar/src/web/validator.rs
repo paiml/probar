@@ -122,7 +122,10 @@ impl ValidationReport {
         self.html.is_valid()
             && self.css.is_valid()
             && self.js.is_valid()
-            && self.accessibility.iter().all(|a| a.severity != Severity::Critical)
+            && self
+                .accessibility
+                .iter()
+                .all(|a| a.severity != Severity::Critical)
     }
 
     /// Get total error count
@@ -154,7 +157,9 @@ impl WebValidator {
 
         // Check for DOCTYPE
         if !html.content.contains("<!DOCTYPE html>") {
-            result.errors.push("Missing DOCTYPE declaration".to_string());
+            result
+                .errors
+                .push("Missing DOCTYPE declaration".to_string());
             result.valid = false;
         }
 
@@ -176,9 +181,7 @@ impl WebValidator {
 
         // Check for charset
         if !html.content.contains("charset=") {
-            result
-                .warnings
-                .push("Missing charset meta tag".to_string());
+            result.warnings.push("Missing charset meta tag".to_string());
         }
 
         // Check for viewport
@@ -190,7 +193,9 @@ impl WebValidator {
 
         // Check for title
         if !html.content.contains("<title>") || html.title.is_empty() {
-            result.errors.push("Missing or empty <title> tag".to_string());
+            result
+                .errors
+                .push("Missing or empty <title> tag".to_string());
             result.valid = false;
         }
 
@@ -329,7 +334,13 @@ impl WebValidator {
 
         // Check for canvas without role
         for element in &html.elements {
-            if let super::Element::Canvas { id, role, aria_label, .. } = element {
+            if let super::Element::Canvas {
+                id,
+                role,
+                aria_label,
+                ..
+            } = element
+            {
                 if role.is_empty() {
                     issues.push(AccessibilityIssue {
                         severity: Severity::Medium,
@@ -641,7 +652,7 @@ mod tests {
         assert!(valid.is_valid());
 
         let invalid = HtmlValidationResult {
-            valid: true, // Even if marked valid
+            valid: true,                       // Even if marked valid
             errors: vec!["error".to_string()], // Errors make it invalid
             warnings: vec![],
         };

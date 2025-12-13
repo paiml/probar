@@ -202,12 +202,12 @@ impl CalculatorTheme {
     pub fn light() -> Self {
         Self {
             background: Color::new(255, 255, 255),
-            display_text: Color::new(33, 33, 33),       // #212121 - 15.9:1 contrast
-            button_text: Color::new(33, 33, 33),        // #212121
+            display_text: Color::new(33, 33, 33), // #212121 - 15.9:1 contrast
+            button_text: Color::new(33, 33, 33),  // #212121
             button_background: Color::new(224, 224, 224), // #E0E0E0
             operator_background: Color::new(255, 152, 0), // #FF9800 (orange)
-            focus_color: Color::new(33, 150, 243),      // #2196F3 (blue)
-            error_color: Color::new(211, 47, 47),       // #D32F2F (red)
+            focus_color: Color::new(33, 150, 243), // #2196F3 (blue)
+            error_color: Color::new(211, 47, 47), // #D32F2F (red)
         }
     }
 
@@ -215,13 +215,13 @@ impl CalculatorTheme {
     #[must_use]
     pub fn dark() -> Self {
         Self {
-            background: Color::new(33, 33, 33),         // #212121
-            display_text: Color::new(255, 255, 255),    // White - 15.9:1 contrast
-            button_text: Color::new(255, 255, 255),     // White
-            button_background: Color::new(66, 66, 66),  // #424242
+            background: Color::new(33, 33, 33),            // #212121
+            display_text: Color::new(255, 255, 255),       // White - 15.9:1 contrast
+            button_text: Color::new(255, 255, 255),        // White
+            button_background: Color::new(66, 66, 66),     // #424242
             operator_background: Color::new(255, 167, 38), // #FFA726 (lighter orange)
-            focus_color: Color::new(100, 181, 246),     // #64B5F6 (lighter blue)
-            error_color: Color::new(239, 83, 80),       // #EF5350 (lighter red)
+            focus_color: Color::new(100, 181, 246),        // #64B5F6 (lighter blue)
+            error_color: Color::new(239, 83, 80),          // #EF5350 (lighter red)
         }
     }
 
@@ -229,13 +229,13 @@ impl CalculatorTheme {
     #[must_use]
     pub fn high_contrast() -> Self {
         Self {
-            background: Color::new(0, 0, 0),            // Black
-            display_text: Color::new(255, 255, 0),      // Yellow - max contrast
-            button_text: Color::new(255, 255, 255),     // White
-            button_background: Color::new(0, 0, 128),   // Navy
+            background: Color::new(0, 0, 0),              // Black
+            display_text: Color::new(255, 255, 0),        // Yellow - max contrast
+            button_text: Color::new(255, 255, 255),       // White
+            button_background: Color::new(0, 0, 128),     // Navy
             operator_background: Color::new(128, 0, 128), // Purple
-            focus_color: Color::new(0, 255, 255),       // Cyan
-            error_color: Color::new(255, 0, 0),         // Red
+            focus_color: Color::new(0, 255, 255),         // Cyan
+            error_color: Color::new(255, 0, 0),           // Red
         }
     }
 
@@ -546,7 +546,9 @@ pub mod wait_conditions {
         /// Create new wait condition
         #[must_use]
         pub fn with_count(count: usize) -> Self {
-            Self { expected_count: count }
+            Self {
+                expected_count: count,
+            }
         }
 
         /// Get expected count
@@ -702,7 +704,10 @@ mod tests {
     fn h0_theme_017_display_text_contrast_minimum_4_5() {
         let theme = CalculatorTheme::light();
         let ratio = theme.display_contrast();
-        assert!(ratio >= 4.5, "Display text contrast {ratio} < 4.5:1 minimum");
+        assert!(
+            ratio >= 4.5,
+            "Display text contrast {ratio} < 4.5:1 minimum"
+        );
     }
 
     #[test]
@@ -1029,7 +1034,10 @@ mod tests {
         let page = CalculatorPage::new();
         for button in page.all_buttons() {
             let selector = format!("{:?}", button.selector());
-            assert!(selector.contains("data-"), "Button missing data attribute: {selector}");
+            assert!(
+                selector.contains("data-"),
+                "Button missing data attribute: {selector}"
+            );
         }
     }
 

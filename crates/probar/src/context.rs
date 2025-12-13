@@ -1666,7 +1666,8 @@ mod tests {
 
         #[test]
         fn h0_ctx_24_cookie_same_site() {
-            let cookie = Cookie::new("session", "abc", "example.com").with_same_site(SameSite::Strict);
+            let cookie =
+                Cookie::new("session", "abc", "example.com").with_same_site(SameSite::Strict);
             assert_eq!(cookie.same_site, SameSite::Strict);
         }
 

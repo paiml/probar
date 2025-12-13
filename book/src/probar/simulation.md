@@ -2,6 +2,10 @@
 
 Probar provides deterministic game simulation for testing.
 
+![Simulation Coverage Heat Map](../assets/coverage_heat.png)
+
+*Simulation runs generate coverage heat maps showing execution hotspots*
+
 ## Basic Simulation
 
 ```rust

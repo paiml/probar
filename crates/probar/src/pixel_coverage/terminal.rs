@@ -191,7 +191,11 @@ impl ScoreBar {
                 } else {
                     "[FAIL]"
                 };
-                format!("{} {}", bar.replace('\u{2588}', "#").replace('\u{2591}', "-"), status)
+                format!(
+                    "{} {}",
+                    bar.replace('\u{2588}', "#").replace('\u{2591}', "-"),
+                    status
+                )
             }
             OutputMode::Json => bar,
         }
@@ -213,7 +217,11 @@ impl ConfidenceInterval {
     /// Create a new confidence interval
     #[must_use]
     pub fn new(lower: f32, upper: f32, level: f32) -> Self {
-        Self { lower, upper, level }
+        Self {
+            lower,
+            upper,
+            level,
+        }
     }
 
     /// Calculate Wilson score interval for proportion
@@ -435,7 +443,11 @@ impl RichTerminalHeatmap {
         }
 
         // Sort by size (largest first)
-        gaps.sort_by(|a, b| b.percent.partial_cmp(&a.percent).unwrap_or(std::cmp::Ordering::Equal));
+        gaps.sort_by(|a, b| {
+            b.percent
+                .partial_cmp(&a.percent)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         gaps
     }
 
@@ -476,25 +488,40 @@ impl RichTerminalHeatmap {
         let combined = line_coverage.map_or(pixel_coverage, |l| (pixel_coverage + l) / 2.0);
 
         output.push_str("  \u{250C}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2510}\n");
-        output.push_str("  \u{2502}  COVERAGE SCORE                                        \u{2502}\n");
+        output.push_str(
+            "  \u{2502}  COVERAGE SCORE                                        \u{2502}\n",
+        );
         output.push_str("  \u{2502}  \u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}\u{2550}  \u{2502}\n");
-        output.push_str("  \u{2502}                                                        \u{2502}\n");
+        output.push_str(
+            "  \u{2502}                                                        \u{2502}\n",
+        );
 
         // Pixel coverage bar
         let pixel_bar = ScoreBar::new("Pixel Coverage", pixel_coverage, self.threshold);
-        output.push_str(&format!("  \u{2502}    {}  \u{2502}\n", pixel_bar.render(self.mode)));
+        output.push_str(&format!(
+            "  \u{2502}    {}  \u{2502}\n",
+            pixel_bar.render(self.mode)
+        ));
 
         // Line coverage bar (if available)
         if let Some(line) = line_coverage {
             let line_bar = ScoreBar::new("Line Coverage", line, self.threshold);
-            output.push_str(&format!("  \u{2502}    {}  \u{2502}\n", line_bar.render(self.mode)));
+            output.push_str(&format!(
+                "  \u{2502}    {}  \u{2502}\n",
+                line_bar.render(self.mode)
+            ));
         }
 
         // Combined score bar
         let combined_bar = ScoreBar::new("Combined Score", combined, self.threshold);
-        output.push_str(&format!("  \u{2502}    {}  \u{2502}\n", combined_bar.render(self.mode)));
+        output.push_str(&format!(
+            "  \u{2502}    {}  \u{2502}\n",
+            combined_bar.render(self.mode)
+        ));
 
-        output.push_str("  \u{2502}                                                        \u{2502}\n");
+        output.push_str(
+            "  \u{2502}                                                        \u{2502}\n",
+        );
 
         // Status and confidence interval
         let (_, covered, total) = self.calculate_stats();
@@ -520,7 +547,9 @@ impl RichTerminalHeatmap {
             "  \u{2502}    Confidence: {}                          \u{2502}\n",
             ci.format()
         ));
-        output.push_str("  \u{2502}                                                        \u{2502}\n");
+        output.push_str(
+            "  \u{2502}                                                        \u{2502}\n",
+        );
         output.push_str("  \u{2514}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2518}\n");
 
         output
@@ -535,8 +564,16 @@ impl RichTerminalHeatmap {
         if gaps.is_empty() {
             output.push_str(&format!(
                 "  {}\u{2705} No coverage gaps detected{}\n",
-                if self.mode == OutputMode::RichAnsi { ansi::PASS } else { "" },
-                if self.mode == OutputMode::RichAnsi { ansi::RESET } else { "" }
+                if self.mode == OutputMode::RichAnsi {
+                    ansi::PASS
+                } else {
+                    ""
+                },
+                if self.mode == OutputMode::RichAnsi {
+                    ansi::RESET
+                } else {
+                    ""
+                }
             ));
             return output;
         }
@@ -544,15 +581,27 @@ impl RichTerminalHeatmap {
         let total_gap_percent: f32 = gaps.iter().map(|g| g.percent).sum();
         output.push_str(&format!(
             "  {}\u{26A0} GAPS DETECTED ({} region{}, {:.1}% of screen){}\n",
-            if self.mode == OutputMode::RichAnsi { ansi::WARN } else { "" },
+            if self.mode == OutputMode::RichAnsi {
+                ansi::WARN
+            } else {
+                ""
+            },
             gaps.len(),
             if gaps.len() == 1 { "" } else { "s" },
             total_gap_percent * 100.0,
-            if self.mode == OutputMode::RichAnsi { ansi::RESET } else { "" }
+            if self.mode == OutputMode::RichAnsi {
+                ansi::RESET
+            } else {
+                ""
+            }
         ));
 
         for (i, gap) in gaps.iter().take(5).enumerate() {
-            let connector = if i == gaps.len().min(5) - 1 { "\u{2514}" } else { "\u{251C}" };
+            let connector = if i == gaps.len().min(5) - 1 {
+                "\u{2514}"
+            } else {
+                "\u{251C}"
+            };
             output.push_str(&format!(
                 "  {}\u{2500} Gap #{}: rows {}-{}, cols {}-{} ({:.1}%)\n",
                 connector,
@@ -580,10 +629,16 @@ impl RichTerminalHeatmap {
         output.push_str("  FALSIFICATION STATUS\n");
 
         for (i, h) in hypotheses.iter().enumerate() {
-            let connector = if i == hypotheses.len() - 1 { "\u{2514}" } else { "\u{251C}" };
+            let connector = if i == hypotheses.len() - 1 {
+                "\u{2514}"
+            } else {
+                "\u{251C}"
+            };
             let status = if h.falsified {
                 match self.mode {
-                    OutputMode::RichAnsi => format!("{}\u{274C} FALSIFIED{}", ansi::FAIL, ansi::RESET),
+                    OutputMode::RichAnsi => {
+                        format!("{}\u{274C} FALSIFIED{}", ansi::FAIL, ansi::RESET)
+                    }
                     _ => "FALSIFIED".to_string(),
                 }
             } else {
@@ -631,7 +686,10 @@ impl RichTerminalHeatmap {
                 format!("{}{}", " ".repeat(padding.max(0)), title)
             ));
         } else {
-            output.push_str(&format!("\u{2551}{:^70}\u{2551}\n", "PIXEL COVERAGE HEATMAP"));
+            output.push_str(&format!(
+                "\u{2551}{:^70}\u{2551}\n",
+                "PIXEL COVERAGE HEATMAP"
+            ));
         }
 
         output.push_str(&format!("\u{2560}{}\u{2563}\n", border));
@@ -695,7 +753,7 @@ impl RichTerminalHeatmap {
     /// Get coverage character for value
     fn coverage_char(coverage: f32) -> char {
         match coverage {
-            c if c <= 0.0 => '\u{00B7}', // Middle dot for gaps
+            c if c <= 0.0 => '\u{00B7}',  // Middle dot for gaps
             c if c <= 0.25 => '\u{2591}', // Light shade
             c if c <= 0.50 => '\u{2592}', // Medium shade
             c if c <= 0.75 => '\u{2593}', // Dark shade
@@ -810,7 +868,16 @@ mod tests {
 
     #[test]
     fn h0_term_11_render_empty() {
-        let cells = vec![vec![CoverageCell { coverage: 0.0, hit_count: 0 }; 5]; 5];
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0
+                };
+                5
+            ];
+            5
+        ];
         let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::NoColorAscii);
         let output = heatmap.render();
         assert!(!output.is_empty());
@@ -818,7 +885,16 @@ mod tests {
 
     #[test]
     fn h0_term_12_render_full() {
-        let cells = vec![vec![CoverageCell { coverage: 1.0, hit_count: 10 }; 5]; 5];
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10
+                };
+                5
+            ];
+            5
+        ];
         let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::NoColorAscii);
         let output = heatmap.render();
         assert!(output.contains("PASS") || output.contains("NOT FALSIFIED"));
@@ -826,11 +902,23 @@ mod tests {
 
     #[test]
     fn h0_term_13_render_with_gaps() {
-        let mut cells = vec![vec![CoverageCell { coverage: 1.0, hit_count: 10 }; 10]; 10];
+        let mut cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10
+                };
+                10
+            ];
+            10
+        ];
         // Create a gap
         for r in 3..7 {
             for c in 3..7 {
-                cells[r][c] = CoverageCell { coverage: 0.0, hit_count: 0 };
+                cells[r][c] = CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0,
+                };
             }
         }
         let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::NoColorAscii);
@@ -869,11 +957,23 @@ mod tests {
 
     #[test]
     fn h0_term_17_find_gaps() {
-        let mut cells = vec![vec![CoverageCell { coverage: 1.0, hit_count: 10 }; 10]; 10];
+        let mut cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10
+                };
+                10
+            ];
+            10
+        ];
         // Create a 4x4 gap (16% of 100 cells)
         for r in 3..7 {
             for c in 3..7 {
-                cells[r][c] = CoverageCell { coverage: 0.0, hit_count: 0 };
+                cells[r][c] = CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0,
+                };
             }
         }
         let heatmap = RichTerminalHeatmap::new(cells);

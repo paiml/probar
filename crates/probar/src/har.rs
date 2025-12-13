@@ -29,9 +29,7 @@ impl Har {
     /// Create a new empty HAR file
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            log: HarLog::new(),
-        }
+        Self { log: HarLog::new() }
     }
 
     /// Parse HAR from JSON string
@@ -1151,8 +1149,8 @@ mod tests {
 
     #[test]
     fn h0_har_20_entry_with_time() {
-        let entry = HarEntry::new(HarRequest::get("http://test.com"), HarResponse::ok())
-            .with_time(150.0);
+        let entry =
+            HarEntry::new(HarRequest::get("http://test.com"), HarResponse::ok()).with_time(150.0);
         assert!((entry.time - 150.0).abs() < f64::EPSILON);
     }
 
@@ -1352,8 +1350,7 @@ mod tests {
 
     #[test]
     fn h0_har_44_request_with_post_data() {
-        let req =
-            HarRequest::post("http://test.com").with_post_data(HarPostData::json(r#"{}"#));
+        let req = HarRequest::post("http://test.com").with_post_data(HarPostData::json(r#"{}"#));
         assert!(req.post_data.is_some());
     }
 

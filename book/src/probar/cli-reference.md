@@ -167,6 +167,120 @@ probar config --set "parallel=4"
 probar config --reset
 ```
 
+### probar serve
+
+Start a WASM development server with hot reload support.
+
+```bash
+# Serve current directory on port 8080
+probar serve
+
+# Serve a specific directory
+probar serve ./www
+
+# Custom port
+probar serve --port 3000
+
+# Enable CORS for cross-origin requests
+probar serve --cors
+
+# Open browser automatically
+probar serve --open
+
+# Full example
+probar serve ./dist --port 8080 --cors --open
+```
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<directory>` | Directory to serve | `.` |
+| `-p, --port <port>` | HTTP port | 8080 |
+| `--ws-port <port>` | WebSocket port for hot reload | 8081 |
+| `--cors` | Enable CORS | false |
+| `--open` | Open browser automatically | false |
+
+**Features:**
+- Serves WASM files with correct `application/wasm` MIME type
+- WebSocket endpoint at `/ws` for hot reload notifications
+- Automatic CORS headers when enabled
+- No-cache headers for development
+
+### probar build
+
+Build a Rust project to WASM using wasm-pack.
+
+```bash
+# Build in development mode
+probar build
+
+# Build in release mode
+probar build --release
+
+# Specify build target
+probar build --target web
+probar build --target bundler
+probar build --target nodejs
+
+# Custom output directory
+probar build --out-dir ./dist
+
+# Enable profiling (adds names section)
+probar build --profiling
+
+# Full example
+probar build ./my-game --target web --release --out-dir ./www/pkg
+```
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<path>` | Package directory | `.` |
+| `-t, --target <target>` | WASM target (web/bundler/nodejs/no-modules) | web |
+| `--release` | Build in release mode | false |
+| `-o, --out-dir <path>` | Output directory | pkg |
+| `--profiling` | Enable profiling | false |
+
+### probar watch
+
+Watch for file changes and rebuild automatically.
+
+```bash
+# Watch current directory
+probar watch
+
+# Watch with dev server
+probar watch --serve
+
+# Custom port when serving
+probar watch --serve --port 3000
+
+# Build in release mode
+probar watch --release
+
+# Custom debounce delay
+probar watch --debounce 1000
+
+# Full example
+probar watch ./my-game --serve --port 8080 --target web
+```
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<path>` | Directory to watch | `.` |
+| `--serve` | Also start dev server | false |
+| `-p, --port <port>` | Server port (with --serve) | 8080 |
+| `--ws-port <port>` | WebSocket port | 8081 |
+| `-t, --target <target>` | WASM target | web |
+| `--release` | Build in release mode | false |
+| `--debounce <ms>` | Debounce delay | 500 |
+
+**Watched files:** `.rs`, `.toml`
+
 ## Global Options
 
 These options work with all commands:
@@ -217,6 +331,19 @@ probar coverage --json coverage/pixel-report.json
 ```bash
 # Run tests on file changes
 probar test --watch --filter "unit::*"
+```
+
+### WASM Development Workflow
+
+```bash
+# Build WASM package
+probar build --target web --release
+
+# Start dev server with hot reload
+probar serve ./www --port 8080 --cors
+
+# Or combine watch + serve for full development experience
+probar watch --serve --port 8080
 ```
 
 ## Exit Codes

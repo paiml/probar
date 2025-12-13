@@ -49,6 +49,13 @@ pub enum ProbarError {
         ms: u64,
     },
 
+    /// Timeout with message
+    #[error("Timeout: {message}")]
+    TimeoutError {
+        /// Error message
+        message: String,
+    },
+
     /// WASM evaluation error
     #[error("WASM evaluation failed: {message}")]
     WasmError {
@@ -184,4 +191,11 @@ pub enum ProbarError {
     /// WASM runner error (Feature D - WASM Runner)
     #[error("WASM runner error: {0}")]
     WasmRunner(String),
+
+    /// Serialization error (Issue #9 - Renacer Integration)
+    #[error("Serialization error: {message}")]
+    SerializationError {
+        /// Error message
+        message: String,
+    },
 }

@@ -68,6 +68,12 @@ impl Evaluator {
     pub fn clear_history(&mut self) {
         self.calculator.validator.clear_history();
     }
+
+    /// Returns a reference to the Anomaly validator
+    #[must_use]
+    pub fn validator(&self) -> Option<&AnomalyValidator> {
+        Some(&self.calculator.validator)
+    }
 }
 
 #[cfg(test)]

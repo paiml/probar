@@ -12,15 +12,20 @@
 
 mod commands;
 mod config;
+pub mod dev_server;
 mod error;
 mod output;
 mod runner;
 
 pub use commands::{
-    Cli, Commands, ConfigArgs, CoverageArgs, InitArgs, PaletteArg, RecordArgs, RecordFormat,
-    ReportArgs, ReportFormat, TestArgs,
+    BuildArgs, Cli, Commands, ConfigArgs, CoverageArgs, InitArgs, PaletteArg, RecordArgs,
+    RecordFormat, ReportArgs, ReportFormat, ServeArgs, TestArgs, WasmTarget, WatchArgs,
 };
 pub use config::{CliConfig, ColorChoice, Verbosity};
+pub use dev_server::{
+    get_mime_type, DevServer, DevServerConfig, DevServerConfigBuilder, FileWatcher,
+    FileWatcherBuilder, HotReloadMessage,
+};
 pub use error::{CliError, CliResult};
 pub use output::{OutputFormat, ProgressReporter};
 pub use runner::TestRunner;

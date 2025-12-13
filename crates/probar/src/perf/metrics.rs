@@ -194,7 +194,8 @@ impl PerformanceMetrics {
         let mut function_times = std::collections::HashMap::new();
 
         // Group spans by name
-        let mut by_name: std::collections::HashMap<&str, Vec<f64>> = std::collections::HashMap::new();
+        let mut by_name: std::collections::HashMap<&str, Vec<f64>> =
+            std::collections::HashMap::new();
         for span in &trace.spans {
             if let Some(dur_ns) = span.duration_ns() {
                 by_name

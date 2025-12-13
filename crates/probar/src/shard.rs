@@ -25,7 +25,10 @@ impl ShardConfig {
     #[must_use]
     pub fn new(current: u32, total: u32) -> Self {
         assert!(total > 0, "Total shards must be greater than 0");
-        assert!(current > 0, "Current shard must be 1-based (greater than 0)");
+        assert!(
+            current > 0,
+            "Current shard must be 1-based (greater than 0)"
+        );
         assert!(
             current <= total,
             "Current shard ({current}) cannot exceed total ({total})"
@@ -182,7 +185,10 @@ impl std::fmt::Display for ShardParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidFormat(s) => {
-                write!(f, "Invalid shard format '{s}', expected 'N/M' (e.g., '1/4')")
+                write!(
+                    f,
+                    "Invalid shard format '{s}', expected 'N/M' (e.g., '1/4')"
+                )
             }
             Self::InvalidNumber(s) => write!(f, "Invalid number in shard spec: '{s}'"),
             Self::ZeroTotal => write!(f, "Total shards cannot be zero"),
@@ -513,9 +519,8 @@ mod tests {
         let config2 = ShardConfig::new(2, 3);
         let config3 = ShardConfig::new(3, 3);
 
-        let total = config1.estimated_count(10)
-            + config2.estimated_count(10)
-            + config3.estimated_count(10);
+        let total =
+            config1.estimated_count(10) + config2.estimated_count(10) + config3.estimated_count(10);
         assert_eq!(total, 10);
     }
 

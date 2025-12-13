@@ -203,10 +203,10 @@ impl PixelCoverageTracker {
     pub fn record_region(&mut self, region: Region) {
         let start_col = region.x / self.config.cell_width();
         let start_row = region.y / self.config.cell_height();
-        let end_col = ((region.x + region.width) / self.config.cell_width())
-            .min(self.config.grid_cols - 1);
-        let end_row = ((region.y + region.height) / self.config.cell_height())
-            .min(self.config.grid_rows - 1);
+        let end_col =
+            ((region.x + region.width) / self.config.cell_width()).min(self.config.grid_cols - 1);
+        let end_row =
+            ((region.y + region.height) / self.config.cell_height()).min(self.config.grid_rows - 1);
 
         for row in start_row..=end_row {
             for col in start_col..=end_col {
@@ -289,9 +289,7 @@ impl PixelCoverageTracker {
             for (col_idx, cell) in row.iter().enumerate() {
                 if !cell.is_covered() {
                     // Convert to screen coordinates
-                    let region = self
-                        .config
-                        .cell_to_region(col_idx as u32, row_idx as u32);
+                    let region = self.config.cell_to_region(col_idx as u32, row_idx as u32);
                     regions.push(region);
                 }
             }
@@ -330,7 +328,8 @@ impl PixelCoverageTracker {
         height: u32,
         path: &std::path::Path,
     ) -> Result<(), std::io::Error> {
-        self.png_heatmap(width, height).export_to_file(&self.cells, path)
+        self.png_heatmap(width, height)
+            .export_to_file(&self.cells, path)
     }
 }
 
@@ -515,7 +514,12 @@ impl CombinedCoverageReport {
     /// Create from line and pixel reports with default weights
     #[must_use]
     pub fn from_parts(line: LineCoverageReport, pixel: PixelCoverageReport) -> Self {
-        Self::from_parts_weighted(line, pixel, Self::DEFAULT_LINE_WEIGHT, Self::DEFAULT_PIXEL_WEIGHT)
+        Self::from_parts_weighted(
+            line,
+            pixel,
+            Self::DEFAULT_LINE_WEIGHT,
+            Self::DEFAULT_PIXEL_WEIGHT,
+        )
     }
 
     /// Create from line and pixel reports with custom weights

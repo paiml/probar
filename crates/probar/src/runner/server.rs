@@ -256,15 +256,12 @@ impl WasmRunner {
         #[cfg(target_arch = "wasm32")]
         {
             // On WASM, use epoch seconds as timestamp
-            let secs = msg.timestamp.duration_since(std::time::UNIX_EPOCH)
+            let secs = msg
+                .timestamp
+                .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
-            format!(
-                "[{}] {} {}",
-                secs,
-                msg.level.prefix(),
-                msg.text
-            )
+            format!("[{}] {} {}", secs, msg.level.prefix(), msg.text)
         }
     }
 
@@ -380,9 +377,7 @@ mod tests {
 
     #[test]
     fn test_debug_output_builders() {
-        let output = DebugOutput::none()
-            .with_console()
-            .with_network();
+        let output = DebugOutput::none().with_console().with_network();
 
         assert!(output.console);
         assert!(!output.metrics);

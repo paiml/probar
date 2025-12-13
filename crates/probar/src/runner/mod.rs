@@ -108,7 +108,10 @@ mod tests {
         };
 
         match event {
-            HotReloadEvent::Rebuild { duration, preserved } => {
+            HotReloadEvent::Rebuild {
+                duration,
+                preserved,
+            } => {
                 assert_eq!(duration.as_millis(), 100);
                 assert_eq!(preserved.len(), 1);
             }

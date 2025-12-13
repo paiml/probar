@@ -148,7 +148,8 @@ impl FakeClock {
             .unwrap_or(0);
 
         self.install_real_ms.store(real_ms, Ordering::SeqCst);
-        self.install_fake_ms.store(options.time_ms, Ordering::SeqCst);
+        self.install_fake_ms
+            .store(options.time_ms, Ordering::SeqCst);
         self.current_ms.store(options.time_ms, Ordering::SeqCst);
         self.paused.store(options.paused, Ordering::SeqCst);
 
@@ -350,7 +351,10 @@ fn parse_iso_to_ms(iso: &str) -> Result<u64, ClockError> {
 
     // Simple days since epoch calculation (not accounting for leap seconds)
     let days_since_epoch = days_since_unix_epoch(year, month, day);
-    let seconds = days_since_epoch * 86400 + u64::from(hour) * 3600 + u64::from(minute) * 60 + u64::from(second);
+    let seconds = days_since_epoch * 86400
+        + u64::from(hour) * 3600
+        + u64::from(minute) * 60
+        + u64::from(second);
 
     Ok(seconds * 1000)
 }
@@ -539,7 +543,9 @@ mod tests {
     #[test]
     fn h0_clock_06_now_ms_when_paused() {
         let clock = FakeClock::new();
-        clock.install(ClockOptions::fixed(1_705_312_800_000)).unwrap(); // 2024-01-15T10:00:00Z
+        clock
+            .install(ClockOptions::fixed(1_705_312_800_000))
+            .unwrap(); // 2024-01-15T10:00:00Z
 
         let time = clock.now_ms();
         assert_eq!(time, 1_705_312_800_000);

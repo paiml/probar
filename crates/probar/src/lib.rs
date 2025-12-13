@@ -275,6 +275,24 @@ pub mod runner;
 )]
 pub mod perf;
 
+/// Renacer Integration for Deep WASM Tracing (Issue #9)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod renacer_integration;
+
+/// CDP Profiler-based Code Coverage (Issue #10)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod cdp_coverage;
+
 /// Test Sharding for Distributed Execution (Feature G.5)
 #[allow(
     clippy::missing_errors_doc,
@@ -337,10 +355,21 @@ pub use bridge::{
     BridgeConnection, DiffRegion, EntitySnapshot, GameStateData, GameStateSnapshot, SnapshotCache,
     StateBridge, VisualDiff,
 };
-pub use browser::{Browser, BrowserConfig, Page};
+pub use browser::{Browser, BrowserConfig, BrowserConsoleLevel, BrowserConsoleMessage, Page};
+pub use cdp_coverage::{
+    CoverageConfig, CoverageRange, CoverageReport, CoveredFunction, FunctionCoverage, JsCoverage,
+    LineCoverage, ScriptCoverage, SourceMapEntry, WasmCoverage, WasmSourceMap,
+};
+pub use clock::{
+    create_clock, Clock, ClockController, ClockError, ClockOptions, ClockState, FakeClock,
+};
 pub use context::{
     BrowserContext, ContextConfig, ContextManager, ContextPool, ContextPoolStats, ContextState,
     Cookie, Geolocation, SameSite, StorageState,
+};
+pub use dialog::{
+    AutoDialogBehavior, Dialog, DialogAction, DialogExpectation, DialogHandler,
+    DialogHandlerBuilder, DialogType,
 };
 #[cfg(feature = "browser")]
 pub use driver::{BrowserController, ProbarDriver};
@@ -349,11 +378,19 @@ pub use driver::{
     PageMetrics, Screenshot,
 };
 pub use event::{InputEvent, Touch, TouchAction};
+pub use file_ops::{
+    guess_mime_type, Download, DownloadManager, DownloadState, FileChooser, FileInput,
+};
 pub use fixture::{
     Fixture, FixtureBuilder, FixtureManager, FixtureScope, FixtureState, SimpleFixture,
 };
 pub use fuzzer::{
     FuzzerConfig, InputFuzzer, InvariantCheck, InvariantChecker, InvariantViolation, Seed,
+};
+pub use har::{
+    Har, HarBrowser, HarCache, HarContent, HarCookie, HarCreator, HarEntry, HarError, HarHeader,
+    HarLog, HarOptions, HarPlayer, HarPostData, HarPostParam, HarQueryParam, HarRecorder,
+    HarRequest, HarResponse, HarTimings, NotFoundBehavior,
 };
 pub use harness::{TestCase, TestHarness, TestResult, TestSuite};
 pub use locator::{
@@ -372,6 +409,10 @@ pub use performance::{
     Measurement, MetricStats, MetricType, PerformanceMonitor, PerformanceProfile,
     PerformanceProfiler, PerformanceProfilerBuilder, PerformanceSummary, PerformanceThreshold,
 };
+pub use renacer_integration::{
+    ChromeTrace, ChromeTraceEvent, TraceCollector, TraceContext, TraceSpan,
+    TracingConfig as RenacerTracingConfig,
+};
 pub use replay::{
     Replay, ReplayHeader, ReplayPlayer, ReplayRecorder, StateCheckpoint, TimedInput,
     VerificationResult, REPLAY_FORMAT_VERSION,
@@ -384,6 +425,7 @@ pub use runtime::{
     ComponentId, EntityId, FrameResult, GameHostState, MemoryView, ProbarComponent, ProbarEntity,
     RuntimeConfig, StateDelta, WasmRuntime,
 };
+pub use shard::{ShardConfig, ShardParseError, ShardReport, ShardedRunner};
 pub use simulation::{
     run_replay, run_simulation, RandomWalkAgent, RecordedFrame, ReplayResult, SimulatedGameState,
     SimulationConfig, SimulationRecording,
@@ -418,22 +460,6 @@ pub use websocket::{
     MessageDirection, MessageType, MockWebSocketResponse, WebSocketConnection, WebSocketMessage,
     WebSocketMock, WebSocketMonitor, WebSocketMonitorBuilder, WebSocketState,
 };
-pub use shard::{ShardConfig, ShardParseError, ShardReport, ShardedRunner};
-pub use clock::{
-    Clock, ClockController, ClockError, ClockOptions, ClockState, FakeClock, create_clock,
-};
-pub use dialog::{
-    AutoDialogBehavior, Dialog, DialogAction, DialogHandler, DialogHandlerBuilder, DialogType,
-    DialogExpectation,
-};
-pub use file_ops::{
-    Download, DownloadManager, DownloadState, FileChooser, FileInput, guess_mime_type,
-};
-pub use har::{
-    Har, HarBrowser, HarCache, HarContent, HarCookie, HarCreator, HarEntry, HarError, HarHeader,
-    HarLog, HarOptions, HarPlayer, HarPostData, HarPostParam, HarQueryParam, HarRecorder,
-    HarRequest, HarResponse, HarTimings, NotFoundBehavior,
-};
 
 /// Prelude for convenient imports
 pub mod prelude {
@@ -441,20 +467,28 @@ pub mod prelude {
     pub use super::assertion::*;
     pub use super::bridge::*;
     pub use super::browser::*;
+    pub use super::clock::*;
     pub use super::context::*;
+    pub use super::dialog::*;
     pub use super::driver::*;
     pub use super::event::*;
+    pub use super::file_ops::*;
     pub use super::fixture::*;
     pub use super::fuzzer::*;
+    pub use super::har::*;
     pub use super::harness::*;
     pub use super::locator::*;
     pub use super::network::*;
     pub use super::page_object::*;
+    pub use super::perf::*;
     pub use super::performance::*;
+    pub use super::pixel_coverage::*;
     pub use super::replay::*;
     pub use super::reporter::*;
     pub use super::result::*;
+    pub use super::runner::*;
     pub use super::runtime::*;
+    pub use super::shard::*;
     pub use super::simulation::*;
     pub use super::snapshot::*;
     pub use super::tracing_support::*;
@@ -471,14 +505,12 @@ pub mod prelude {
     pub use super::watch::*;
     pub use super::web::*;
     pub use super::websocket::*;
-    pub use super::pixel_coverage::*;
-    pub use super::runner::*;
-    pub use super::perf::*;
-    pub use super::shard::*;
-    pub use super::clock::*;
-    pub use super::dialog::*;
-    pub use super::file_ops::*;
-    pub use super::har::*;
+    // Note: renacer_integration types are available as RenacerTracingConfig, etc.
+    // to avoid conflicts with tracing_support::TracingConfig
+    pub use super::renacer_integration::{
+        ChromeTrace as RenacerChromeTrace, ChromeTraceEvent, TraceCollector, TraceContext,
+        TraceSpan, TracingConfig as RenacerTracingConfig,
+    };
 }
 
 /// Standard invariants for game testing
@@ -488,7 +520,7 @@ pub mod standard_invariants {
 
 // Re-export derive macros when the `derive` feature is enabled (Phase 4: Poka-Yoke)
 #[cfg(feature = "derive")]
-pub use probar_derive::{probar_test, ProbarComponent, ProbarEntity, ProbarSelector};
+pub use jugar_probar_derive::{probar_test, ProbarComponent, ProbarEntity, ProbarSelector};
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

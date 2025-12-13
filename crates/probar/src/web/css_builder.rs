@@ -170,8 +170,7 @@ impl CssBuilder {
         }
 
         // Generate rules
-        let rule_strings: Vec<String> =
-            self.rules.iter().map(CssRule::render).collect();
+        let rule_strings: Vec<String> = self.rules.iter().map(CssRule::render).collect();
         content.push_str(&rule_strings.join("\n\n"));
 
         Ok(GeneratedCss {
@@ -331,10 +330,7 @@ mod tests {
 
     #[test]
     fn h0_css_09_dark_mode() {
-        let css = CssBuilder::new()
-            .dark_mode("#000", "#fff")
-            .build()
-            .unwrap();
+        let css = CssBuilder::new().dark_mode("#000", "#fff").build().unwrap();
 
         assert!(css.content.contains("prefers-color-scheme: dark"));
         assert!(css.content.contains("--bg-color: #000;"));

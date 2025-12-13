@@ -2892,9 +2892,7 @@ mod tests {
         fn h0_locator_33_fill_action() {
             let locator = Locator::new("input");
             let action = locator.fill("hello").unwrap();
-            assert!(
-                matches!(action, LocatorAction::Fill { text, .. } if text == "hello")
-            );
+            assert!(matches!(action, LocatorAction::Fill { text, .. } if text == "hello"));
         }
 
         #[test]
@@ -2932,7 +2930,9 @@ mod tests {
                 .drag_to(&Point::new(0.0, 0.0))
                 .duration(Duration::from_secs(2))
                 .build();
-            assert!(matches!(action, LocatorAction::Drag { duration, .. } if duration == Duration::from_secs(2)));
+            assert!(
+                matches!(action, LocatorAction::Drag { duration, .. } if duration == Duration::from_secs(2))
+            );
         }
 
         #[test]

@@ -2,6 +2,8 @@
 
 > **Probar Principle**: Complete UX verification with minimal boilerplate
 
+![GUI Coverage Heatmap](../assets/coverage_combined.png)
+
 Track 100% user experience coverage for your GUI applications. Probar's GUI coverage is designed to be **trivially simple** - define what needs testing, run your tests, get a percentage.
 
 ## Quick Start

@@ -2,6 +2,10 @@
 
 Probar enables frame-perfect replay of game sessions.
 
+![Replay Coverage Analysis](../assets/coverage_magma.png)
+
+*Replay sessions build comprehensive coverage maps over time*
+
 ## Why Deterministic Replay?
 
 - **Bug Reproduction**: Replay exact sequence that caused a bug

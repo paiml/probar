@@ -221,7 +221,13 @@ impl HtmlBuilder {
 
     /// Add an input element
     #[must_use]
-    pub fn input(mut self, id: &str, input_type: &str, placeholder: &str, aria_label: &str) -> Self {
+    pub fn input(
+        mut self,
+        id: &str,
+        input_type: &str,
+        placeholder: &str,
+        aria_label: &str,
+    ) -> Self {
         self.document.elements.push(Element::Input {
             id: id.to_string(),
             input_type: input_type.to_string(),
@@ -361,7 +367,9 @@ mod tests {
             .build()
             .unwrap();
 
-        assert!(html.content.contains(r#"<div id="container" class="main flex">Hello</div>"#));
+        assert!(html
+            .content
+            .contains(r#"<div id="container" class="main flex">Hello</div>"#));
     }
 
     #[test]

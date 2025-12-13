@@ -438,7 +438,10 @@ mod tests {
         let mut dialog = Dialog::prompt("Name?", None);
         dialog.accept_with("John");
         assert!(dialog.is_handled());
-        assert_eq!(dialog.action(), &DialogAction::AcceptWith("John".to_string()));
+        assert_eq!(
+            dialog.action(),
+            &DialogAction::AcceptWith("John".to_string())
+        );
     }
 
     #[test]
@@ -515,7 +518,10 @@ mod tests {
         handler.set_auto_behavior(AutoDialogBehavior::UseDefault);
 
         let dialog = handler.handle(Dialog::prompt("Name?", Some("John".to_string())));
-        assert_eq!(dialog.action(), &DialogAction::AcceptWith("John".to_string()));
+        assert_eq!(
+            dialog.action(),
+            &DialogAction::AcceptWith("John".to_string())
+        );
     }
 
     #[test]
@@ -672,7 +678,10 @@ mod tests {
         let handler = DialogHandlerBuilder::new().use_defaults().build();
 
         let dialog = handler.handle(Dialog::prompt("Name?", Some("Bob".to_string())));
-        assert_eq!(dialog.action(), &DialogAction::AcceptWith("Bob".to_string()));
+        assert_eq!(
+            dialog.action(),
+            &DialogAction::AcceptWith("Bob".to_string())
+        );
     }
 
     // =========================================================================

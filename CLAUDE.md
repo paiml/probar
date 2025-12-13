@@ -95,3 +95,45 @@ crates/
 - **95% minimum test coverage**
 - **Zero tolerance for panic paths** (clippy: deny unwrap_used, expect_used)
 - **Comprehensive inline documentation**
+
+## Dogfooding: Book Screenshots
+
+Probar generates its own documentation screenshots using its pixel coverage heatmap feature. This validates our PNG export functionality.
+
+### Generating Screenshots for Documentation
+
+```bash
+# Generate heatmap PNGs to /tmp/
+cargo run --example pixel_coverage_heatmap -p jugar-probar
+
+# Copy to book assets
+cp /tmp/coverage_viridis.png /tmp/coverage_magma.png \
+   /tmp/coverage_pattern.png /tmp/coverage_combined.png \
+   book/src/assets/
+```
+
+### Screenshot Files
+
+| File | Description |
+|------|-------------|
+| `coverage_viridis.png` | Viridis palette (colorblind-safe) |
+| `coverage_magma.png` | Magma palette (dark to bright) |
+| `coverage_pattern.png` | Gradient pattern with gap highlighting |
+| `coverage_combined.png` | Combined line + pixel coverage report |
+
+### Using in Markdown
+
+```markdown
+![Viridis Heatmap](../assets/coverage_viridis.png)
+```
+
+### Regenerating After Changes
+
+When modifying `pixel_coverage` or `PngHeatmap`:
+
+1. Run the example to generate new PNGs
+2. Copy to `book/src/assets/`
+3. Build the book: `mdbook build book`
+4. Verify images render correctly
+
+This workflow validates our PNG export code every time documentation is updated.
