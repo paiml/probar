@@ -128,7 +128,7 @@ fn run_report(_config: &CliConfig, args: &probar_cli::ReportArgs) {
 
 fn run_coverage(_config: &CliConfig, args: &probar_cli::CoverageArgs) -> CliResult<()> {
     use jugar_probar::pixel_coverage::{
-        ColorPalette, CoverageCell, PngHeatmap, PixelCoverageReport,
+        ColorPalette, CoverageCell, PngHeatmap,
     };
 
     println!("Generating coverage heatmap...");

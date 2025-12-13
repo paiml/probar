@@ -1,12 +1,13 @@
-//! Coverage Demo - WASM Coverage Tooling
+//! Coverage Demo - WASM Coverage Tooling with PIXEL-001 v2.1
 //!
 //! Demonstrates Probar's novel WASM coverage instrumentation framework
-//! using Toyota Way principles (Poka-Yoke, Muda, Jidoka, Heijunka).
+//! using Toyota Way principles (Poka-Yoke, Muda, Jidoka, Heijunka) and
+//! pixel-perfect verification with Popperian falsification.
 //!
 //! # Running
 //!
 //! ```bash
-//! cargo run --example coverage_demo -p probar
+//! cargo run --example coverage_demo -p jugar-probar
 //! ```
 //!
 //! # Features
@@ -16,6 +17,7 @@
 //! - Soft Jidoka (Stop vs `LogAndContinue`)
 //! - Superblock tiling (Heijunka)
 //! - Popperian falsification methodology
+//! - **PIXEL-001 v2.1**: Pixel-perfect coverage with statistical rigor
 
 #![allow(clippy::uninlined_format_args)]
 
@@ -24,11 +26,15 @@ use jugar_probar::coverage::{
     CoverageViolation, EdgeId, FunctionId, Granularity, NullificationConfig, Superblock,
     SuperblockBuilder, SuperblockId, SuperblockResult, TaintedBlocks, ThreadLocalCounters,
 };
+use jugar_probar::pixel_coverage::{
+    CombinedCoverageReport, ConfidenceInterval, FalsifiabilityGate, FalsifiableHypothesis,
+    LineCoverageReport, OutputMode, PixelCoverageTracker, PixelRegion, ScoreBar,
+};
 
 fn main() {
     println!("╔═══════════════════════════════════════════════════════════════╗");
-    println!("║         PROBAR WASM COVERAGE TOOLING DEMO                     ║");
-    println!("║     Toyota Way Principles for Test Coverage                   ║");
+    println!("║     PROBAR WASM COVERAGE TOOLING DEMO (PIXEL-001 v2.1)        ║");
+    println!("║     Toyota Way Principles + Pixel-Perfect Verification        ║");
     println!("╚═══════════════════════════════════════════════════════════════╝\n");
 
     // Demo 1: Poka-Yoke (Error Prevention)
@@ -52,8 +58,11 @@ fn main() {
     // Demo 7: Popperian Falsification
     demo_popperian_falsification();
 
+    // Demo 8: PIXEL-001 v2.1 - Pixel-Perfect Coverage
+    demo_pixel_perfect_coverage();
+
     println!("\n╔═══════════════════════════════════════════════════════════════╗");
-    println!("║              Coverage Demo Complete!                          ║");
+    println!("║         Coverage Demo Complete (PIXEL-001 v2.1)!              ║");
     println!("╚═══════════════════════════════════════════════════════════════╝");
 }
 
@@ -420,4 +429,105 @@ fn demo_popperian_falsification() {
 
     println!("\n  ✓ Hypotheses are falsifiable through statistical tests");
     println!("  ✓ Results include p-value, effect size, confidence intervals\n");
+}
+
+/// Demo 8: PIXEL-001 v2.1 - Pixel-Perfect Coverage with Statistical Rigor
+fn demo_pixel_perfect_coverage() {
+    println!("┌─────────────────────────────────────────────────────────────────┐");
+    println!("│ Demo 8: PIXEL-001 v2.1 (Pixel-Perfect Verification)             │");
+    println!("│ Popperian falsification + Wilson confidence intervals           │");
+    println!("└─────────────────────────────────────────────────────────────────┘\n");
+
+    // Create pixel tracker for a simulated game UI (640x480, 8x6 grid)
+    let mut pixels = PixelCoverageTracker::builder()
+        .resolution(640, 480)
+        .grid_size(8, 6)
+        .threshold(0.85)
+        .build();
+
+    println!("  Pixel Tracker Configuration:");
+    println!("    Resolution: 640x480");
+    println!("    Grid: 8x6 (48 cells)");
+    println!("    Threshold: 85%");
+
+    // Simulate test coverage of UI regions
+    println!("\n  Simulating UI test coverage:");
+
+    // Header region
+    pixels.record_region(PixelRegion::new(0, 0, 640, 80));
+    println!("    ✓ Header region (0,0 to 640,80)");
+
+    // Main content area
+    pixels.record_region(PixelRegion::new(0, 80, 640, 320));
+    println!("    ✓ Main content (0,80 to 640,400)");
+
+    // Footer region
+    pixels.record_region(PixelRegion::new(0, 400, 640, 80));
+    println!("    ✓ Footer region (0,400 to 640,480)");
+
+    // Generate report
+    let report = pixels.generate_report();
+    println!("\n  Pixel Coverage Report:");
+    println!("    Coverage: {:.1}%", report.overall_coverage * 100.0);
+    println!("    Cells: {}/{}", report.covered_cells, report.total_cells);
+    println!("    Meets Threshold: {}", report.meets_threshold);
+
+    // Popperian Falsification with FalsifiabilityGate
+    println!("\n  Popperian Falsification:");
+    let gate = FalsifiabilityGate::new(15.0);
+
+    let h1 = FalsifiableHypothesis::coverage_threshold("H0-PIX-COVERAGE", 0.85)
+        .evaluate(report.overall_coverage);
+    let h2 = FalsifiableHypothesis::max_gap_size("H0-PIX-GAP", 5.0)
+        .evaluate(report.uncovered_regions.len() as f32);
+
+    println!("    H0-PIX-COVERAGE (≥85%): {}",
+        if h1.falsified { "FALSIFIED" } else { "NOT FALSIFIED" });
+    println!("    H0-PIX-GAP (≤5 gaps): {}",
+        if h2.falsified { "FALSIFIED" } else { "NOT FALSIFIED" });
+
+    let gate_result = gate.evaluate(&h1);
+    println!("    FalsifiabilityGate: {}",
+        if gate_result.is_passed() { "PASSED" } else { "FAILED" });
+
+    // Wilson Score Confidence Intervals
+    println!("\n  Wilson Score Confidence Interval (95%):");
+    let ci = ConfidenceInterval::wilson_score(
+        report.covered_cells as u32,
+        report.total_cells as u32,
+        0.95,
+    );
+    println!("    Lower: {:.1}%", ci.lower * 100.0);
+    println!("    Upper: {:.1}%", ci.upper * 100.0);
+    println!("    Level: {:.0}%", ci.level * 100.0);
+
+    // Score Bars
+    println!("\n  Visual Score Bars:");
+    let mode = OutputMode::from_env();
+    let coverage_bar = ScoreBar::new("Pixel", report.overall_coverage, 0.85);
+    println!("    {}", coverage_bar.render(mode.clone()));
+
+    // Combined Coverage Report
+    println!("\n  Combined Coverage Report:");
+    let line_report = LineCoverageReport::new(
+        0.92, // element coverage
+        1.0,  // screen coverage (simulated)
+        0.88, // journey coverage (simulated)
+        50,   // total elements
+        46,   // covered elements
+    );
+    let combined = CombinedCoverageReport::from_parts(line_report, report);
+
+    println!("{}", combined.summary());
+
+    // Terminal Heatmap
+    println!("\n  Pixel Heatmap:");
+    let heatmap = pixels.terminal_heatmap();
+    for line in heatmap.render().lines() {
+        println!("    {}", line);
+    }
+
+    println!("\n  ✓ PIXEL-001 v2.1 provides pixel-perfect verification");
+    println!("  ✓ FalsifiabilityGate enforces Popperian methodology");
+    println!("  ✓ Wilson score CI gives statistical rigor to coverage claims\n");
 }

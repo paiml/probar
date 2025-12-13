@@ -934,7 +934,7 @@ mod tests {
         let hasher = PerceptualHash::new(PhashAlgorithm::AHash);
         let hash = hasher.compute(&img, 8, 8);
         // Just verify it runs without panic
-        assert!(hash > 0 || hash == 0);
+        assert!(hash >= 0);
     }
 
     // =========================================================================

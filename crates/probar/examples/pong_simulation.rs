@@ -1,12 +1,13 @@
-//! Pong Simulation Demo - Deterministic Game Testing
+//! Pong Simulation Demo - Deterministic Game Testing with PIXEL-001 v2.1
 //!
 //! Demonstrates using Probar's simulation framework to test
-//! Pong game mechanics with deterministic replay.
+//! Pong game mechanics with deterministic replay and pixel-perfect
+//! verification using PIXEL-001 v2.1 methodology.
 //!
 //! # Running
 //!
 //! ```bash
-//! cargo run --example pong_simulation -p probar
+//! cargo run --example pong_simulation -p jugar-probar
 //! ```
 //!
 //! # Features
@@ -15,6 +16,7 @@
 //! - Replay verification for regression testing
 //! - Invariant checking (score bounds, paddle bounds)
 //! - Random walk agent for fuzz testing
+//! - **PIXEL-001 v2.1**: Pixel-perfect game element tracking
 
 #![allow(
     clippy::uninlined_format_args,
@@ -24,6 +26,10 @@
     dead_code
 )]
 
+use jugar_probar::pixel_coverage::{
+    ConfidenceInterval, FalsifiabilityGate, FalsifiableHypothesis, OutputMode,
+    PixelCoverageTracker, PixelRegion, ScoreBar,
+};
 use jugar_probar::{
     run_replay, run_simulation, Assertion, InputEvent, RandomWalkAgent, Seed, SimulationConfig,
 };
@@ -31,7 +37,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 fn main() {
-    println!("=== Probar Pong Simulation Demo ===\n");
+    println!("=== Probar Pong Simulation Demo (PIXEL-001 v2.1) ===\n");
 
     // Demo 1: Basic Pong simulation
     demo_pong_simulation();
@@ -45,7 +51,10 @@ fn main() {
     // Demo 4: Invariant checking
     demo_invariant_checking();
 
-    println!("\n=== Pong Simulation Demo Complete ===");
+    // Demo 5: PIXEL-001 v2.1 - Pixel-Perfect Game Coverage
+    demo_pixel_perfect_pong();
+
+    println!("\n=== Pong Simulation Demo Complete (PIXEL-001 v2.1) ===");
 }
 
 /// Simulated Pong game state
@@ -371,5 +380,134 @@ fn demo_invariant_checking() {
     println!("\nFinal state assertions:");
     println!("  Score in range [0, 100]: {}", score_valid.passed);
     println!("  Paddle in game bounds: {}", paddle_valid.passed);
+    println!();
+}
+
+fn demo_pixel_perfect_pong() {
+    println!("--- Demo 5: PIXEL-001 v2.1 Pixel-Perfect Coverage ---\n");
+
+    // Create pixel tracker for Pong game screen (800x600, 8x6 grid)
+    let mut pixels = PixelCoverageTracker::builder()
+        .resolution(800, 600)
+        .grid_size(8, 6)
+        .threshold(0.90)
+        .build();
+
+    println!("Pixel Tracker: 800x600 (8x6 grid, 90% threshold)\n");
+
+    // Simulate a game with pixel tracking
+    let mut state = PongState::new();
+    println!("Tracking pixel coverage over 500 frames...");
+
+    for frame in 0..500 {
+        // Random-ish input pattern
+        let inputs = if frame % 3 == 0 {
+            vec![InputEvent::key_press("KeyW")]
+        } else if frame % 7 == 0 {
+            vec![InputEvent::key_press("KeyS")]
+        } else if frame % 11 == 0 {
+            vec![InputEvent::key_press("ArrowLeft")]
+        } else {
+            vec![]
+        };
+
+        state.update(&inputs);
+
+        // Track ball position as pixel region (ball is 10x10)
+        let ball_x = state.ball_x.max(0.0).min(790.0) as u32;
+        let ball_y = state.ball_y.max(0.0).min(590.0) as u32;
+        pixels.record_region(PixelRegion::new(ball_x, ball_y, 10, 10));
+
+        // Track paddle 1 (left paddle)
+        let paddle1_y = (state.paddle1_y - PongState::PADDLE_HEIGHT / 2.0)
+            .max(0.0)
+            .min(500.0) as u32;
+        pixels.record_region(PixelRegion::new(
+            PongState::PADDLE_MARGIN as u32 - 10,
+            paddle1_y,
+            10,
+            PongState::PADDLE_HEIGHT as u32,
+        ));
+
+        // Track paddle 2 (right paddle)
+        let paddle2_y = (state.paddle2_y - PongState::PADDLE_HEIGHT / 2.0)
+            .max(0.0)
+            .min(500.0) as u32;
+        pixels.record_region(PixelRegion::new(
+            (PongState::GAME_WIDTH - PongState::PADDLE_MARGIN) as u32,
+            paddle2_y,
+            10,
+            PongState::PADDLE_HEIGHT as u32,
+        ));
+    }
+
+    // Generate report
+    let report = pixels.generate_report();
+    println!("\nPixel Coverage Report:");
+    println!("  Coverage: {:.1}%", report.overall_coverage * 100.0);
+    println!("  Cells: {}/{}", report.covered_cells, report.total_cells);
+    println!("  Meets Threshold: {}", report.meets_threshold);
+
+    // Popperian Falsification
+    println!("\nPopperian Falsification:");
+    let gate = FalsifiabilityGate::new(15.0);
+
+    let h1 = FalsifiableHypothesis::coverage_threshold("H0-PONG-PIX", 0.85)
+        .evaluate(report.overall_coverage);
+    let h2 = FalsifiableHypothesis::max_gap_size("H0-PONG-GAP", 10.0)
+        .evaluate(report.uncovered_regions.len() as f32);
+
+    println!(
+        "  H0-PONG-PIX (≥85%): {}",
+        if h1.falsified {
+            "FALSIFIED"
+        } else {
+            "NOT FALSIFIED"
+        }
+    );
+    println!(
+        "  H0-PONG-GAP (≤10 gaps): {}",
+        if h2.falsified {
+            "FALSIFIED"
+        } else {
+            "NOT FALSIFIED"
+        }
+    );
+
+    let gate_result = gate.evaluate(&h1);
+    println!(
+        "  FalsifiabilityGate: {}",
+        if gate_result.is_passed() {
+            "PASSED"
+        } else {
+            "FAILED"
+        }
+    );
+
+    // Wilson Score Confidence Interval
+    println!("\nWilson Score CI (95%):");
+    let ci = ConfidenceInterval::wilson_score(
+        report.covered_cells as u32,
+        report.total_cells as u32,
+        0.95,
+    );
+    println!("  [{:.1}%, {:.1}%]", ci.lower * 100.0, ci.upper * 100.0);
+
+    // Score Bar
+    println!("\nVisual Score:");
+    let mode = OutputMode::from_env();
+    let bar = ScoreBar::new("Pixel", report.overall_coverage, 0.90);
+    println!("  {}", bar.render(mode));
+
+    // Terminal Heatmap
+    println!("\nPixel Heatmap (ball/paddle positions):");
+    let heatmap = pixels.terminal_heatmap();
+    for line in heatmap.render().lines() {
+        println!("  {}", line);
+    }
+
+    // Final assertions
+    let coverage_assertion = Assertion::in_range(report.overall_coverage as f64, 0.5, 1.0);
+    println!("\nAssertion (coverage in [50%, 100%]): {}", coverage_assertion.passed);
     println!();
 }

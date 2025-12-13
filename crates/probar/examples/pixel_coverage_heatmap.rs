@@ -1,8 +1,9 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
-//! Pixel Coverage Heatmap Example
+//! Pixel Coverage Heatmap Example (PIXEL-001 v2.1)
 //!
 //! Demonstrates generating PNG heatmaps showing coverage and gaps,
-//! using trueno-viz style output with margins and color palettes.
+//! using trueno-viz style output with margins and color palettes,
+//! plus PIXEL-001 v2.1 verification features.
 //!
 //! Features demonstrated:
 //! - Terminal heatmap (STDOUT) with Unicode blocks
@@ -10,18 +11,20 @@
 //! - Title and subtitle text rendering
 //! - Combined coverage report (line + pixel)
 //! - Gap highlighting (red outline for untested regions)
+//! - **PIXEL-001 v2.1**: FalsifiabilityGate, Wilson CI, ScoreBar
 //! - CLI usage: `probar coverage --png output.png`
 //!
-//! Run with: `cargo run --example pixel_coverage_heatmap`
+//! Run with: `cargo run --example pixel_coverage_heatmap -p jugar-probar`
 
 use jugar_probar::pixel_coverage::{
-    ColorPalette, CombinedCoverageReport, CoverageCell, LineCoverageReport, PngHeatmap,
-    PixelCoverageTracker, PixelRegion,
+    ColorPalette, CombinedCoverageReport, ConfidenceInterval, CoverageCell,
+    FalsifiabilityGate, FalsifiableHypothesis, LineCoverageReport, OutputMode, PngHeatmap,
+    PixelCoverageTracker, PixelRegion, ScoreBar,
 };
 
 fn main() {
-    println!("Pixel Coverage Heatmap Example");
-    println!("===============================\n");
+    println!("Pixel Coverage Heatmap Example (PIXEL-001 v2.1)");
+    println!("=================================================\n");
 
     // Step 1: Create a coverage tracker and simulate some interactions
     println!("Step 1: Creating coverage tracker (10x8 grid on 800x600 screen)...");
@@ -55,6 +58,42 @@ fn main() {
     println!("  Covered Cells: {}/{}", report.covered_cells, report.total_cells);
     println!("  Uncovered Regions: {}", report.uncovered_regions.len());
     println!("  Meets Threshold: {}", if report.meets_threshold { "✓" } else { "✗" });
+
+    // Step 3b: PIXEL-001 v2.1 - Popperian Falsification
+    println!("\nStep 3b: PIXEL-001 v2.1 Verification...");
+
+    // FalsifiabilityGate with 15.0 threshold
+    let gate = FalsifiabilityGate::new(15.0);
+
+    // Test hypotheses
+    let h1 = FalsifiableHypothesis::coverage_threshold("H0-HEATMAP-COV", 0.75)
+        .evaluate(report.overall_coverage);
+    let h2 = FalsifiableHypothesis::max_gap_size("H0-HEATMAP-GAP", 8.0)
+        .evaluate(report.uncovered_regions.len() as f32);
+
+    println!("  H0-HEATMAP-COV (≥75%): {}",
+        if h1.falsified { "FALSIFIED" } else { "NOT FALSIFIED" });
+    println!("  H0-HEATMAP-GAP (≤8 gaps): {}",
+        if h2.falsified { "FALSIFIED" } else { "NOT FALSIFIED" });
+
+    let gate_result = gate.evaluate(&h1);
+    println!("  FalsifiabilityGate: {}",
+        if gate_result.is_passed() { "PASSED" } else { "FAILED" });
+
+    // Wilson Score CI
+    println!("\n  Wilson Score CI (95%):");
+    let ci = ConfidenceInterval::wilson_score(
+        report.covered_cells as u32,
+        report.total_cells as u32,
+        0.95,
+    );
+    println!("    Coverage: [{:.1}%, {:.1}%]", ci.lower * 100.0, ci.upper * 100.0);
+
+    // Score Bars
+    println!("\n  Score Bars:");
+    let mode = OutputMode::from_env();
+    let coverage_bar = ScoreBar::new("Pixel", report.overall_coverage, 0.80);
+    println!("    {}", coverage_bar.render(mode));
 
     // Step 4: Generate PNG heatmaps with different styles
     println!("\nStep 4: Generating PNG heatmaps...");
@@ -159,11 +198,19 @@ fn main() {
     println!("{}", "─".repeat(50));
     print_gap_analysis(&cells);
 
-    println!("\n✅ Pixel coverage heatmap example completed!");
+    println!("\n✅ Pixel coverage heatmap example completed (PIXEL-001 v2.1)!");
     println!("\nGenerated PNG files:");
     for name in ["viridis", "magma", "heat", "combined", "pattern"] {
         println!("  • {}/coverage_{}.png", std::env::temp_dir().display(), name);
     }
+
+    // PIXEL-001 v2.1 Summary
+    println!("\n--- PIXEL-001 v2.1 Features Demonstrated ---");
+    println!("  • FalsifiabilityGate: Popperian methodology with 15/25 threshold");
+    println!("  • FalsifiableHypothesis: coverage_threshold, max_gap_size");
+    println!("  • ConfidenceInterval: Wilson score for statistical rigor");
+    println!("  • ScoreBar: Visual progress indicators");
+    println!("  • CombinedCoverageReport: Line + Pixel coverage");
 
     // CLI usage reminder
     println!("\n--- CLI Usage ---");
