@@ -1768,7 +1768,7 @@ dependencies = [
 
 [[package]]
 name = "jugar-probar"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -1798,35 +1798,6 @@ dependencies = [
  "uuid",
  "wasm-bindgen",
  "wasmtime",
- "web-sys",
-]
-
-[[package]]
-name = "jugar-probar"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ae822b699b6df850c16a893cfe72ad44ae28e8f84a9b5e18fb4c021da063eb9"
-dependencies = [
- "base64",
- "chrono",
- "crossterm",
- "gif 0.13.3",
- "image",
- "js-sys",
- "mp4",
- "notify",
- "png 0.17.16",
- "ratatui",
- "regex",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "thiserror 2.0.17",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "wasm-bindgen",
  "web-sys",
 ]
 
@@ -2356,7 +2327,7 @@ dependencies = [
  "clap",
  "console",
  "indicatif",
- "jugar-probar 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "jugar-probar",
  "predicates",
  "serde",
  "serde_json",
@@ -2936,7 +2907,7 @@ version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
  "crossterm",
- "jugar-probar 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "jugar-probar",
  "proptest",
  "ratatui",
  "serde",

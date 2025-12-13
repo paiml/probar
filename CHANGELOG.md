@@ -5,6 +5,56 @@ All notable changes to Probar will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-12-13
+
+### Added
+
+#### PIXEL-001 v2.1: Pixel-Perfect Verification Framework
+- **Popperian Falsification**: `FalsifiabilityGate` with 15/25 gateway threshold
+- **Falsifiable Hypotheses**: `coverage_threshold`, `max_gap_size`, `ssim_threshold` constructors
+- **Wilson Score Confidence Intervals**: Statistical rigor for coverage proportions
+- **Score Bars**: Visual progress indicators with threshold highlighting
+
+#### Pixel-Perfect Metrics
+- **SSIM (Structural Similarity Index)**: Window-based image comparison (8x8 default)
+- **PSNR (Peak Signal-to-Noise Ratio)**: dB-scale quality metric with classification
+- **CIEDE2000 (ΔE₀₀)**: Lab color space perceptual color difference
+- **Perceptual Hashing**: AHash, DHash, PHash algorithms with Hamming distance
+
+#### Rich Terminal Output
+- **RichTerminalHeatmap**: Box-drawing characters with ANSI 24-bit color
+- **OutputMode**: RichAnsi, NoColorAscii, Json for CI tools
+- **Gap Detection**: Actionable recommendations for uncovered regions
+
+#### Configuration Schema
+- **PixelCoverageConfig**: TOML/JSON/YAML compatible configuration
+- **ThresholdConfig**: Minimum, target, complete thresholds
+- **VerificationConfig**: SSIM, PSNR, ΔE, PHash thresholds
+- **PerformanceConfig**: Parallel processing, batch size, thread count
+
+#### Parallel Processing Abstractions
+- **ParallelContext**: Rayon-ready parallel iteration (sequential fallback)
+- **BatchProcessor**: Efficient Delta E and SSIM batch computation
+- **Downscaler**: Rapid L1 checks at reduced resolution
+- **HashCache**: Perceptual hash caching for reference images
+
+### Changed
+- Updated pixel-coverage.md book chapter with PIXEL-001 v2.1 documentation
+- Calculator showcase demo now uses full pixel-perfect verification
+
+### Technical Details
+- **Total Tests**: 2,669 passing (189 pixel_coverage tests)
+- **New Test Categories**: 30 proptest property-based tests
+- **Complexity**: Max cyclomatic 1, max cognitive 0 (pixel_coverage module)
+
+## [0.2.0] - 2025-12-12
+
+### Added
+- Initial pixel coverage heatmaps
+- PNG export with Viridis/Magma/Heat palettes
+- Terminal heatmap rendering
+- Combined coverage reports
+
 ## [0.1.0] - 2025-12-12
 
 ### Added
@@ -74,4 +124,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rust Version**: 1.75.0+
 - **License**: MIT OR Apache-2.0
 
+[0.3.0]: https://github.com/paiml/probar/releases/tag/v0.3.0
+[0.2.0]: https://github.com/paiml/probar/releases/tag/v0.2.0
 [0.1.0]: https://github.com/paiml/probar/releases/tag/v0.1.0

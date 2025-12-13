@@ -38,6 +38,9 @@ pub enum Commands {
     /// Generate reports
     Report(ReportArgs),
 
+    /// Generate coverage heatmaps
+    Coverage(CoverageArgs),
+
     /// Initialize a new Probar project
     Init(InitArgs),
 
@@ -149,6 +152,58 @@ pub enum ReportFormat {
     Cobertura,
     /// JSON
     Json,
+}
+
+/// Arguments for the coverage command
+#[derive(Parser, Debug)]
+pub struct CoverageArgs {
+    /// Output PNG file path
+    #[arg(long)]
+    pub png: Option<PathBuf>,
+
+    /// Output JSON file path
+    #[arg(long)]
+    pub json: Option<PathBuf>,
+
+    /// Color palette (viridis, magma, heat)
+    #[arg(long, default_value = "viridis")]
+    pub palette: PaletteArg,
+
+    /// Include legend in PNG output
+    #[arg(long)]
+    pub legend: bool,
+
+    /// Highlight coverage gaps in red
+    #[arg(long)]
+    pub gaps: bool,
+
+    /// Title for the heatmap
+    #[arg(long)]
+    pub title: Option<String>,
+
+    /// PNG width in pixels
+    #[arg(long, default_value = "800")]
+    pub width: u32,
+
+    /// PNG height in pixels
+    #[arg(long, default_value = "600")]
+    pub height: u32,
+
+    /// Coverage data input file (JSON)
+    #[arg(short, long)]
+    pub input: Option<PathBuf>,
+}
+
+/// Color palette argument
+#[derive(ValueEnum, Clone, Debug, Default)]
+pub enum PaletteArg {
+    /// Viridis (colorblind-friendly)
+    #[default]
+    Viridis,
+    /// Magma (dark to bright)
+    Magma,
+    /// Heat (black-red-yellow-white)
+    Heat,
 }
 
 /// Arguments for the init command
@@ -548,6 +603,143 @@ mod tests {
             };
             let debug = format!("{cli:?}");
             assert!(debug.contains("Cli"));
+        }
+    }
+
+    mod coverage_tests {
+        use super::*;
+
+        #[test]
+        fn test_parse_coverage_command() {
+            let cli = Cli::parse_from(["probar", "coverage"]);
+            assert!(matches!(cli.command, Commands::Coverage(_)));
+        }
+
+        #[test]
+        fn test_parse_coverage_with_png() {
+            let cli = Cli::parse_from(["probar", "coverage", "--png", "output.png"]);
+            if let Commands::Coverage(args) = cli.command {
+                assert_eq!(args.png, Some(PathBuf::from("output.png")));
+            } else {
+                panic!("expected Coverage command");
+            }
+        }
+
+        #[test]
+        fn test_parse_coverage_with_palette() {
+            let cli = Cli::parse_from(["probar", "coverage", "--palette", "magma"]);
+            if let Commands::Coverage(args) = cli.command {
+                assert!(matches!(args.palette, PaletteArg::Magma));
+            } else {
+                panic!("expected Coverage command");
+            }
+        }
+
+        #[test]
+        fn test_parse_coverage_with_legend() {
+            let cli = Cli::parse_from(["probar", "coverage", "--legend"]);
+            if let Commands::Coverage(args) = cli.command {
+                assert!(args.legend);
+            } else {
+                panic!("expected Coverage command");
+            }
+        }
+
+        #[test]
+        fn test_parse_coverage_with_gaps() {
+            let cli = Cli::parse_from(["probar", "coverage", "--gaps"]);
+            if let Commands::Coverage(args) = cli.command {
+                assert!(args.gaps);
+            } else {
+                panic!("expected Coverage command");
+            }
+        }
+
+        #[test]
+        fn test_parse_coverage_with_title() {
+            let cli = Cli::parse_from(["probar", "coverage", "--title", "My Coverage"]);
+            if let Commands::Coverage(args) = cli.command {
+                assert_eq!(args.title, Some("My Coverage".to_string()));
+            } else {
+                panic!("expected Coverage command");
+            }
+        }
+
+        #[test]
+        fn test_parse_coverage_with_dimensions() {
+            let cli = Cli::parse_from(["probar", "coverage", "--width", "1024", "--height", "768"]);
+            if let Commands::Coverage(args) = cli.command {
+                assert_eq!(args.width, 1024);
+                assert_eq!(args.height, 768);
+            } else {
+                panic!("expected Coverage command");
+            }
+        }
+
+        #[test]
+        fn test_parse_coverage_full_options() {
+            let cli = Cli::parse_from([
+                "probar", "coverage",
+                "--png", "heatmap.png",
+                "--palette", "heat",
+                "--legend",
+                "--gaps",
+                "--title", "Test Coverage",
+                "--width", "1920",
+                "--height", "1080",
+            ]);
+            if let Commands::Coverage(args) = cli.command {
+                assert_eq!(args.png, Some(PathBuf::from("heatmap.png")));
+                assert!(matches!(args.palette, PaletteArg::Heat));
+                assert!(args.legend);
+                assert!(args.gaps);
+                assert_eq!(args.title, Some("Test Coverage".to_string()));
+                assert_eq!(args.width, 1920);
+                assert_eq!(args.height, 1080);
+            } else {
+                panic!("expected Coverage command");
+            }
+        }
+
+        #[test]
+        fn test_palette_default() {
+            let palette = PaletteArg::default();
+            assert!(matches!(palette, PaletteArg::Viridis));
+        }
+
+        #[test]
+        fn test_coverage_args_defaults() {
+            let args = CoverageArgs {
+                png: None,
+                json: None,
+                palette: PaletteArg::default(),
+                legend: false,
+                gaps: false,
+                title: None,
+                width: 800,
+                height: 600,
+                input: None,
+            };
+            assert_eq!(args.width, 800);
+            assert_eq!(args.height, 600);
+            assert!(matches!(args.palette, PaletteArg::Viridis));
+        }
+
+        #[test]
+        fn test_coverage_args_debug() {
+            let args = CoverageArgs {
+                png: Some(PathBuf::from("test.png")),
+                json: None,
+                palette: PaletteArg::Magma,
+                legend: true,
+                gaps: true,
+                title: Some("Test".to_string()),
+                width: 640,
+                height: 480,
+                input: None,
+            };
+            let debug = format!("{args:?}");
+            assert!(debug.contains("CoverageArgs"));
         }
     }
 }

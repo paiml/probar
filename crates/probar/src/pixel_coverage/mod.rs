@@ -4,13 +4,38 @@
 //! screen regions have been exercised by tests. Identifies untested
 //! visual regions between UI elements.
 
+mod config;
+mod falsification;
 mod heatmap;
+mod metrics;
+mod parallel;
+mod terminal;
 mod tracker;
 
-pub use heatmap::{ColorPalette, HeatmapRenderer, TerminalHeatmap};
+pub use config::{
+    ConfigValidationError, OutputConfig, PerformanceConfig, PixelCoverageConfig, ThresholdConfig,
+    VerificationConfig,
+};
+pub use falsification::{
+    ComparisonOperator, FalsifiabilityGate, FalsifiableHypothesis, FalsifiableHypothesisBuilder,
+    FalsificationCondition, FalsificationLayer, GateResult,
+};
+pub use heatmap::{BitmapFont, ColorPalette, HeatmapRenderer, PngHeatmap, Rgb, StatsPanel, TerminalHeatmap};
+pub use metrics::{
+    CieDe2000Metric, DeltaEClassification, DeltaEResult, Lab, PerceptualHash, PhashAlgorithm,
+    PixelVerificationResult, PixelVerificationSuite, PsnrMetric, PsnrQuality, PsnrResult,
+    SsimMetric, SsimResult,
+};
+pub use parallel::{
+    BatchProcessor, DeltaEBatchResult, Downscaler, HashCache, ParallelContext, SsimBatchResult,
+};
+pub use terminal::{
+    ansi, ConfidenceInterval, CoverageHypothesis, GapRegion, OutputMode, RichTerminalHeatmap,
+    ScoreBar,
+};
 pub use tracker::{
-    CoverageCell, GridConfig, PixelCoverageReport, PixelCoverageTracker,
-    Point as PixelPoint, Region as PixelRegion,
+    CombinedCoverageReport, CoverageCell, GridConfig, LineCoverageReport, PixelCoverageReport,
+    PixelCoverageTracker, Point as PixelPoint, Region as PixelRegion,
 };
 
 /// Coverage threshold presets

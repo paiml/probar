@@ -17,8 +17,8 @@ mod output;
 mod runner;
 
 pub use commands::{
-    Cli, Commands, ConfigArgs, InitArgs, RecordArgs, RecordFormat, ReportArgs, ReportFormat,
-    TestArgs,
+    Cli, Commands, ConfigArgs, CoverageArgs, InitArgs, PaletteArg, RecordArgs, RecordFormat,
+    ReportArgs, ReportFormat, TestArgs,
 };
 pub use config::{CliConfig, ColorChoice, Verbosity};
 pub use error::{CliError, CliResult};

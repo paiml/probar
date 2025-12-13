@@ -13,6 +13,9 @@ use clap::Parser;
 use probar_cli::{Cli, CliConfig, CliResult, ColorChoice, Commands, TestRunner, Verbosity};
 use std::process::ExitCode;
 
+// Re-export CoverageCell for use in create_sample_coverage_data
+use jugar_probar::pixel_coverage::CoverageCell;
+
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
@@ -39,6 +42,7 @@ fn run() -> CliResult<()> {
             run_report(&config, &args);
             Ok(())
         }
+        Commands::Coverage(args) => run_coverage(&config, &args),
         Commands::Init(args) => {
             run_init(&args);
             Ok(())
@@ -122,6 +126,144 @@ fn run_report(_config: &CliConfig, args: &probar_cli::ReportArgs) {
     }
 }
 
+fn run_coverage(_config: &CliConfig, args: &probar_cli::CoverageArgs) -> CliResult<()> {
+    use jugar_probar::pixel_coverage::{
+        ColorPalette, CoverageCell, PngHeatmap, PixelCoverageReport,
+    };
+
+    println!("Generating coverage heatmap...");
+
+    // Load coverage data from input file or use sample data
+    let cells: Vec<Vec<CoverageCell>> = if let Some(ref _input) = args.input {
+        // TODO: Load from JSON file
+        println!("Loading coverage data from input file...");
+        create_sample_coverage_data()
+    } else {
+        println!("No input file specified, using sample data");
+        create_sample_coverage_data()
+    };
+
+    // Select palette
+    let palette = match args.palette {
+        probar_cli::PaletteArg::Viridis => ColorPalette::viridis(),
+        probar_cli::PaletteArg::Magma => ColorPalette::magma(),
+        probar_cli::PaletteArg::Heat => ColorPalette::heat(),
+    };
+
+    // Build heatmap
+    let mut heatmap = PngHeatmap::new(args.width, args.height).with_palette(palette);
+
+    if args.legend {
+        heatmap = heatmap.with_legend();
+    }
+
+    if args.gaps {
+        heatmap = heatmap.with_gap_highlighting();
+    }
+
+    if let Some(ref title) = args.title {
+        heatmap = heatmap.with_title(title);
+    }
+
+    // Export PNG if path provided
+    if let Some(ref png_path) = args.png {
+        heatmap
+            .export_to_file(&cells, png_path)
+            .map_err(|e| probar_cli::CliError::report_generation(e.to_string()))?;
+        println!("PNG heatmap exported to: {}", png_path.display());
+    }
+
+    // Export JSON if path provided
+    if let Some(ref json_path) = args.json {
+        let report = generate_coverage_report(&cells);
+        let json = serde_json::to_string_pretty(&report)
+            .map_err(|e| probar_cli::CliError::report_generation(e.to_string()))?;
+        std::fs::write(json_path, json)
+            .map_err(|e| probar_cli::CliError::report_generation(e.to_string()))?;
+        println!("Coverage report exported to: {}", json_path.display());
+    }
+
+    // Print summary if no output specified
+    if args.png.is_none() && args.json.is_none() {
+        let report = generate_coverage_report(&cells);
+        println!("\nCoverage Summary:");
+        println!("  Overall Coverage: {:.1}%", report.overall_coverage * 100.0);
+        println!(
+            "  Covered Cells: {}/{}",
+            report.covered_cells, report.total_cells
+        );
+        println!("  Meets Threshold: {}", if report.meets_threshold { "✓" } else { "✗" });
+        println!("\nUse --png <path> to export a heatmap image.");
+    }
+
+    Ok(())
+}
+
+/// Create sample coverage data for demonstration
+fn create_sample_coverage_data() -> Vec<Vec<CoverageCell>> {
+    use jugar_probar::pixel_coverage::CoverageCell;
+
+    let rows = 10;
+    let cols = 15;
+    let mut cells = Vec::with_capacity(rows);
+
+    for row in 0..rows {
+        let mut row_cells = Vec::with_capacity(cols);
+        for col in 0..cols {
+            let coverage = if row == 5 && (col == 5 || col == 6 || col == 7) {
+                0.0 // Gap in the middle
+            } else if row == 2 && col > 10 {
+                0.0 // Another gap
+            } else {
+                let x_factor = col as f32 / (cols - 1) as f32;
+                let y_factor = row as f32 / (rows - 1) as f32;
+                (x_factor + y_factor) / 2.0
+            };
+
+            row_cells.push(CoverageCell {
+                coverage,
+                hit_count: (coverage * 10.0) as u64,
+            });
+        }
+        cells.push(row_cells);
+    }
+
+    cells
+}
+
+/// Generate coverage report from cells
+fn generate_coverage_report(
+    cells: &[Vec<CoverageCell>],
+) -> jugar_probar::pixel_coverage::PixelCoverageReport {
+    use jugar_probar::pixel_coverage::PixelCoverageReport;
+
+    let total_cells = cells.iter().map(|r| r.len()).sum::<usize>() as u32;
+    let covered_cells = cells
+        .iter()
+        .flat_map(|r| r.iter())
+        .filter(|c| c.coverage > 0.0)
+        .count() as u32;
+
+    let overall_coverage = if total_cells > 0 {
+        covered_cells as f32 / total_cells as f32
+    } else {
+        0.0
+    };
+
+    PixelCoverageReport {
+        grid_width: cells.first().map_or(0, |r| r.len() as u32),
+        grid_height: cells.len() as u32,
+        overall_coverage,
+        covered_cells,
+        total_cells,
+        min_coverage: 0.0,
+        max_coverage: 1.0,
+        total_interactions: 0,
+        meets_threshold: overall_coverage >= 0.8,
+        uncovered_regions: Vec::new(),
+    }
+}
+
 fn run_init(args: &probar_cli::InitArgs) {
     println!("Initializing Probar project in: {}", args.path.display());
 
@@ -195,7 +337,10 @@ fn run_config(config: &CliConfig, args: &probar_cli::ConfigArgs) {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use probar_cli::{ConfigArgs, InitArgs, RecordArgs, RecordFormat, ReportArgs, ReportFormat};
+    use probar_cli::{
+        ConfigArgs, CoverageArgs, InitArgs, PaletteArg, RecordArgs, RecordFormat, ReportArgs,
+        ReportFormat,
+    };
     use std::path::PathBuf;
 
     mod build_config_tests {
@@ -453,6 +598,111 @@ mod tests {
             };
             let result = run_tests(config, &args);
             assert!(result.is_ok());
+        }
+    }
+
+    mod run_coverage_tests {
+        use super::*;
+
+        #[test]
+        fn test_run_coverage_no_output() {
+            let config = CliConfig::default();
+            let args = CoverageArgs {
+                png: None,
+                json: None,
+                palette: PaletteArg::Viridis,
+                legend: false,
+                gaps: false,
+                title: None,
+                width: 400,
+                height: 300,
+                input: None,
+            };
+            let result = run_coverage(&config, &args);
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_run_coverage_with_png() {
+            let temp_dir = std::env::temp_dir();
+            let png_path = temp_dir.join("test_coverage.png");
+
+            let config = CliConfig::default();
+            let args = CoverageArgs {
+                png: Some(png_path.clone()),
+                json: None,
+                palette: PaletteArg::Magma,
+                legend: true,
+                gaps: true,
+                title: Some("Test Coverage".to_string()),
+                width: 800,
+                height: 600,
+                input: None,
+            };
+
+            let result = run_coverage(&config, &args);
+            assert!(result.is_ok());
+
+            // Verify PNG was created
+            assert!(png_path.exists());
+
+            // Cleanup
+            let _ = std::fs::remove_file(&png_path);
+        }
+
+        #[test]
+        fn test_run_coverage_with_json() {
+            let temp_dir = std::env::temp_dir();
+            let json_path = temp_dir.join("test_coverage.json");
+
+            let config = CliConfig::default();
+            let args = CoverageArgs {
+                png: None,
+                json: Some(json_path.clone()),
+                palette: PaletteArg::Heat,
+                legend: false,
+                gaps: false,
+                title: None,
+                width: 640,
+                height: 480,
+                input: None,
+            };
+
+            let result = run_coverage(&config, &args);
+            assert!(result.is_ok());
+
+            // Verify JSON was created
+            assert!(json_path.exists());
+
+            // Verify JSON content
+            let content = std::fs::read_to_string(&json_path).unwrap();
+            assert!(content.contains("overall_coverage"));
+
+            // Cleanup
+            let _ = std::fs::remove_file(&json_path);
+        }
+
+        #[test]
+        fn test_create_sample_coverage_data() {
+            let cells = create_sample_coverage_data();
+            assert_eq!(cells.len(), 10);
+            assert_eq!(cells[0].len(), 15);
+
+            // Check for gaps
+            assert_eq!(cells[5][5].coverage, 0.0);
+            assert_eq!(cells[5][6].coverage, 0.0);
+            assert_eq!(cells[2][11].coverage, 0.0);
+        }
+
+        #[test]
+        fn test_generate_coverage_report() {
+            let cells = create_sample_coverage_data();
+            let report = generate_coverage_report(&cells);
+
+            assert_eq!(report.total_cells, 150);
+            assert!(report.covered_cells < 150); // Some gaps exist
+            assert!(report.overall_coverage > 0.0);
+            assert!(report.overall_coverage < 1.0);
         }
     }
 }

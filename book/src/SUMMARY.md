@@ -57,6 +57,7 @@
 - [HTML Reports](./probar/coverage-html.md)
 - [Cobertura XML](./probar/coverage-cobertura.md)
 - [GUI Coverage](./probar/ux-coverage.md)
+- [Pixel Coverage Heatmaps](./probar/pixel-coverage.md)
 
 # Advanced Topics
 
