@@ -1,74 +1,76 @@
 # CLI Reference
 
-Command-line interface reference for Probar.
+Command-line interface reference for **probador** - the CLI tool for Probar.
 
 ## Installation
 
 ```bash
-# Install from source
-cargo install --path crates/probar-cli
+cargo install probador
+```
 
-# Or build locally
-cargo build --release -p probar-cli
+Or build from source:
+
+```bash
+cargo build --release -p probador
 ```
 
 ## Commands
 
-### probar test
+### probador test
 
 Run tests with optional coverage and filtering.
 
 ```bash
 # Run all tests
-probar test
+probador test
 
 # Filter tests by pattern
-probar test --filter "game::*"
+probador test --filter "game::*"
 
 # Run with coverage
-probar test --coverage
+probador test --coverage
 
 # Parallel execution
-probar test -j 4
+probador test -j 4
 
 # Fail fast on first error
-probar test --fail-fast
+probador test --fail-fast
 
 # Watch mode (re-run on changes)
-probar test --watch
+probador test --watch
 
 # Custom timeout (ms)
-probar test --timeout 60000
+probador test --timeout 60000
 
 # Custom output directory
-probar test --output target/my-tests
+probador test --output target/my-tests
 ```
 
-### probar coverage
+### probador coverage
 
 Generate pixel coverage heatmaps and reports.
 
 ```bash
 # Generate PNG heatmap
-probar coverage --png output.png
+probador coverage --png output.png
 
 # Choose color palette (viridis, magma, heat)
-probar coverage --png output.png --palette magma
+probador coverage --png output.png --palette magma
 
 # Add legend and gap highlighting
-probar coverage --png output.png --legend --gaps
+probador coverage --png output.png --legend --gaps
 
 # Add title
-probar coverage --png output.png --title "My Coverage Report"
+probador coverage --png output.png --title "My Coverage Report"
 
 # Custom dimensions
-probar coverage --png output.png --width 1920 --height 1080
+probador coverage --png output.png --width 1920 --height 1080
 
 # Export JSON report
-probar coverage --json report.json
+probador coverage --json report.json
 
 # Full example
-probar coverage --png heatmap.png \
+probador coverage --png heatmap.png \
   --palette viridis \
   --legend \
   --gaps \
@@ -91,104 +93,104 @@ probar coverage --png heatmap.png \
 | `--height <px>` | PNG height | 600 |
 | `-i, --input <path>` | Input coverage data (JSON) | - |
 
-### probar record
+### probador record
 
 Record test execution to media files.
 
 ```bash
 # Record as GIF (default)
-probar record test_login
+probador record test_login
 
 # Record as PNG screenshots
-probar record test_login --format png
+probador record test_login --format png
 
 # Custom output path
-probar record test_login --output recording.gif
+probador record test_login --output recording.gif
 
 # Set frame rate
-probar record test_login --fps 30
+probador record test_login --fps 30
 
 # Set quality (1-100)
-probar record test_login --quality 90
+probador record test_login --quality 90
 ```
 
 **Formats:** `gif`, `png`, `svg`, `mp4`
 
-### probar report
+### probador report
 
 Generate test reports in various formats.
 
 ```bash
 # HTML report (default)
-probar report
+probador report
 
 # Specific format
-probar report --format lcov
-probar report --format junit
-probar report --format cobertura
-probar report --format json
+probador report --format lcov
+probador report --format junit
+probador report --format cobertura
+probador report --format json
 
 # Custom output directory
-probar report --output target/reports
+probador report --output target/reports
 
 # Open in browser after generation
-probar report --open
+probador report --open
 ```
 
 **Formats:** `html`, `junit`, `lcov`, `cobertura`, `json`
 
-### probar init
+### probador init
 
 Initialize a new Probar project.
 
 ```bash
 # Initialize in current directory
-probar init
+probador init
 
 # Initialize in specific path
-probar init ./my-project
+probador init ./my-project
 
 # Force overwrite existing files
-probar init --force
+probador init --force
 ```
 
-### probar config
+### probador config
 
 View and manage configuration.
 
 ```bash
 # Show current configuration
-probar config --show
+probador config --show
 
 # Set a configuration value
-probar config --set "parallel=4"
+probador config --set "parallel=4"
 
 # Reset to defaults
-probar config --reset
+probador config --reset
 ```
 
-### probar serve
+### probador serve
 
 Start a WASM development server with hot reload support.
 
 ```bash
 # Serve current directory on port 8080
-probar serve
+probador serve
 
 # Serve a specific directory
-probar serve ./www
+probador serve ./www
 
 # Custom port
-probar serve --port 3000
+probador serve --port 3000
 
 # Enable CORS for cross-origin requests
-probar serve --cors
+probador serve --cors
 
 # Open browser automatically
-probar serve --open
+probador serve --open
 
 # Full example
-probar serve ./dist --port 8080 --cors --open
+probador serve ./dist --port 8080 --cors --open
 ```
 
 **Options:**
@@ -207,30 +209,30 @@ probar serve ./dist --port 8080 --cors --open
 - Automatic CORS headers when enabled
 - No-cache headers for development
 
-### probar build
+### probador build
 
 Build a Rust project to WASM using wasm-pack.
 
 ```bash
 # Build in development mode
-probar build
+probador build
 
 # Build in release mode
-probar build --release
+probador build --release
 
 # Specify build target
-probar build --target web
-probar build --target bundler
-probar build --target nodejs
+probador build --target web
+probador build --target bundler
+probador build --target nodejs
 
 # Custom output directory
-probar build --out-dir ./dist
+probador build --out-dir ./dist
 
 # Enable profiling (adds names section)
-probar build --profiling
+probador build --profiling
 
 # Full example
-probar build ./my-game --target web --release --out-dir ./www/pkg
+probador build ./my-game --target web --release --out-dir ./www/pkg
 ```
 
 **Options:**
@@ -243,28 +245,28 @@ probar build ./my-game --target web --release --out-dir ./www/pkg
 | `-o, --out-dir <path>` | Output directory | pkg |
 | `--profiling` | Enable profiling | false |
 
-### probar watch
+### probador watch
 
 Watch for file changes and rebuild automatically.
 
 ```bash
 # Watch current directory
-probar watch
+probador watch
 
 # Watch with dev server
-probar watch --serve
+probador watch --serve
 
 # Custom port when serving
-probar watch --serve --port 3000
+probador watch --serve --port 3000
 
 # Build in release mode
-probar watch --release
+probador watch --release
 
 # Custom debounce delay
-probar watch --debounce 1000
+probador watch --debounce 1000
 
 # Full example
-probar watch ./my-game --serve --port 8080 --target web
+probador watch ./my-game --serve --port 8080 --target web
 ```
 
 **Options:**
@@ -281,40 +283,40 @@ probar watch ./my-game --serve --port 8080 --target web
 
 **Watched files:** `.rs`, `.toml`
 
-### probar playbook
+### probador playbook
 
 Run YAML-driven state machine playbook tests with validation and mutation testing.
 
 ```bash
 # Validate a playbook
-probar playbook login.yaml --validate
+probador playbook login.yaml --validate
 
 # Run multiple playbooks
-probar playbook login.yaml checkout.yaml profile.yaml
+probador playbook login.yaml checkout.yaml profile.yaml
 
 # Export state diagram as SVG
-probar playbook login.yaml --export svg --export-output diagram.svg
+probador playbook login.yaml --export svg --export-output diagram.svg
 
 # Export as DOT (Graphviz)
-probar playbook login.yaml --export dot --export-output diagram.dot
+probador playbook login.yaml --export dot --export-output diagram.dot
 
 # Run mutation testing (M1-M5)
-probar playbook login.yaml --mutate
+probador playbook login.yaml --mutate
 
 # Run specific mutation classes
-probar playbook login.yaml --mutate --mutation-classes M1,M2,M3
+probador playbook login.yaml --mutate --mutation-classes M1,M2,M3
 
 # JSON output for CI integration
-probar playbook login.yaml --format json
+probador playbook login.yaml --format json
 
 # JUnit XML for test reporting
-probar playbook login.yaml --format junit
+probador playbook login.yaml --format junit
 
 # Fail fast on first error
-probar playbook login.yaml --fail-fast
+probador playbook login.yaml --fail-fast
 
 # Full example
-probar playbook tests/*.yaml \
+probador playbook tests/*.yaml \
   --validate \
   --mutate \
   --mutation-classes M1,M2,M5 \
@@ -353,15 +355,15 @@ These options work with all commands:
 
 ```bash
 # Verbose output (-v, -vv, -vvv for more detail)
-probar -v test
-probar -vvv test
+probador -v test
+probador -vvv test
 
 # Quiet mode (suppress non-error output)
-probar -q test
+probador -q test
 
 # Color output (auto, always, never)
-probar --color never test
-probar --color always report
+probador --color never test
+probador --color always report
 ```
 
 ## Examples
@@ -369,47 +371,60 @@ probar --color always report
 ### Basic Test Run
 
 ```bash
-probar test
+probador test
 ```
 
 ### Coverage with Heatmap
 
 ```bash
 # Run tests with coverage
-probar test --coverage
+probador test --coverage
 
 # Generate heatmap
-probar coverage --png coverage.png --legend --gaps --title "Test Coverage"
+probador coverage --png coverage.png --legend --gaps --title "Test Coverage"
 ```
 
 ### CI/CD Pipeline
 
 ```bash
 # Run tests, fail fast, generate reports
-probar test --fail-fast --coverage
-probar report --format lcov --output coverage/
-probar report --format junit --output test-results/
-probar coverage --json coverage/pixel-report.json
+probador test --fail-fast --coverage
+probador report --format lcov --output coverage/
+probador report --format junit --output test-results/
+probador coverage --json coverage/pixel-report.json
 ```
 
 ### Watch Mode Development
 
 ```bash
 # Run tests on file changes
-probar test --watch --filter "unit::*"
+probador test --watch --filter "unit::*"
 ```
 
 ### WASM Development Workflow
 
 ```bash
 # Build WASM package
-probar build --target web --release
+probador build --target web --release
 
 # Start dev server with hot reload
-probar serve ./www --port 8080 --cors
+probador serve ./www --port 8080 --cors
 
 # Or combine watch + serve for full development experience
-probar watch --serve --port 8080
+probador watch --serve --port 8080
+```
+
+### Playbook State Machine Testing
+
+```bash
+# Validate playbook
+probador playbook login.yaml --validate
+
+# Export diagram
+probador playbook login.yaml --export svg -o login.svg
+
+# Run mutation testing
+probador playbook login.yaml --mutate
 ```
 
 ## Exit Codes
@@ -428,3 +443,17 @@ probar watch --serve --port 8080
 | `PROBAR_COLOR` | Color output (auto/always/never) |
 | `PROBAR_PARALLEL` | Default parallel jobs |
 | `PROBAR_TIMEOUT` | Default test timeout (ms) |
+
+## Library Usage
+
+For programmatic usage in Rust code, use the library crate:
+
+```bash
+cargo add jugar-probar --dev
+```
+
+```rust
+use jugar_probar::prelude::*;
+```
+
+See [API Reference](./api-reference.md) for library documentation.

@@ -4,6 +4,48 @@
 
 ![Probar Coverage Visualization](probar/assets/coverage_viridis.png)
 
+## Installation
+
+Probar is distributed as two crates:
+
+| Crate | Purpose | Install |
+|-------|---------|---------|
+| **[jugar-probar](https://crates.io/crates/jugar-probar)** | Library for writing tests | `cargo add jugar-probar --dev` |
+| **[probador](https://crates.io/crates/probador)** | CLI tool for running tests | `cargo install probador` |
+
+### Library (jugar-probar)
+
+Add to your `Cargo.toml`:
+
+```toml
+[dev-dependencies]
+jugar-probar = "0.3"
+```
+
+```rust
+use jugar_probar::prelude::*;
+```
+
+### CLI (probador)
+
+```bash
+cargo install probador
+```
+
+```bash
+# Validate a playbook state machine
+probador playbook login.yaml --validate
+
+# Run with mutation testing
+probador playbook login.yaml --mutate
+
+# Export state diagram
+probador playbook login.yaml --export svg -o diagram.svg
+
+# Start dev server for WASM
+probador serve --port 8080
+```
+
 ## Features
 
 - **Browser Automation**: Chrome DevTools Protocol (CDP) via chromiumoxide
@@ -13,22 +55,7 @@
 - **Deterministic Replay**: Record and replay game sessions
 - **Monte Carlo Fuzzing**: Random input generation with invariant checking
 - **Type-Safe Selectors**: Compile-time checked entity/component queries
-
-## Getting Started
-
-Add Probar to your `Cargo.toml`:
-
-```toml
-[dev-dependencies]
-probar = "0.1"
-```
-
-Or with specific features:
-
-```toml
-[dev-dependencies]
-probar = { version = "0.1", features = ["browser", "runtime", "derive"] }
-```
+- **GUI Coverage**: Provable UI element and interaction coverage
 
 ## Feature Flags
 
@@ -38,9 +65,19 @@ probar = { version = "0.1", features = ["browser", "runtime", "derive"] }
 | `runtime` | WASM runtime testing (wasmtime) |
 | `derive` | Type-safe derive macros (probar-derive) |
 
-## Toyota Way Principles
+## Why Probar?
 
-Probar is built on Toyota Production System principles:
+| Aspect | Playwright | Probar |
+|--------|-----------|--------|
+| **Language** | TypeScript | Pure Rust |
+| **Browser** | Required (Chromium) | Optional |
+| **Game State** | Black box (DOM only) | Direct API access |
+| **CI Setup** | Node.js + browser | Just `cargo test` |
+| **Zero JS** | Violates constraint | Pure Rust |
+
+## Design Principles
+
+Probar is built on pragmatic testing principles:
 
 - **Poka-Yoke** (Mistake-Proofing): Type-safe selectors prevent runtime errors
 - **Muda** (Waste Elimination): Zero-copy memory views for efficiency

@@ -4,18 +4,32 @@ Get started with Probar testing in 5 minutes.
 
 ![Coverage Visualization](../assets/coverage_viridis.png)
 
-## Add Dependency
+## Installation
+
+Probar is distributed as two crates:
+
+| Crate | Purpose | Install |
+|-------|---------|---------|
+| **jugar-probar** | Library for writing tests | `cargo add jugar-probar --dev` |
+| **probador** | CLI tool | `cargo install probador` |
+
+### Add the Library
 
 ```toml
 [dev-dependencies]
-jugar-probar = { path = "../jugar-probar" }
+jugar-probar = "0.3"
+```
+
+### Install the CLI (Optional)
+
+```bash
+cargo install probador
 ```
 
 ## Write Your First Test
 
 ```rust
-use jugar_probar::Assertion;
-use jugar_web::{WebConfig, WebPlatform};
+use jugar_probar::prelude::*;
 
 #[test]
 fn test_game_initializes() {
@@ -34,14 +48,14 @@ fn test_game_initializes() {
 ## Run Tests
 
 ```bash
-# Run all Probar tests
-cargo test -p jugar-web --test probar_pong
+# Run all tests
+cargo test
 
 # With verbose output
-cargo test -p jugar-web --test probar_pong -- --nocapture
+cargo test -- --nocapture
 
-# Via Makefile
-make test-e2e
+# Using probador CLI
+probador test
 ```
 
 ## Test Structure
@@ -68,6 +82,29 @@ fn test_assertions() {
     // Approximate equality (for floats)
     let approx = Assertion::approx_eq(3.14, 3.14159, 0.01);
     assert!(approx.passed);
+}
+```
+
+### GUI Coverage
+
+```rust
+use jugar_probar::gui_coverage;
+
+#[test]
+fn test_gui_coverage() {
+    let mut gui = gui_coverage! {
+        buttons: ["start", "pause", "quit"],
+        screens: ["menu", "game", "game_over"]
+    };
+
+    // Record interactions
+    gui.click("start");
+    gui.visit("menu");
+    gui.visit("game");
+
+    // Check coverage
+    println!("{}", gui.summary());
+    assert!(gui.meets(50.0));  // At least 50% coverage
 }
 ```
 
@@ -114,6 +151,28 @@ fn test_paddle_responds_to_input() {
 }
 ```
 
+## Using probador CLI
+
+```bash
+# Validate playbook state machines
+probador playbook login.yaml --validate
+
+# Export state diagram as SVG
+probador playbook login.yaml --export svg -o diagram.svg
+
+# Run mutation testing
+probador playbook login.yaml --mutate
+
+# Generate coverage reports
+probador coverage --html
+
+# Watch mode with hot reload
+probador watch tests/
+
+# Start dev server for WASM
+probador serve --port 8080
+```
+
 ## Examples
 
 Run the included examples:
@@ -128,8 +187,8 @@ cargo run --example locator_demo -p jugar-probar
 # Accessibility checking
 cargo run --example accessibility_demo -p jugar-probar
 
-# Coverage demo
-cargo run --example coverage_demo -p jugar-probar
+# GUI coverage demo
+cargo run --example gui_coverage -p jugar-probar
 ```
 
 ## Example Output
@@ -167,3 +226,4 @@ Replaying simulation...
 - [Simulation](./simulation.md) - Deterministic simulation
 - [Fuzzing](./fuzzing.md) - Random testing
 - [Coverage Tooling](./coverage-tooling.md) - Code coverage
+- [CLI Reference](./cli-reference.md) - Full probador command reference

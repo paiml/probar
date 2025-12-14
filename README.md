@@ -6,18 +6,18 @@
 
 <p align="center">
   <strong>Playwright-Compatible Testing for WASM + TUI Applications</strong><br>
-  <em>Pure Rust • Zero JavaScript • Games • Simulations • Web Apps</em>
+  <em>Pure Rust &bull; Zero JavaScript &bull; Games &bull; Simulations &bull; Web Apps</em>
 </p>
 
 <p align="center">
   <a href="https://github.com/paiml/probar/actions/workflows/ci.yml">
     <img src="https://github.com/paiml/probar/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
-  <a href="https://crates.io/crates/probar">
-    <img src="https://img.shields.io/crates/v/probar.svg" alt="Crates.io">
+  <a href="https://crates.io/crates/jugar-probar">
+    <img src="https://img.shields.io/crates/v/jugar-probar.svg" alt="Crates.io">
   </a>
-  <a href="https://docs.rs/probar">
-    <img src="https://docs.rs/probar/badge.svg" alt="Documentation">
+  <a href="https://docs.rs/jugar-probar">
+    <img src="https://img.shields.io/docs.rs/jugar-probar" alt="Documentation">
   </a>
   <a href="https://paiml.github.io/probar/">
     <img src="https://img.shields.io/badge/book-mdbook-blue" alt="Book">
@@ -26,7 +26,53 @@
 
 ---
 
-**Probar** (Spanish: "to test/prove") is a **Playwright-compatible** testing framework written in **pure Rust**. It provides comprehensive testing for:
+## Installation
+
+**Probar** (Spanish: "to test/prove") is distributed as two crates:
+
+| Crate | Purpose | Install |
+|-------|---------|---------|
+| **[jugar-probar](https://crates.io/crates/jugar-probar)** | Library for writing tests | `cargo add jugar-probar --dev` |
+| **[probador](https://crates.io/crates/probador)** | CLI tool for running tests | `cargo install probador` |
+
+### Library (jugar-probar)
+
+Add to your `Cargo.toml`:
+
+```toml
+[dev-dependencies]
+jugar-probar = "0.3"
+```
+
+```rust
+use jugar_probar::prelude::*;
+```
+
+### CLI (probador)
+
+```bash
+cargo install probador
+```
+
+```bash
+# Validate a playbook state machine
+probador playbook login.yaml --validate
+
+# Run with mutation testing (M1-M5 falsification)
+probador playbook login.yaml --mutate
+
+# Export state diagram
+probador playbook login.yaml --export svg -o diagram.svg
+
+# Start dev server for WASM
+probador serve --port 8080
+```
+
+---
+
+## Overview
+
+Probar is a **Playwright-compatible** testing framework written in **pure Rust**. It provides comprehensive testing for:
 
 - **WASM Applications** - Games, simulations, web apps running in browsers
 - **TUI Applications** - Terminal interfaces built with ratatui/crossterm
@@ -39,7 +85,7 @@
 Probar introduces **GUI Coverage** - a new paradigm for measuring UI test completeness:
 
 ```rust
-use probar::gui_coverage;
+use jugar_probar::gui_coverage;
 
 // Define what needs testing (one line!)
 let mut gui = gui_coverage! {
@@ -90,7 +136,7 @@ expect(&score).to_have_text("100").await?;
 ## Quick Start
 
 ```rust
-use probar::prelude::*;
+use jugar_probar::prelude::*;
 
 #[test]
 fn test_calculator_gui() {
@@ -103,7 +149,7 @@ fn test_calculator_gui() {
         screens: ["calculator"]
     };
 
-    // Test: 7 × 6 = 42
+    // Test: 7 x 6 = 42
     driver.type_input("7 * 6");
     gui.click("btn-7");
     gui.click("btn-times");
@@ -118,26 +164,14 @@ fn test_calculator_gui() {
 }
 ```
 
-## Installation
+## Feature Flags
 
-Add Probar to your `Cargo.toml`:
-
-```toml
-[dev-dependencies]
-probar = "0.1"
-
-# With TUI testing (default)
-probar = { version = "0.1", features = ["tui"] }
-
-# With browser automation
-probar = { version = "0.1", features = ["browser"] }
-```
-
-Or install the CLI:
-
-```bash
-cargo install probar-cli
-```
+| Feature | Description | Dependencies |
+|---------|-------------|--------------|
+| `tui` | TUI testing support (default) | ratatui, crossterm |
+| `browser` | CDP browser automation | chromiumoxide, tokio |
+| `runtime` | WASM runtime testing | wasmtime |
+| `derive` | Type-safe derive macros | probar-derive |
 
 ## Usage
 
@@ -154,11 +188,27 @@ cargo llvm-cov --html
 cargo watch -x test
 ```
 
+### Using probador CLI
+
+```bash
+# Run tests with probador
+probador test
+
+# Generate coverage reports
+probador coverage --html
+
+# Watch mode with hot reload
+probador watch tests/
+
+# Serve WASM application
+probador serve --port 8080 --cors
+```
+
 ### GUI Coverage Example
 
 ```bash
 # Run the GUI coverage example
-cargo run --example gui_coverage
+cargo run --example gui_coverage -p jugar-probar
 ```
 
 Output:
@@ -192,15 +242,6 @@ cd crates/showcase-calculator/www && python3 -m http.server 8080
 # Open http://localhost:8080
 ```
 
-## Feature Flags
-
-| Feature | Description | Dependencies |
-|---------|-------------|--------------|
-| `tui` | TUI testing support (default) | ratatui, crossterm |
-| `browser` | CDP browser automation | chromiumoxide, tokio |
-| `runtime` | WASM runtime testing | wasmtime |
-| `derive` | Type-safe derive macros | probar-derive |
-
 ## Probar Principles
 
 Probar is built on pragmatic testing principles:
@@ -216,7 +257,7 @@ Probar is built on pragmatic testing principles:
 ## Documentation
 
 - **[Book](https://paiml.github.io/probar/)** - Comprehensive guide
-- **[API Docs](https://docs.rs/probar)** - Rust documentation
+- **[API Docs](https://docs.rs/jugar-probar)** - Rust documentation
 - **[GUI Coverage Guide](book/src/probar/ux-coverage.md)** - GUI coverage tutorial
 - **[Examples](crates/probar/examples/)** - 20+ runnable examples
 
@@ -233,7 +274,7 @@ Probar is built on pragmatic testing principles:
 
 Run any example:
 ```bash
-cargo run --example <name>
+cargo run --example <name> -p jugar-probar
 ```
 
 ## Project Structure
@@ -241,8 +282,8 @@ cargo run --example <name>
 ```
 probar/
 ├── crates/
-│   ├── probar/              # Core library
-│   ├── probar-cli/          # Command-line interface
+│   ├── probar/              # jugar-probar library
+│   ├── probar-cli/          # probador CLI
 │   ├── probar-derive/       # Derive macros
 │   └── showcase-calculator/ # 100% coverage demo
 ├── book/                    # mdBook documentation

@@ -1,16 +1,47 @@
 # jugar-probar
 
-**Probar** (Spanish: "to test/prove") is a pure Rust testing framework for WASM games that provides full Playwright feature parity while adding WASM-native capabilities.
+[![Crates.io](https://img.shields.io/crates/v/jugar-probar.svg)](https://crates.io/crates/jugar-probar)
+[![Documentation](https://docs.rs/jugar-probar/badge.svg)](https://docs.rs/jugar-probar)
+[![CI](https://github.com/paiml/probar/actions/workflows/ci.yml/badge.svg)](https://github.com/paiml/probar/actions/workflows/ci.yml)
 
-## Why Probar?
+**jugar-probar** is the Rust library for [Probar](https://github.com/paiml/probar) - a Playwright-compatible testing framework for WASM games and applications.
 
-| Aspect | Playwright | Probar |
-|--------|-----------|--------|
-| **Language** | TypeScript | Pure Rust |
-| **Browser** | Required (Chromium) | Not needed |
-| **Game State** | Black box (DOM only) | Direct API access |
-| **CI Setup** | Node.js + browser | Just `cargo test` |
-| **Zero JS** | Violates constraint | Pure Rust |
+> **Note:** The CLI tool is published separately as [probador](https://crates.io/crates/probador).
+
+## Installation
+
+Add to your `Cargo.toml`:
+
+```toml
+[dev-dependencies]
+jugar-probar = "0.3"
+```
+
+With specific features:
+
+```toml
+[dev-dependencies]
+jugar-probar = { version = "0.3", features = ["browser", "runtime", "derive"] }
+```
+
+## Quick Start
+
+```rust
+use jugar_probar::prelude::*;
+
+#[test]
+fn test_game_starts() {
+    // Create test platform
+    let config = WebConfig::new(800, 600);
+    let mut platform = WebPlatform::new_for_test(config);
+
+    // Run initial frame
+    let output = platform.frame(0.0, "[]");
+
+    // Verify game started
+    assert!(output.contains("commands"));
+}
+```
 
 ## Features
 
@@ -29,37 +60,13 @@
 - **Frame-perfect timing** - Fixed timestep control
 - **WCAG accessibility** - Color contrast and photosensitivity checking
 
-## Quick Start
+## Feature Flags
 
-Add to your `Cargo.toml`:
-
-```toml
-[dev-dependencies]
-jugar-probar = { path = "../jugar-probar" }
-```
-
-Write tests using `WebPlatform` directly:
-
-```rust
-use jugar_probar::Assertion;
-use jugar_web::{WebConfig, WebPlatform};
-
-#[test]
-fn test_game_starts() {
-    let config = WebConfig::new(800, 600);
-    let mut platform = WebPlatform::new_for_test(config);
-
-    // Run a frame
-    let output = platform.frame(0.0, "[]");
-
-    // Verify output
-    assert!(output.contains("commands"));
-
-    // Use Probar assertions
-    let assertion = Assertion::in_range(60.0, 0.0, 100.0);
-    assert!(assertion.passed);
-}
-```
+| Feature | Description |
+|---------|-------------|
+| `browser` | CDP browser automation (chromiumoxide, tokio) |
+| `runtime` | WASM runtime testing (wasmtime) |
+| `derive` | Type-safe derive macros (probar-derive) |
 
 ## Examples
 
@@ -72,66 +79,10 @@ cargo run --example locator_demo -p jugar-probar
 
 # WCAG accessibility checking
 cargo run --example accessibility_demo -p jugar-probar
+
+# GUI coverage tracking
+cargo run --example gui_coverage -p jugar-probar
 ```
-
-### Example Output
-
-```
-=== Probar Pong Simulation Demo ===
-
---- Demo 1: Pong Simulation ---
-Initial state:
-  Ball: (400.0, 300.0)
-  Paddles: P1=300.0, P2=300.0
-  Score: 0 - 0
-
-Simulating 300 frames...
-
-Final state after 300 frames:
-  Ball: (234.5, 412.3)
-  Paddles: P1=180.0, P2=398.2
-  Score: 2 - 1
-  State valid: true
-
---- Demo 2: Deterministic Replay ---
-Recording simulation (seed=42, frames=500)...
-  Completed: true
-  Final hash: 6233835744931225727
-
-Replaying simulation...
-  Determinism verified: true
-  Hashes match: true
-```
-
-## Architecture
-
-### Dual-Runtime Strategy
-
-```
-┌─────────────────────────────────┐     ┌─────────────────────────────────┐
-│  WasmRuntime (wasmtime)         │     │  BrowserController (Chrome)     │
-│  ─────────────────────────      │     │  ─────────────────────────      │
-│  Purpose: LOGIC-ONLY testing    │     │  Purpose: GOLDEN MASTER         │
-│                                 │     │                                 │
-│  ✓ Unit tests                   │     │  ✓ E2E tests                    │
-│  ✓ Deterministic replay         │     │  ✓ Visual regression            │
-│  ✓ Invariant fuzzing            │     │  ✓ Browser compatibility        │
-│  ✓ Performance benchmarks       │     │  ✓ Production parity            │
-│                                 │     │                                 │
-│  ✗ NOT for rendering            │     │  This is the SOURCE OF TRUTH    │
-│  ✗ NOT for browser APIs         │     │  for "does it work?"            │
-└─────────────────────────────────┘     └─────────────────────────────────┘
-```
-
-### Toyota Way Principles
-
-| Principle | How Probar Applies It |
-|-----------|----------------------|
-| **Poka-Yoke** | Type-safe selectors make typos impossible at compile time |
-| **Muda** | Zero-copy memory views eliminate serialization waste |
-| **Genchi Genbutsu** | ProbarDriver abstraction allows swapping browser backends |
-| **Andon Cord** | Fail-fast mode stops on first critical failure |
-| **Jidoka** | Quality built into the type system |
 
 ## API Overview
 
@@ -153,6 +104,23 @@ let truthy = Assertion::is_true(condition);
 let approx = Assertion::approx_eq(3.14159, std::f64::consts::PI, 0.001);
 ```
 
+### GUI Coverage
+
+```rust
+use jugar_probar::gui_coverage;
+
+let mut gui = gui_coverage! {
+    buttons: ["start", "pause", "quit"],
+    screens: ["title", "playing", "game_over"]
+};
+
+gui.click("start");
+gui.visit("title");
+
+println!("{}", gui.summary());  // "GUI: 33% (1/3 elements, 1/3 screens)"
+assert!(gui.meets(80.0));       // Fail if below 80%
+```
+
 ### Simulation
 
 ```rust
@@ -169,41 +137,30 @@ let replay = run_replay(&recording);
 assert!(replay.determinism_verified);
 ```
 
-### Fuzzing
+## CLI Tool
 
-```rust
-use jugar_probar::{RandomWalkAgent, Seed};
-
-let seed = Seed::from_u64(12345);
-let mut agent = RandomWalkAgent::new(seed);
-
-// Generate random inputs
-let inputs = agent.next_inputs();
-```
-
-## Running Tests
+For command-line usage, install the CLI separately:
 
 ```bash
-# Run all Probar E2E tests for Pong
-cargo test -p jugar-web --test probar_pong
-
-# Run with verbose output
-cargo test -p jugar-web --test probar_pong -- --nocapture
-
-# Via Makefile
-make test-e2e
-make test-e2e-verbose
+cargo install probador
 ```
 
-## Test Coverage
+```bash
+# Validate playbook state machines
+probador playbook login.yaml --validate
 
-The Probar test suite (`probar_pong.rs`) includes 39 tests covering:
+# Run mutation testing
+probador playbook login.yaml --mutate
 
-| Suite | Tests | Coverage |
-|-------|-------|----------|
-| Pong WASM Game (Core) | 6 | WASM loading, rendering, input |
-| Pong Demo Features | 22 | Game modes, HUD, AI widgets |
-| Release Readiness | 11 | Stress tests, performance, edge cases |
+# Export state diagrams
+probador playbook login.yaml --export svg -o diagram.svg
+```
+
+## Documentation
+
+- [Book](https://paiml.github.io/probar/) - Comprehensive guide
+- [API Docs](https://docs.rs/jugar-probar) - Rust documentation
+- [Examples](https://github.com/paiml/probar/tree/main/crates/probar/examples) - 20+ runnable examples
 
 ## License
 
