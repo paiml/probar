@@ -557,6 +557,7 @@ pub fn render_lint_json(report: &LintReport) -> Result<String, serde_json::Error
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use tempfile::TempDir;

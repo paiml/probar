@@ -71,6 +71,9 @@ proptest = "1.5"
 criterion = "0.5"
 tempfile = "3"
 
+# GPU compute (trueno - SIMD-accelerated tensor operations)
+trueno = { path = "../trueno", features = ["gpu"] }
+
 # TUI Testing (EDD compliance)
 ratatui = "0.29"
 crossterm = "0.28"

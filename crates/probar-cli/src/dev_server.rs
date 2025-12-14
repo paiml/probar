@@ -950,10 +950,11 @@ impl ModuleValidator {
         let path_str = path.to_string_lossy();
         self.exclude
             .iter()
-            .any(|excl| path_str.contains(&format!("/{}/", excl)) || path_str.contains(&format!("\\{}\\", excl)))
+            .any(|excl| path_str.contains(&format!("/{excl}/")) || path_str.contains(&format!("\\{excl}\\")))
     }
 
     /// Scan all HTML files and extract module imports
+    #[must_use] 
     pub fn scan_imports(&self) -> Vec<ImportRef> {
         let mut imports = Vec::new();
 
@@ -966,7 +967,7 @@ impl ModuleValidator {
                     continue;
                 }
                 if let Ok(content) = std::fs::read_to_string(&entry) {
-                    imports.extend(self.extract_imports_from_html(&entry, &content));
+                    imports.extend(Self::extract_imports_from_html(&entry, &content));
                 }
             }
         }
@@ -975,14 +976,14 @@ impl ModuleValidator {
     }
 
     /// Extract imports from HTML content
-    fn extract_imports_from_html(&self, file: &std::path::Path, content: &str) -> Vec<ImportRef> {
+    fn extract_imports_from_html(file: &std::path::Path, content: &str) -> Vec<ImportRef> {
         let mut imports = Vec::new();
 
         for (line_num, line) in content.lines().enumerate() {
             let line_number = (line_num + 1) as u32;
 
             // ES Module imports: import ... from '...' or import '...'
-            if let Some(path) = self.extract_es_import(line) {
+            if let Some(path) = Self::extract_es_import(line) {
                 imports.push(ImportRef {
                     source_file: file.to_path_buf(),
                     import_path: path,
@@ -992,7 +993,7 @@ impl ModuleValidator {
             }
 
             // Script src: <script src="...">
-            if let Some(path) = self.extract_script_src(line) {
+            if let Some(path) = Self::extract_script_src(line) {
                 // Skip inline module scripts with type="module" (handled by ES import)
                 if !line.contains("type=\"module\"") || line.contains("src=") {
                     imports.push(ImportRef {
@@ -1005,7 +1006,7 @@ impl ModuleValidator {
             }
 
             // Worker URLs: new Worker('...')
-            if let Some(path) = self.extract_worker_url(line) {
+            if let Some(path) = Self::extract_worker_url(line) {
                 imports.push(ImportRef {
                     source_file: file.to_path_buf(),
                     import_path: path,
@@ -1018,14 +1019,36 @@ impl ModuleValidator {
         imports
     }
 
+    /// Check if path has a JS/WASM extension (case-insensitive)
+    fn has_js_or_wasm_extension(path: &str) -> bool {
+        let path = std::path::Path::new(path);
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| {
+                let ext_lower = ext.to_ascii_lowercase();
+                ext_lower == "js" || ext_lower == "mjs" || ext_lower == "wasm"
+            })
+    }
+
+    /// Check if path has a JS extension (case-insensitive)
+    fn has_js_extension(path: &str) -> bool {
+        let path = std::path::Path::new(path);
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| {
+                let ext_lower = ext.to_ascii_lowercase();
+                ext_lower == "js" || ext_lower == "mjs"
+            })
+    }
+
     /// Extract ES module import path
-    fn extract_es_import(&self, line: &str) -> Option<String> {
+    fn extract_es_import(line: &str) -> Option<String> {
         // Match: import ... from '...' or import ... from "..."
         let patterns = [
-            (r#"from '"#, "'"),
+            (r"from '", "'"),
             (r#"from ""#, "\""),
             // Also match dynamic import()
-            (r#"import('"#, "'"),
+            (r"import('", "'"),
             (r#"import(""#, "\""),
         ];
 
@@ -1035,7 +1058,7 @@ impl ModuleValidator {
                 if let Some(end_idx) = rest.find(end) {
                     let path = &rest[..end_idx];
                     // Only include JS/WASM paths
-                    if path.ends_with(".js") || path.ends_with(".mjs") || path.ends_with(".wasm") {
+                    if Self::has_js_or_wasm_extension(path) {
                         return Some(path.to_string());
                     }
                 }
@@ -1046,10 +1069,10 @@ impl ModuleValidator {
     }
 
     /// Extract script src attribute
-    fn extract_script_src(&self, line: &str) -> Option<String> {
+    fn extract_script_src(line: &str) -> Option<String> {
         let patterns = [
             (r#"src=""#, "\""),
-            (r#"src='"#, "'"),
+            (r"src='", "'"),
         ];
 
         for (start, end) in patterns {
@@ -1057,7 +1080,7 @@ impl ModuleValidator {
                 let rest = &line[idx + start.len()..];
                 if let Some(end_idx) = rest.find(end) {
                     let path = &rest[..end_idx];
-                    if path.ends_with(".js") || path.ends_with(".mjs") {
+                    if Self::has_js_extension(path) {
                         return Some(path.to_string());
                     }
                 }
@@ -1068,9 +1091,9 @@ impl ModuleValidator {
     }
 
     /// Extract Worker URL
-    fn extract_worker_url(&self, line: &str) -> Option<String> {
+    fn extract_worker_url(line: &str) -> Option<String> {
         let patterns = [
-            (r#"new Worker('"#, "'"),
+            (r"new Worker('", "'"),
             (r#"new Worker(""#, "\""),
         ];
 
@@ -1105,6 +1128,7 @@ impl ModuleValidator {
     }
 
     /// Validate all imports resolve correctly
+    #[must_use] 
     pub fn validate(&self) -> ModuleValidationResult {
         let imports = self.scan_imports();
         let mut result = ModuleValidationResult {
@@ -1131,8 +1155,7 @@ impl ModuleValidator {
                                 status: 200,
                                 actual_mime: mime.clone(),
                                 message: format!(
-                                    "MIME type mismatch: expected {:?}, got '{}'",
-                                    expected, mime
+                                    "MIME type mismatch: expected {expected:?}, got '{mime}'"
                                 ),
                             });
                         }
@@ -1187,6 +1210,7 @@ impl ModuleValidator {
 // =============================================================================
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -1696,49 +1720,43 @@ mod tests {
 
     #[test]
     fn test_module_validator_extract_es_import() {
-        let validator = ModuleValidator::new("/tmp");
-
         // Test basic import from
-        let line = r#"import init from './pkg/app.js';"#;
-        assert_eq!(validator.extract_es_import(line), Some("./pkg/app.js".to_string()));
+        let line = r"import init from './pkg/app.js';";
+        assert_eq!(ModuleValidator::extract_es_import(line), Some("./pkg/app.js".to_string()));
 
         // Test double quotes
         let line = r#"import { foo } from "/lib/utils.mjs";"#;
-        assert_eq!(validator.extract_es_import(line), Some("/lib/utils.mjs".to_string()));
+        assert_eq!(ModuleValidator::extract_es_import(line), Some("/lib/utils.mjs".to_string()));
 
         // Test WASM import
-        let line = r#"import wasm from '../module.wasm';"#;
-        assert_eq!(validator.extract_es_import(line), Some("../module.wasm".to_string()));
+        let line = r"import wasm from '../module.wasm';";
+        assert_eq!(ModuleValidator::extract_es_import(line), Some("../module.wasm".to_string()));
 
         // Test non-JS import (should be None)
-        let line = r#"import styles from './styles.css';"#;
-        assert_eq!(validator.extract_es_import(line), None);
+        let line = r"import styles from './styles.css';";
+        assert_eq!(ModuleValidator::extract_es_import(line), None);
     }
 
     #[test]
     fn test_module_validator_extract_script_src() {
-        let validator = ModuleValidator::new("/tmp");
-
         let line = r#"<script src="./app.js"></script>"#;
-        assert_eq!(validator.extract_script_src(line), Some("./app.js".to_string()));
+        assert_eq!(ModuleValidator::extract_script_src(line), Some("./app.js".to_string()));
 
-        let line = r#"<script src='/lib/vendor.mjs'></script>"#;
-        assert_eq!(validator.extract_script_src(line), Some("/lib/vendor.mjs".to_string()));
+        let line = r"<script src='/lib/vendor.mjs'></script>";
+        assert_eq!(ModuleValidator::extract_script_src(line), Some("/lib/vendor.mjs".to_string()));
 
         // Non-JS src
         let line = r#"<img src="./image.png">"#;
-        assert_eq!(validator.extract_script_src(line), None);
+        assert_eq!(ModuleValidator::extract_script_src(line), None);
     }
 
     #[test]
     fn test_module_validator_extract_worker_url() {
-        let validator = ModuleValidator::new("/tmp");
-
-        let line = r#"const worker = new Worker('./worker.js');"#;
-        assert_eq!(validator.extract_worker_url(line), Some("./worker.js".to_string()));
+        let line = r"const worker = new Worker('./worker.js');";
+        assert_eq!(ModuleValidator::extract_worker_url(line), Some("./worker.js".to_string()));
 
         let line = r#"new Worker("/pkg/transcription_worker.js")"#;
-        assert_eq!(validator.extract_worker_url(line), Some("/pkg/transcription_worker.js".to_string()));
+        assert_eq!(ModuleValidator::extract_worker_url(line), Some("/pkg/transcription_worker.js".to_string()));
     }
 
     #[test]

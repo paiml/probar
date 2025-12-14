@@ -13,6 +13,7 @@
 //! cargo run --example mouse_actions -p probar
 //! ```
 //!
+
 //! # Playwright Parity
 //!
 //! These actions match Playwright's action API:
@@ -21,7 +22,7 @@
 //! - `locator.focus()` -> `locator.focus()`
 //! - `locator.check()` -> `locator.check()`
 
-#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::uninlined_format_args, clippy::expect_used)]
 
 use jugar_probar::prelude::*;
 

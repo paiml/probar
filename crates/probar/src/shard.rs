@@ -315,7 +315,7 @@ impl ShardReport {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::needless_range_loop, clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
 

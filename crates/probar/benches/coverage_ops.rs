@@ -4,6 +4,9 @@
 //!
 //! Run with: `cargo bench --bench coverage_ops`
 
+#![allow(missing_docs)]
+#![allow(clippy::unwrap_used)]
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use jugar_probar::pixel_coverage::{PixelCoverageTracker, PixelPoint as Point, PixelRegion as Region};
 use jugar_probar::ux_coverage::{ElementId, InteractionType, UxCoverageTracker};
@@ -108,8 +111,8 @@ fn bench_pixel_report_generation(c: &mut Criterion) {
         let mut tracker = PixelCoverageTracker::new(800, 600, cols, rows);
         // Fill ~75% coverage
         for i in 0..(cols * rows * 3 / 4) {
-            let x = ((i * 7) % 800) as u32;
-            let y = ((i * 11) % 600) as u32;
+            let x = (i * 7) % 800;
+            let y = (i * 11) % 600;
             tracker.record_interaction(Point { x, y });
         }
 
@@ -132,8 +135,8 @@ fn bench_terminal_heatmap_generation(c: &mut Criterion) {
     for (cols, rows, name) in grid_sizes {
         let mut tracker = PixelCoverageTracker::new(800, 600, cols, rows);
         for i in 0..(cols * rows / 2) {
-            let x = ((i * 7) % 800) as u32;
-            let y = ((i * 11) % 600) as u32;
+            let x = (i * 7) % 800;
+            let y = (i * 11) % 600;
             tracker.record_interaction(Point { x, y });
         }
 

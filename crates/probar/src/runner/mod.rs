@@ -17,7 +17,7 @@ pub const DEFAULT_HTTP_PORT: u16 = 8080;
 pub const DEFAULT_WS_PORT: u16 = 8081;
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 

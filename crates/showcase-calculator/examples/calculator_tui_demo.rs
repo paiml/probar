@@ -5,6 +5,8 @@
 //!
 //! Run with: cargo run --example calculator_tui_demo --features tui
 
+#![allow(clippy::unwrap_used)]
+
 use showcase_calculator::driver::{
     run_full_specification, verify_basic_arithmetic, verify_complex_expressions,
     verify_error_handling, verify_history, verify_jidoka_status, verify_precedence,

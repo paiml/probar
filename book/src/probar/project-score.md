@@ -2,38 +2,44 @@
 
 ![Project Score Coverage](../assets/coverage_combined.png)
 
-The `probador serve score` command generates a comprehensive 100-point score evaluating how thoroughly your project implements probar's testing capabilities.
+The `probador serve score` command generates a comprehensive 115-point score evaluating how thoroughly your project implements probar's testing capabilities across 10 categories.
 
 ## Score Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    100-POINT SCORING SYSTEM                      │
+│                    115-POINT SCORING SYSTEM                      │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                   │
 │  ┌─────────────────────────────────────────────────────────────┐ │
 │  │                    Score Categories                          │ │
 │  │                                                               │ │
 │  │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐  │ │
-│  │  │   Playbook     │  │    Pixel       │  │     GUI        │  │ │
-│  │  │   Coverage     │  │   Testing      │  │  Interaction   │  │ │
-│  │  │   (20 pts)     │  │   (15 pts)     │  │   (15 pts)     │  │ │
+│  │  │   Runtime      │  │   Playbook     │  │    Pixel       │  │ │
+│  │  │   Health       │  │   Coverage     │  │   Testing      │  │ │
+│  │  │   (15 pts)     │  │   (15 pts)     │  │   (13 pts)     │  │ │
 │  │  └────────────────┘  └────────────────┘  └────────────────┘  │ │
 │  │                                                               │ │
 │  │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐  │ │
-│  │  │  Performance   │  │ Deterministic  │  │ Cross-Browser  │  │ │
-│  │  │  Benchmarks    │  │    Replay      │  │   Testing      │  │ │
-│  │  │   (15 pts)     │  │   (10 pts)     │  │   (10 pts)     │  │ │
+│  │  │     GUI        │  │  Performance   │  │ Load Testing   │  │ │
+│  │  │  Interaction   │  │  Benchmarks    │  │   Config       │  │ │
+│  │  │   (13 pts)     │  │   (14 pts)     │  │   (10 pts)     │  │ │
 │  │  └────────────────┘  └────────────────┘  └────────────────┘  │ │
 │  │                                                               │ │
-│  │  ┌────────────────┐  ┌────────────────┐                      │ │
-│  │  │ Accessibility  │  │ Documentation  │                      │ │
-│  │  │   Testing      │  │    Quality     │                      │ │
-│  │  │   (10 pts)     │  │    (5 pts)     │                      │ │
-│  │  └────────────────┘  └────────────────┘                      │ │
+│  │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐  │ │
+│  │  │ Deterministic  │  │ Cross-Browser  │  │ Accessibility  │  │ │
+│  │  │    Replay      │  │   Testing      │  │   Testing      │  │ │
+│  │  │   (10 pts)     │  │   (10 pts)     │  │   (10 pts)     │  │ │
+│  │  └────────────────┘  └────────────────┘  └────────────────┘  │ │
+│  │                                                               │ │
+│  │  ┌────────────────┐                                          │ │
+│  │  │ Documentation  │   Note: Runtime Health gates grade       │ │
+│  │  │    Quality     │   caps (failures cap at C grade)        │ │
+│  │  │    (5 pts)     │                                          │ │
+│  │  └────────────────┘                                          │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 │                                                                   │
-│  Grade: A (90+), B (80-89), C (70-79), D (60-69), F (<60)       │
+│  Grade: A (90%+), B (80-89%), C (70-79%), D (60-69%), F (<60%)  │
 │                                                                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -63,69 +69,88 @@ probador serve score --report score-report.msgpack
 PROJECT TESTING SCORE: demos/realtime-transcription
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Overall Score: 73/100 (B)
+Overall Score: 85/115 (74%, B)
 
 ┌─────────────────────┬────────┬────────┬─────────────────────────────────┐
 │ Category            │ Score  │ Max    │ Status                          │
 ├─────────────────────┼────────┼────────┼─────────────────────────────────┤
-│ Playbook Coverage   │ 18/20  │ 20     │ ✓ 9/10 states covered           │
-│ Pixel Testing       │ 12/15  │ 15     │ ⚠ Missing: error state snapshot │
-│ GUI Interaction     │ 10/15  │ 15     │ ⚠ Missing: keyboard navigation  │
-│ Performance         │ 15/15  │ 15     │ ✓ All benchmarks defined        │
+│ Runtime Health      │ 15/15  │ 15     │ ✓ WASM loads, no JS errors      │
+│ Playbook Coverage   │ 12/15  │ 15     │ ⚠ Missing: error state coverage │
+│ Pixel Testing       │ 10/13  │ 13     │ ⚠ Missing: error state snapshot │
+│ GUI Interaction     │ 10/13  │ 13     │ ⚠ Missing: keyboard navigation  │
+│ Performance         │ 14/14  │ 14     │ ✓ All benchmarks defined        │
+│ Load Testing        │ 8/10   │ 10     │ ⚠ No sustained load config      │
 │ Deterministic Replay│ 8/10   │ 10     │ ⚠ No edge case recordings       │
 │ Cross-Browser       │ 5/10   │ 10     │ ✗ Only Chrome tested            │
 │ Accessibility       │ 3/10   │ 10     │ ✗ No ARIA labels tested         │
-│ Documentation       │ 2/5    │ 5      │ ⚠ Missing test rationale        │
+│ Documentation       │ 0/5    │ 5      │ ✗ Missing test docs             │
 └─────────────────────┴────────┴────────┴─────────────────────────────────┘
 
-Grade Scale: A (90+), B (80-89), C (70-79), D (60-69), F (<60)
+Grade Scale: A (90%+), B (80-89%), C (70-79%), D (60-69%), F (<60%)
 
 Top 3 Recommendations:
 1. Add Firefox/Safari to cross-browser matrix (+5 points)
 2. Add ARIA label assertions to GUI tests (+4 points)
-3. Record edge case sessions for replay (+2 points)
+3. Add tests/README.md documentation (+5 points)
 
 Run `probador serve score --verbose` for detailed breakdown.
 ```
 
 ## Scoring Categories
 
-### Playbook Coverage (20 points)
+### Runtime Health (15 points)
 
 | Criterion | Points | Measurement |
 |-----------|--------|-------------|
-| Playbook exists | 5 | `playbooks/*.yaml` present |
-| All states defined | 5 | States match actual UI states |
-| Invariants per state | 5 | At least 1 invariant per state |
+| WASM loads successfully | 5 | Module instantiation without errors |
+| No JS console errors | 4 | Zero uncaught exceptions |
+| No memory leaks | 3 | Stable memory after warm-up |
+| Graceful error handling | 3 | Errors caught and reported |
+
+### Playbook Coverage (15 points)
+
+| Criterion | Points | Measurement |
+|-----------|--------|-------------|
+| Playbook exists | 4 | `playbooks/*.yaml` present |
+| All states defined | 4 | States match actual UI states |
+| Invariants per state | 4 | At least 1 invariant per state |
 | Forbidden transitions | 3 | Edge cases documented |
-| Performance assertions | 2 | Latency/RTF targets defined |
 
-### Pixel Testing (15 points)
+### Pixel Testing (13 points)
 
 | Criterion | Points | Measurement |
 |-----------|--------|-------------|
-| Baseline snapshots exist | 5 | `snapshots/*.png` present |
-| Coverage of states | 5 | Snapshots for 80%+ of states |
+| Baseline snapshots exist | 4 | `snapshots/*.png` present |
+| Coverage of states | 4 | Snapshots for 80%+ of states |
 | Responsive variants | 3 | Mobile/tablet/desktop snapshots |
 | Dark mode variants | 2 | Theme-aware snapshots |
 
-### GUI Interaction Testing (15 points)
+### GUI Interaction Testing (13 points)
 
 | Criterion | Points | Measurement |
 |-----------|--------|-------------|
-| Click handlers tested | 5 | All buttons have click tests |
+| Click handlers tested | 4 | All buttons have click tests |
 | Form inputs tested | 4 | All inputs have validation tests |
 | Keyboard navigation | 3 | Tab order and shortcuts tested |
-| Touch events | 3 | Swipe/pinch gestures (if applicable) |
+| Touch events | 2 | Swipe/pinch gestures (if applicable) |
 
-### Performance Benchmarks (15 points)
+### Performance Benchmarks (14 points)
 
 | Criterion | Points | Measurement |
 |-----------|--------|-------------|
 | RTF target defined | 5 | `performance.rtf_target` in playbook |
 | Memory threshold | 4 | `performance.max_memory_mb` defined |
-| Latency targets | 4 | p95/p99 latency assertions |
+| Latency targets | 3 | p95/p99 latency assertions |
 | Baseline file exists | 2 | `baseline.json` present |
+
+### Load Testing (10 points)
+
+| Criterion | Points | Measurement |
+|-----------|--------|-------------|
+| Load test config exists | 3 | `load_test.yaml` or equivalent |
+| Concurrent user targets | 3 | Defined user load levels |
+| Sustained load duration | 2 | Tests run for adequate duration |
+| Resource monitoring | 2 | CPU/memory tracked during load |
 
 ### Deterministic Replay (10 points)
 

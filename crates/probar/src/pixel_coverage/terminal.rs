@@ -774,7 +774,7 @@ impl RichTerminalHeatmap {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::float_cmp, clippy::needless_range_loop)]
 mod tests {
     use super::*;
 

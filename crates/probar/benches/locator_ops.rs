@@ -4,6 +4,9 @@
 //!
 //! Run with: `cargo bench --bench locator_ops`
 
+#![allow(missing_docs)]
+#![allow(clippy::unwrap_used)]
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use jugar_probar::prelude::*;
 
@@ -84,7 +87,7 @@ fn bench_locator_chaining(c: &mut Criterion) {
                 bench.iter(|| {
                     let mut locator = Locator::from_selector(Selector::css("div"));
                     for i in 0..d {
-                        locator = locator.and(Locator::from_selector(Selector::css(&format!(
+                        locator = locator.and(Locator::from_selector(Selector::css(format!(
                             ".level-{}",
                             i
                         ))));
@@ -187,7 +190,7 @@ fn bench_locator_or_operations(c: &mut Criterion) {
                 bench.iter(|| {
                     let mut locator = Locator::from_selector(Selector::css(".option-0"));
                     for i in 1..n {
-                        locator = locator.or(Locator::from_selector(Selector::css(&format!(
+                        locator = locator.or(Locator::from_selector(Selector::css(format!(
                             ".option-{}",
                             i
                         ))));

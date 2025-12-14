@@ -351,6 +351,7 @@ pub fn display_tree(root: &Path, config: &TreeConfig) -> Result<(), std::io::Err
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
@@ -361,8 +362,8 @@ mod tests {
         assert_eq!(format_size(512), "512 B");
         assert_eq!(format_size(1024), "1.0 KB");
         assert_eq!(format_size(1536), "1.5 KB");
-        assert_eq!(format_size(1048576), "1.0 MB");
-        assert_eq!(format_size(1073741824), "1.0 GB");
+        assert_eq!(format_size(1_048_576), "1.0 MB");
+        assert_eq!(format_size(1_073_741_824), "1.0 GB");
     }
 
     #[test]

@@ -19,7 +19,7 @@ pub use trace::{Trace, TraceConfig, Tracer};
 pub const DEFAULT_SAMPLE_RATE: u32 = 1000;
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
 mod tests {
     use super::*;
 

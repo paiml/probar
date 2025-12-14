@@ -238,28 +238,28 @@ impl ScoreCalculator {
         let max: u32 = categories.iter().map(|c| c.max).sum();
 
         // Apply grade caps based on runtime health (PROBAR-SPEC-007)
-        let grade = if !runtime_passed {
+        let grade = if runtime_passed {
+            Grade::from_score(total, max)
+        } else {
             // Runtime failures cap the grade at C (max 79%)
             let capped_percentage = std::cmp::min((total * 100) / max, 79);
             Grade::from_score(capped_percentage, 100)
-        } else {
-            Grade::from_score(total, max)
         };
 
         let recommendations = self.generate_recommendations(&categories);
 
-        let summary = if !runtime_passed {
-            format!(
-                "Project has {} testing coverage ({}) - GRADE CAPPED: Runtime validation failed",
-                grade.as_str(),
-                format_percentage(total, max)
-            )
-        } else {
+        let summary = if runtime_passed {
             format!(
                 "Project has {} testing coverage with {} in {} categories",
                 grade.as_str(),
                 format_percentage(total, max),
                 categories.iter().filter(|c| c.status == CategoryStatus::Complete).count()
+            )
+        } else {
+            format!(
+                "Project has {} testing coverage ({}) - GRADE CAPPED: Runtime validation failed",
+                grade.as_str(),
+                format_percentage(total, max)
             )
         };
 
@@ -1315,6 +1315,7 @@ pub fn render_score_json(score: &ProjectScore) -> Result<String, serde_json::Err
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
@@ -1454,13 +1455,13 @@ mod tests {
     }
 
     #[test]
-    fn test_score_total_is_100() {
+    fn test_score_total_is_115() {
         let temp = TempDir::new().unwrap();
         let calc = ScoreCalculator::new(temp.path());
         let score = calc.calculate();
 
-        // Max should be exactly 100
-        assert_eq!(score.max, 100);
+        // Max should be exactly 115 (10 categories: 15+15+13+13+14+10+10+10+10+5)
+        assert_eq!(score.max, 115);
     }
 
     #[test]

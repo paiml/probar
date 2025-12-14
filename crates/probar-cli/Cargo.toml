@@ -11,7 +11,7 @@ keywords = ["testing", "wasm", "games", "cli", "automation"]
 categories = ["development-tools::testing", "command-line-utilities", "wasm"]
 
 [features]
-default = []
+default = ["browser"]
 # Enable real browser control for live validation (requires chromium)
 browser = ["jugar-probar/browser"]
 

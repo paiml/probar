@@ -733,14 +733,13 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
     })?;
 
     // Report results
+    eprintln!("══════════════════════════════════════════════════════════════");
     if validation_errors.is_empty() {
-        eprintln!("══════════════════════════════════════════════════════════════");
         eprintln!("  RESULT: PASS (App works!)");
         eprintln!("══════════════════════════════════════════════════════════════");
         eprintln!("\n  Could not prove the app is broken. All validation checks passed.\n");
         Ok(())
     } else {
-        eprintln!("══════════════════════════════════════════════════════════════");
         eprintln!("  RESULT: FAIL (Grade: F)");
         eprintln!("══════════════════════════════════════════════════════════════");
         eprintln!("\n  Found {} issue(s) that prove the app is broken:\n", validation_errors.len());
@@ -755,6 +754,7 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
 }
 
 /// Find all HTML files in a directory
+#[allow(clippy::items_after_statements)]
 fn find_html_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut html_files = Vec::new();
 
@@ -1292,7 +1292,7 @@ fn run_playbook(config: &CliConfig, args: &probador::PlaybookArgs) -> CliResult<
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
 mod tests {
     use super::*;
     use probador::{
@@ -1524,7 +1524,7 @@ mod tests {
         use probador::TestArgs;
 
         #[test]
-        #[ignore] // Spawns `cargo test --list` subprocess - causes nested builds in CI
+        #[ignore = "Spawns cargo test --list subprocess - causes nested builds in CI"]
         fn test_run_tests_no_tests() {
             let config = CliConfig::default();
             let args = TestArgs {
@@ -1543,7 +1543,7 @@ mod tests {
         }
 
         #[test]
-        #[ignore] // Spawns `cargo test --list` subprocess - causes nested builds in CI
+        #[ignore = "Spawns cargo test --list subprocess - causes nested builds in CI"]
         fn test_run_tests_with_filter() {
             let config = CliConfig::default();
             let args = TestArgs {

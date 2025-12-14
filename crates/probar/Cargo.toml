@@ -20,6 +20,8 @@ derive = ["jugar-probar-derive"]
 # TUI testing support (included by default)
 # Note: For wasm32-unknown-unknown target, use --no-default-features
 tui = ["ratatui", "crossterm"]
+# GPU compute support via trueno (RTX 4090 etc.)
+gpu = ["trueno"]
 
 [dependencies]
 thiserror = { workspace = true }
@@ -46,6 +48,9 @@ uuid = { workspace = true }
 
 # Optional derive macros for type-safe selectors (Phase 4)
 jugar-probar-derive = { version = "0.1.0", optional = true }
+
+# Optional GPU compute via trueno
+trueno = { workspace = true, optional = true }
 
 # Native-only dependencies (not available on WASM)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

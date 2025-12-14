@@ -4,6 +4,9 @@
 //!
 //! Run with: `cargo bench --bench image_ops`
 
+#![allow(missing_docs)]
+#![allow(clippy::unwrap_used)]
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use jugar_probar::pixel_coverage::{ColorPalette, CoverageCell, PngHeatmap};
 use jugar_probar::Color;
@@ -136,7 +139,7 @@ fn bench_heatmap_render(c: &mut Criterion) {
                     let heatmap = PngHeatmap::new(black_box(*w), black_box(*h))
                         .with_palette(ColorPalette::viridis());
                     let result = heatmap.export(black_box(cov));
-                    black_box(result);
+                    let _ = black_box(result);
                 });
             },
         );

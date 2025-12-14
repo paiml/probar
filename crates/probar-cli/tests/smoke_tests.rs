@@ -3,6 +3,9 @@
 //! These tests verify basic CLI functionality works correctly.
 //! Critical for a crate that replaces Playwright in Rust.
 
+#![allow(deprecated)] // Allow deprecated Command::cargo_bin until assert_cmd is updated
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;

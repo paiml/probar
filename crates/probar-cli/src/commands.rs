@@ -305,9 +305,9 @@ pub struct ServeArgs {
     #[arg(long)]
     pub monitor: bool,
 
-    /// Exclude directories from validation (e.g., node_modules)
+    /// Exclude directories from validation (e.g., `node_modules`)
     ///
-    /// Can be specified multiple times: --exclude node_modules --exclude vendor
+    /// Can be specified multiple times: --exclude `node_modules` --exclude vendor
     #[arg(long, value_name = "DIR")]
     pub exclude: Vec<String>,
 }

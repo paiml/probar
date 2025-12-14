@@ -142,10 +142,15 @@ test-property-comprehensive: ## Run property-based tests (500 cases per property
 	timeout 300 env PROPTEST_CASES=500 cargo test --workspace --lib -- prop_ --test-threads=$$THREADS || echo "⚠️  Some property tests timed out"
 	@echo "✅ Property tests completed (comprehensive mode)!"
 
-test-all: test test-property-comprehensive ## Run ALL tests with all features
+test-all: test test-property-comprehensive test-gpu-pixels ## Run ALL tests with all features
 	@echo "🧪 Running comprehensive tests with all features..."
 	@PROPTEST_CASES=500 cargo test --workspace --all-features
 	@echo "✅ All tests completed!"
+
+test-gpu-pixels: ## Run GPU pixel tests (PTX validation, regression detection)
+	@echo "🎯 Running GPU pixel tests..."
+	@cargo test -p jugar-probar gpu_pixels --lib
+	@echo "✅ GPU pixel tests passed!"
 
 # ============================================================================
 # COVERAGE
@@ -340,6 +345,7 @@ help: ## Show this help
 	@echo "  make test           - Run core test suite (fast + doc + property tests)"
 	@echo "  make test-property  - Run property-based tests (50 cases)"
 	@echo "  make test-property-comprehensive - Run property tests (500 cases)"
+	@echo "  make test-gpu-pixels - Run GPU pixel tests (PTX validation)"
 	@echo "  make test-all       - Run ALL tests with all features"
 	@echo ""
 	@echo "Coverage:"

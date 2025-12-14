@@ -4,6 +4,9 @@
 //!
 //! Run with: `cargo bench --bench playbook_ops`
 
+#![allow(missing_docs)]
+#![allow(clippy::unwrap_used)]
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use jugar_probar::playbook::{
     to_dot, to_svg, ComplexityAnalyzer, MutationClass, MutationGenerator, Playbook,

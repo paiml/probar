@@ -414,14 +414,13 @@ fn demo_pixel_perfect_pong() {
         state.update(&inputs);
 
         // Track ball position as pixel region (ball is 10x10)
-        let ball_x = state.ball_x.max(0.0).min(790.0) as u32;
-        let ball_y = state.ball_y.max(0.0).min(590.0) as u32;
+        let ball_x = state.ball_x.clamp(0.0, 790.0) as u32;
+        let ball_y = state.ball_y.clamp(0.0, 590.0) as u32;
         pixels.record_region(PixelRegion::new(ball_x, ball_y, 10, 10));
 
         // Track paddle 1 (left paddle)
-        let paddle1_y = (state.paddle1_y - PongState::PADDLE_HEIGHT / 2.0)
-            .max(0.0)
-            .min(500.0) as u32;
+        let paddle1_y =
+            (state.paddle1_y - PongState::PADDLE_HEIGHT / 2.0).clamp(0.0, 500.0) as u32;
         pixels.record_region(PixelRegion::new(
             PongState::PADDLE_MARGIN as u32 - 10,
             paddle1_y,
@@ -430,9 +429,8 @@ fn demo_pixel_perfect_pong() {
         ));
 
         // Track paddle 2 (right paddle)
-        let paddle2_y = (state.paddle2_y - PongState::PADDLE_HEIGHT / 2.0)
-            .max(0.0)
-            .min(500.0) as u32;
+        let paddle2_y =
+            (state.paddle2_y - PongState::PADDLE_HEIGHT / 2.0).clamp(0.0, 500.0) as u32;
         pixels.record_region(PixelRegion::new(
             (PongState::GAME_WIDTH - PongState::PADDLE_MARGIN) as u32,
             paddle2_y,
