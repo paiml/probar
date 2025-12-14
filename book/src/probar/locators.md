@@ -2,6 +2,40 @@
 
 Probar provides Playwright-style locators for finding game elements with full Playwright parity.
 
+## Locator Strategy
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      LOCATOR STRATEGIES                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐            │
+│  │    CSS      │   │   TestID    │   │    Text     │            │
+│  │  Selector   │   │  Selector   │   │  Selector   │            │
+│  │ "button.x"  │   │ "submit-btn"│   │ "Click me"  │            │
+│  └──────┬──────┘   └──────┬──────┘   └──────┬──────┘            │
+│         │                 │                 │                    │
+│         └────────────┬────┴────────────────┘                    │
+│                      ▼                                           │
+│              ┌──────────────┐                                    │
+│              │   Locator    │                                    │
+│              │   Chain      │                                    │
+│              └──────┬───────┘                                    │
+│                     │                                            │
+│         ┌──────────┼──────────┐                                 │
+│         ▼          ▼          ▼                                 │
+│    ┌────────┐ ┌────────┐ ┌────────┐                             │
+│    │ filter │ │  and   │ │   or   │                             │
+│    │ (opts) │ │ (loc)  │ │ (loc)  │                             │
+│    └────────┘ └────────┘ └────────┘                             │
+│                                                                   │
+│  SEMANTIC: role, label, placeholder, alt_text                    │
+│  SPATIAL:  within_radius, in_bounds, nearest_to                  │
+│  ECS:      has_component, component_matches                      │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ## Basic Locators
 
 ```rust

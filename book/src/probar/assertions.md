@@ -2,6 +2,29 @@
 
 Probar provides a rich set of assertions for testing game state with full Playwright parity.
 
+## Assertion Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     PROBAR ASSERTION SYSTEM                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌──────────┐    ┌──────────────┐    ┌──────────────┐           │
+│  │  Input   │───►│  Assertion   │───►│   Result     │           │
+│  │  Value   │    │   Function   │    │   Struct     │           │
+│  └──────────┘    └──────────────┘    └──────────────┘           │
+│                         │                    │                   │
+│                         ▼                    ▼                   │
+│              ┌──────────────────┐   ┌───────────────┐           │
+│              │ • equals()       │   │ passed: bool  │           │
+│              │ • in_range()     │   │ message: str  │           │
+│              │ • contains()     │   │ expected: opt │           │
+│              │ • matches()      │   │ actual: opt   │           │
+│              └──────────────────┘   └───────────────┘           │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ## Playwright-Style Element Assertions (PMAT-004)
 
 Probar supports Playwright's `expect()` API for fluent assertions:

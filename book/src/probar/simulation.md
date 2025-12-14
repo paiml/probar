@@ -2,6 +2,44 @@
 
 Probar provides deterministic game simulation for testing.
 
+## Simulation Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    DETERMINISTIC SIMULATION                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌──────────┐     ┌─────────────────────────────────────────┐   │
+│  │   Seed   │────►│           Simulation Loop                │   │
+│  │  (u64)   │     │  ┌─────────────────────────────────────┐ │   │
+│  └──────────┘     │  │  Frame 0 ─► Frame 1 ─► ... ─► Frame N │  │
+│                   │  │     │          │               │      │  │
+│  ┌──────────┐     │  │     ▼          ▼               ▼      │  │
+│  │  Config  │────►│  │  [Input]    [Input]         [Input]   │  │
+│  │ (frames) │     │  │     │          │               │      │  │
+│  └──────────┘     │  │     ▼          ▼               ▼      │  │
+│                   │  │  [State]    [State]         [State]   │  │
+│                   │  └─────────────────────────────────────┘ │   │
+│                   └─────────────────────────────────────────┘   │
+│                                     │                            │
+│                                     ▼                            │
+│                   ┌─────────────────────────────────────────┐   │
+│                   │           Recording                      │   │
+│                   │  • state_hash: u64                       │   │
+│                   │  • frames: Vec<FrameInputs>              │   │
+│                   │  • snapshots: Vec<StateSnapshot>         │   │
+│                   └─────────────────────────────────────────┘   │
+│                                     │                            │
+│                     ┌───────────────┼───────────────┐           │
+│                     ▼               ▼               ▼           │
+│              ┌───────────┐   ┌───────────┐   ┌───────────┐      │
+│              │  Replay   │   │ Invariant │   │ Coverage  │      │
+│              │  Verify   │   │  Check    │   │  Report   │      │
+│              └───────────┘   └───────────┘   └───────────┘      │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ![Simulation Coverage Heat Map](../assets/coverage_heat.png)
 
 *Simulation runs generate coverage heat maps showing execution hotspots*

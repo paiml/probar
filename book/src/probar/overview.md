@@ -2,6 +2,13 @@
 
 **Probar** (Spanish: "to test/prove") is a pure Rust testing framework for WASM games that provides full Playwright feature parity while adding WASM-native capabilities.
 
+## Installation
+
+| Crate | Purpose | Install |
+|-------|---------|---------|
+| **jugar-probar** | Library for writing tests | `cargo add jugar-probar --dev` |
+| **probador** | CLI tool | `cargo install probador` |
+
 ## Why Probar?
 
 | Aspect | Playwright | Probar |
