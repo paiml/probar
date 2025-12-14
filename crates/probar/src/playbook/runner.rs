@@ -529,7 +529,7 @@ machine:
         // Check forbidden transition
         let err = runner.check_forbidden("start", "end");
         assert!(err.is_some());
-        assert!(err.unwrap().contains("Cannot skip middle state"));
+        assert!(err.expect("should have error").contains("Cannot skip middle state"));
 
         // Check allowed transition
         let ok = runner.check_forbidden("start", "middle");
@@ -736,7 +736,7 @@ playbook:
         assert!(result.step_results[0]
             .error
             .as_ref()
-            .unwrap()
+            .expect("should have error")
             .contains("Forbidden"));
     }
 
