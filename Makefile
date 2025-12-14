@@ -75,7 +75,8 @@ format-check: ## Check code formatting
 
 lint: ## Run clippy with auto-fix
 	@echo "🔍 Running clippy..."
-	@cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged --quiet 2>/dev/null || true
+	@cargo clippy --workspace --all-targets --all-features --fix --allow-dirty --allow-staged 2>/dev/null || true
+	@cargo clippy --workspace --all-targets --all-features -- -D warnings -A dead_code
 
 lint-check: ## Check clippy without fixing
 	@echo "🔍 Checking clippy..."
