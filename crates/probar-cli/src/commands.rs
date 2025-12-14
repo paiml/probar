@@ -55,6 +55,9 @@ pub enum Commands {
 
     /// Watch for changes and rebuild
     Watch(WatchArgs),
+
+    /// Run state machine playbooks
+    Playbook(PlaybookArgs),
 }
 
 /// Arguments for the test command
@@ -356,6 +359,72 @@ pub struct WatchArgs {
     /// Debounce delay in milliseconds
     #[arg(long, default_value = "500")]
     pub debounce: u64,
+}
+
+/// Arguments for the playbook command
+#[derive(Parser, Debug)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct PlaybookArgs {
+    /// Playbook YAML file(s) to run
+    #[arg(required = true)]
+    pub files: Vec<PathBuf>,
+
+    /// Validate playbook without running
+    #[arg(long)]
+    pub validate: bool,
+
+    /// Export state machine diagram
+    #[arg(long, value_enum)]
+    pub export: Option<DiagramFormat>,
+
+    /// Output file for diagram export
+    #[arg(long)]
+    pub export_output: Option<PathBuf>,
+
+    /// Run mutation testing (M1-M5)
+    #[arg(long)]
+    pub mutate: bool,
+
+    /// Mutation classes to run (e.g., M1,M2)
+    #[arg(long, value_delimiter = ',')]
+    pub mutation_classes: Option<Vec<String>>,
+
+    /// Fail fast on first error
+    #[arg(long)]
+    pub fail_fast: bool,
+
+    /// Continue on step failure
+    #[arg(long)]
+    pub continue_on_error: bool,
+
+    /// Output format for results
+    #[arg(short, long, default_value = "text")]
+    pub format: PlaybookOutputFormat,
+
+    /// Output directory for results
+    #[arg(short, long, default_value = "target/probar/playbooks")]
+    pub output: PathBuf,
+}
+
+/// Diagram export format
+#[derive(ValueEnum, Clone, Debug)]
+pub enum DiagramFormat {
+    /// DOT format (Graphviz)
+    Dot,
+    /// SVG format
+    Svg,
+}
+
+/// Output format for playbook results
+#[derive(ValueEnum, Clone, Debug, Default)]
+pub enum PlaybookOutputFormat {
+    /// Human-readable text
+    #[default]
+    Text,
+    /// JSON output
+    Json,
+    /// `JUnit` XML
+    Junit,
 }
 
 /// Color argument for CLI
@@ -870,6 +939,197 @@ mod tests {
             };
             let debug = format!("{args:?}");
             assert!(debug.contains("CoverageArgs"));
+        }
+    }
+
+    mod playbook_tests {
+        use super::*;
+
+        #[test]
+        fn test_parse_playbook_command() {
+            let cli = Cli::parse_from(["probar", "playbook", "test.yaml"]);
+            assert!(matches!(cli.command, Commands::Playbook(_)));
+        }
+
+        #[test]
+        fn test_parse_playbook_multiple_files() {
+            let cli = Cli::parse_from(["probar", "playbook", "a.yaml", "b.yaml", "c.yaml"]);
+            if let Commands::Playbook(args) = cli.command {
+                assert_eq!(args.files.len(), 3);
+            } else {
+                panic!("expected Playbook command");
+            }
+        }
+
+        #[test]
+        fn test_parse_playbook_validate() {
+            let cli = Cli::parse_from(["probar", "playbook", "test.yaml", "--validate"]);
+            if let Commands::Playbook(args) = cli.command {
+                assert!(args.validate);
+            } else {
+                panic!("expected Playbook command");
+            }
+        }
+
+        #[test]
+        fn test_parse_playbook_export_dot() {
+            let cli = Cli::parse_from(["probar", "playbook", "test.yaml", "--export", "dot"]);
+            if let Commands::Playbook(args) = cli.command {
+                assert!(matches!(args.export, Some(DiagramFormat::Dot)));
+            } else {
+                panic!("expected Playbook command");
+            }
+        }
+
+        #[test]
+        fn test_parse_playbook_export_svg() {
+            let cli = Cli::parse_from([
+                "probar",
+                "playbook",
+                "test.yaml",
+                "--export",
+                "svg",
+                "--export-output",
+                "diagram.svg",
+            ]);
+            if let Commands::Playbook(args) = cli.command {
+                assert!(matches!(args.export, Some(DiagramFormat::Svg)));
+                assert_eq!(args.export_output, Some(PathBuf::from("diagram.svg")));
+            } else {
+                panic!("expected Playbook command");
+            }
+        }
+
+        #[test]
+        fn test_parse_playbook_mutate() {
+            let cli = Cli::parse_from(["probar", "playbook", "test.yaml", "--mutate"]);
+            if let Commands::Playbook(args) = cli.command {
+                assert!(args.mutate);
+            } else {
+                panic!("expected Playbook command");
+            }
+        }
+
+        #[test]
+        fn test_parse_playbook_mutation_classes() {
+            let cli = Cli::parse_from([
+                "probar",
+                "playbook",
+                "test.yaml",
+                "--mutate",
+                "--mutation-classes",
+                "M1,M2,M3",
+            ]);
+            if let Commands::Playbook(args) = cli.command {
+                assert!(args.mutate);
+                let classes = args.mutation_classes.expect("mutation classes");
+                assert_eq!(classes.len(), 3);
+                assert!(classes.contains(&"M1".to_string()));
+                assert!(classes.contains(&"M2".to_string()));
+                assert!(classes.contains(&"M3".to_string()));
+            } else {
+                panic!("expected Playbook command");
+            }
+        }
+
+        #[test]
+        fn test_parse_playbook_fail_fast() {
+            let cli = Cli::parse_from(["probar", "playbook", "test.yaml", "--fail-fast"]);
+            if let Commands::Playbook(args) = cli.command {
+                assert!(args.fail_fast);
+            } else {
+                panic!("expected Playbook command");
+            }
+        }
+
+        #[test]
+        fn test_parse_playbook_continue_on_error() {
+            let cli = Cli::parse_from(["probar", "playbook", "test.yaml", "--continue-on-error"]);
+            if let Commands::Playbook(args) = cli.command {
+                assert!(args.continue_on_error);
+            } else {
+                panic!("expected Playbook command");
+            }
+        }
+
+        #[test]
+        fn test_parse_playbook_format_json() {
+            let cli = Cli::parse_from(["probar", "playbook", "test.yaml", "--format", "json"]);
+            if let Commands::Playbook(args) = cli.command {
+                assert!(matches!(args.format, PlaybookOutputFormat::Json));
+            } else {
+                panic!("expected Playbook command");
+            }
+        }
+
+        #[test]
+        fn test_parse_playbook_output_dir() {
+            let cli =
+                Cli::parse_from(["probar", "playbook", "test.yaml", "--output", "results/pb"]);
+            if let Commands::Playbook(args) = cli.command {
+                assert_eq!(args.output, PathBuf::from("results/pb"));
+            } else {
+                panic!("expected Playbook command");
+            }
+        }
+
+        #[test]
+        fn test_playbook_args_defaults() {
+            let args = PlaybookArgs {
+                files: vec![PathBuf::from("test.yaml")],
+                validate: false,
+                export: None,
+                export_output: None,
+                mutate: false,
+                mutation_classes: None,
+                fail_fast: false,
+                continue_on_error: false,
+                format: PlaybookOutputFormat::default(),
+                output: PathBuf::from("target/probar/playbooks"),
+            };
+            assert!(!args.validate);
+            assert!(!args.mutate);
+            assert!(matches!(args.format, PlaybookOutputFormat::Text));
+        }
+
+        #[test]
+        fn test_playbook_args_debug() {
+            let args = PlaybookArgs {
+                files: vec![PathBuf::from("login.yaml")],
+                validate: true,
+                export: Some(DiagramFormat::Svg),
+                export_output: Some(PathBuf::from("out.svg")),
+                mutate: true,
+                mutation_classes: Some(vec!["M1".to_string(), "M2".to_string()]),
+                fail_fast: true,
+                continue_on_error: false,
+                format: PlaybookOutputFormat::Json,
+                output: PathBuf::from("output"),
+            };
+            let debug = format!("{args:?}");
+            assert!(debug.contains("PlaybookArgs"));
+        }
+
+        #[test]
+        fn test_diagram_format_debug() {
+            let dot_debug = format!("{:?}", DiagramFormat::Dot);
+            assert!(dot_debug.contains("Dot"));
+
+            let svg_debug = format!("{:?}", DiagramFormat::Svg);
+            assert!(svg_debug.contains("Svg"));
+        }
+
+        #[test]
+        fn test_playbook_output_format_default() {
+            let format = PlaybookOutputFormat::default();
+            assert!(matches!(format, PlaybookOutputFormat::Text));
+        }
+
+        #[test]
+        fn test_playbook_output_format_all_variants() {
+            let _ = PlaybookOutputFormat::Text;
+            let _ = PlaybookOutputFormat::Json;
+            let _ = PlaybookOutputFormat::Junit;
         }
     }
 }

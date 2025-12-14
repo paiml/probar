@@ -54,6 +54,7 @@ fn run() -> CliResult<()> {
         Commands::Serve(args) => run_serve(&args),
         Commands::Build(args) => run_build(&args),
         Commands::Watch(args) => run_watch(&args),
+        Commands::Playbook(args) => run_playbook(&config, &args),
     }
 }
 
@@ -670,6 +671,201 @@ fn run_watch(args: &probar_cli::WatchArgs) -> CliResult<()> {
             .await
             .map_err(|e| probar_cli::CliError::test_execution(format!("Watch error: {e}")))
     })
+}
+
+fn run_playbook(config: &CliConfig, args: &probar_cli::PlaybookArgs) -> CliResult<()> {
+    use jugar_probar::playbook::{
+        to_dot, to_svg, MutationClass, MutationGenerator, Playbook, StateMachineValidator,
+    };
+
+    if config.verbosity != Verbosity::Quiet {
+        println!("Running playbook(s)...");
+    }
+
+    let mut all_passed = true;
+
+    for file in &args.files {
+        if config.verbosity != Verbosity::Quiet {
+            println!("\nProcessing: {}", file.display());
+        }
+
+        // Load playbook from YAML file
+        let yaml_content = std::fs::read_to_string(file).map_err(|e| {
+            probar_cli::CliError::test_execution(format!(
+                "Failed to read playbook {}: {}",
+                file.display(),
+                e
+            ))
+        })?;
+
+        let playbook = Playbook::from_yaml(&yaml_content).map_err(|e| {
+            probar_cli::CliError::test_execution(format!(
+                "Failed to parse playbook {}: {}",
+                file.display(),
+                e
+            ))
+        })?;
+
+        // Validate the state machine
+        let validator = StateMachineValidator::new(&playbook);
+        let validation_result = validator.validate();
+
+        if config.verbosity != Verbosity::Quiet {
+            println!("  State machine: {}", playbook.machine.id);
+            println!("  States: {}", playbook.machine.states.len());
+            println!("  Transitions: {}", playbook.machine.transitions.len());
+            println!(
+                "  Valid: {}",
+                if validation_result.is_valid {
+                    "yes"
+                } else {
+                    "no"
+                }
+            );
+        }
+
+        if !validation_result.is_valid {
+            all_passed = false;
+            for issue in &validation_result.issues {
+                eprintln!("  Issue: {issue:?}");
+            }
+        }
+
+        // Handle --validate (dry run)
+        if args.validate {
+            if config.verbosity != Verbosity::Quiet {
+                println!("  Validation only mode - skipping execution");
+            }
+            continue;
+        }
+
+        // Handle --export
+        if let Some(ref format) = args.export {
+            let diagram = match format {
+                probar_cli::DiagramFormat::Dot => to_dot(&playbook),
+                probar_cli::DiagramFormat::Svg => to_svg(&playbook),
+            };
+
+            if let Some(ref output_path) = args.export_output {
+                std::fs::write(output_path, &diagram).map_err(|e| {
+                    probar_cli::CliError::report_generation(format!(
+                        "Failed to write diagram: {}",
+                        e
+                    ))
+                })?;
+                if config.verbosity != Verbosity::Quiet {
+                    println!("  Diagram exported to: {}", output_path.display());
+                }
+            } else {
+                println!("{diagram}");
+            }
+        }
+
+        // Handle --mutate
+        if args.mutate {
+            let generator = MutationGenerator::new(&playbook);
+
+            let classes_to_run: Vec<MutationClass> =
+                if let Some(ref class_names) = args.mutation_classes {
+                    class_names
+                        .iter()
+                        .filter_map(|name| match name.as_str() {
+                            "M1" => Some(MutationClass::StateRemoval),
+                            "M2" => Some(MutationClass::TransitionRemoval),
+                            "M3" => Some(MutationClass::EventSwap),
+                            "M4" => Some(MutationClass::TargetSwap),
+                            "M5" => Some(MutationClass::GuardNegation),
+                            _ => {
+                                eprintln!("Unknown mutation class: {name}");
+                                None
+                            }
+                        })
+                        .collect()
+                } else {
+                    MutationClass::all()
+                };
+
+            if config.verbosity != Verbosity::Quiet {
+                println!(
+                    "  Running mutation testing ({} classes)...",
+                    classes_to_run.len()
+                );
+            }
+
+            let mut total_mutants = 0;
+            for class in &classes_to_run {
+                let mutants = generator.generate(*class);
+                if config.verbosity != Verbosity::Quiet {
+                    println!("    {}: {} mutants", class.id(), mutants.len());
+                }
+                total_mutants += mutants.len();
+            }
+
+            if config.verbosity != Verbosity::Quiet {
+                println!("  Total mutants generated: {total_mutants}");
+            }
+        }
+
+        // Output results based on format
+        match args.format {
+            probar_cli::PlaybookOutputFormat::Json => {
+                let result = serde_json::json!({
+                    "file": file.display().to_string(),
+                    "machine_id": playbook.machine.id,
+                    "states": playbook.machine.states.len(),
+                    "transitions": playbook.machine.transitions.len(),
+                    "valid": validation_result.is_valid,
+                    "issues": validation_result.issues.len(),
+                });
+                println!("{}", serde_json::to_string_pretty(&result).unwrap_or_default());
+            }
+            probar_cli::PlaybookOutputFormat::Junit => {
+                let timestamp = chrono::Utc::now().to_rfc3339();
+                let failures = i32::from(!validation_result.is_valid);
+                let junit = format!(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="playbook" tests="1" failures="{}" timestamp="{}">
+  <testsuite name="{}" tests="1" failures="{}">
+    <testcase name="validation" classname="{}">
+      {}
+    </testcase>
+  </testsuite>
+</testsuites>"#,
+                    failures,
+                    timestamp,
+                    playbook.machine.id,
+                    failures,
+                    file.display(),
+                    if validation_result.is_valid {
+                        String::new()
+                    } else {
+                        format!(
+                            "<failure message=\"Validation failed\">{} issues</failure>",
+                            validation_result.issues.len()
+                        )
+                    }
+                );
+                println!("{junit}");
+            }
+            probar_cli::PlaybookOutputFormat::Text => {
+                // Already printed above
+            }
+        }
+
+        if args.fail_fast && !validation_result.is_valid {
+            return Err(probar_cli::CliError::test_execution(
+                "Playbook validation failed (--fail-fast)".to_string(),
+            ));
+        }
+    }
+
+    if all_passed {
+        Ok(())
+    } else {
+        Err(probar_cli::CliError::test_execution(
+            "One or more playbooks failed validation".to_string(),
+        ))
+    }
 }
 
 #[cfg(test)]

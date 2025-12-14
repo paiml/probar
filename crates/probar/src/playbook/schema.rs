@@ -11,11 +11,26 @@ use std::collections::HashMap;
 pub struct Playbook {
     /// Schema version (must be "1.0")
     pub version: String,
+    /// Playbook name
+    #[serde(default)]
+    pub name: String,
+    /// Playbook description
+    #[serde(default)]
+    pub description: String,
     /// State machine definition
     pub machine: StateMachine,
     /// Performance budget constraints
     #[serde(default)]
     pub performance: PerformanceBudget,
+    /// Playbook execution steps
+    #[serde(default)]
+    pub playbook: Option<PlaybookSteps>,
+    /// Assertions to verify
+    #[serde(default)]
+    pub assertions: Option<PlaybookAssertions>,
+    /// Falsification protocol
+    #[serde(default)]
+    pub falsification: Option<FalsificationConfig>,
     /// Optional metadata
     #[serde(default)]
     pub metadata: HashMap<String, String>,
@@ -32,6 +47,24 @@ pub struct StateMachine {
     pub states: HashMap<String, State>,
     /// Transition definitions
     pub transitions: Vec<Transition>,
+    /// Forbidden transitions (must never occur)
+    #[serde(default)]
+    pub forbidden: Vec<ForbiddenTransition>,
+    /// Global performance constraints
+    #[serde(default)]
+    pub performance: Option<PerformanceBudget>,
+}
+
+/// Forbidden transition that must never occur.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForbiddenTransition {
+    /// Source state ID
+    pub from: String,
+    /// Target state ID
+    pub to: String,
+    /// Reason why this transition is forbidden
+    #[serde(default)]
+    pub reason: String,
 }
 
 /// Individual state definition.
@@ -211,6 +244,153 @@ pub enum ComplexityClass {
     /// O(n^2) - quadratic
     #[serde(rename = "O(n^2)")]
     Quadratic,
+}
+
+/// Playbook execution steps (setup, steps, teardown).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PlaybookSteps {
+    /// Setup actions executed before steps
+    #[serde(default)]
+    pub setup: Vec<PlaybookAction>,
+    /// Ordered execution steps
+    #[serde(default)]
+    pub steps: Vec<PlaybookStep>,
+    /// Teardown actions executed after steps (even on failure)
+    #[serde(default)]
+    pub teardown: Vec<PlaybookAction>,
+}
+
+/// Single playbook action.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaybookAction {
+    /// Action to execute
+    pub action: ActionSpec,
+    /// Description of the action
+    #[serde(default)]
+    pub description: String,
+    /// Whether to ignore errors
+    #[serde(default)]
+    pub ignore_errors: bool,
+}
+
+/// Action specification (wasm call or other).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionSpec {
+    /// WASM function to call
+    #[serde(default)]
+    pub wasm: Option<String>,
+    /// Arguments to pass
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+/// Single execution step.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaybookStep {
+    /// Step name
+    pub name: String,
+    /// Transitions to execute in order
+    #[serde(default)]
+    pub transitions: Vec<String>,
+    /// Timeout for this step
+    #[serde(default)]
+    pub timeout: Option<String>,
+    /// Variables to capture after step
+    #[serde(default)]
+    pub capture: Vec<VariableCapture>,
+}
+
+/// Variable capture specification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VariableCapture {
+    /// Variable name to store result
+    pub var: String,
+    /// Expression to evaluate
+    pub from: String,
+}
+
+/// Playbook assertions configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PlaybookAssertions {
+    /// Expected state path
+    #[serde(default)]
+    pub path: Option<PathAssertion>,
+    /// Output assertions
+    #[serde(default)]
+    pub output: Vec<OutputAssertion>,
+    /// Complexity assertion
+    #[serde(default)]
+    pub complexity: Option<ComplexityAssertion>,
+}
+
+/// Path assertion - expected state sequence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathAssertion {
+    /// Expected sequence of state IDs
+    pub expected: Vec<String>,
+}
+
+/// Output assertion on captured variables.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputAssertion {
+    /// Variable name
+    pub var: String,
+    /// Assert not empty
+    #[serde(default)]
+    pub not_empty: Option<bool>,
+    /// Assert matches regex
+    #[serde(default)]
+    pub matches: Option<String>,
+    /// Assert less than value
+    #[serde(default)]
+    pub less_than: Option<i64>,
+    /// Assert greater than value
+    #[serde(default)]
+    pub greater_than: Option<i64>,
+    /// Assert equals value
+    #[serde(default)]
+    pub equals: Option<String>,
+}
+
+/// Complexity assertion for O(n) verification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComplexityAssertion {
+    /// Operation being measured
+    pub operation: String,
+    /// Variable containing measurement
+    pub measure: String,
+    /// Variable containing input size
+    pub input_var: String,
+    /// Expected complexity class
+    pub expected: ComplexityClass,
+    /// Allowed tolerance (0.0 - 1.0)
+    #[serde(default)]
+    pub tolerance: f64,
+    /// Sample sizes for measurement
+    #[serde(default)]
+    pub sample_sizes: Vec<usize>,
+}
+
+/// Falsification protocol configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FalsificationConfig {
+    /// Mutation definitions
+    #[serde(default)]
+    pub mutations: Vec<MutationDef>,
+}
+
+/// Single mutation definition for falsification testing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MutationDef {
+    /// Mutation identifier
+    pub id: String,
+    /// Description of the mutation
+    #[serde(default)]
+    pub description: String,
+    /// Mutation action
+    pub mutate: String,
+    /// Expected failure message
+    pub expected_failure: String,
 }
 
 impl Playbook {
@@ -412,7 +592,7 @@ machine:
         // Could be EmptyStates or InvalidInitialState depending on validation order
         assert!(matches!(
             result,
-            Err(PlaybookError::EmptyStates) | Err(PlaybookError::InvalidInitialState(_))
+            Err(PlaybookError::EmptyStates | PlaybookError::InvalidInitialState(_))
         ));
     }
 

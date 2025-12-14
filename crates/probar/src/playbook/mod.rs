@@ -41,6 +41,7 @@
 pub mod complexity;
 pub mod executor;
 pub mod mutation;
+pub mod runner;
 pub mod schema;
 pub mod state_machine;
 
@@ -53,8 +54,14 @@ pub use mutation::{
     calculate_mutation_score, MutantResult, MutationClass, MutationGenerator, MutationScore,
 };
 pub use schema::{
-    Action, Assertion, ComplexityClass, Invariant, Playbook, PlaybookError, PerformanceBudget,
-    State, StateMachine, Transition, WaitCondition,
+    Action, ActionSpec, Assertion, ComplexityAssertion, ComplexityClass,
+    FalsificationConfig, ForbiddenTransition, Invariant, MutationDef, OutputAssertion,
+    PathAssertion, PerformanceBudget, Playbook, PlaybookAction, PlaybookAssertions,
+    PlaybookError, PlaybookStep, PlaybookSteps, State, StateMachine, Transition,
+    VariableCapture, WaitCondition,
+};
+pub use runner::{
+    to_svg, AssertionCheckResult, PlaybookRunResult, PlaybookRunner, StepResult,
 };
 pub use state_machine::{
     to_dot, DeterminismInfo, IssueSeverity, ReachabilityInfo, StateMachineValidator,
