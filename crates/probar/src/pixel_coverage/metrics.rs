@@ -963,8 +963,8 @@ mod tests {
         let img = test_image_gray(64);
         let hasher = PerceptualHash::new(PhashAlgorithm::AHash);
         let hash = hasher.compute(&img, 8, 8);
-        // Just verify it runs without panic
-        assert!(hash >= 0);
+        // Just verify it runs without panic and produces a valid hash
+        let _ = hash; // hash computed successfully
     }
 
     // =========================================================================

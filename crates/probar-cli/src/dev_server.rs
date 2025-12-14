@@ -449,9 +449,20 @@ async fn serve_index(directory: Arc<PathBuf>) -> Response {
 }
 
 /// Serve static file based on URI
+///
+/// Handles directory requests by serving index.html if it exists.
 async fn serve_static(directory: Arc<PathBuf>, uri: axum::http::Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     let file_path = directory.join(path);
+
+    // If path is a directory, try to serve index.html
+    if file_path.is_dir() {
+        let index_path = file_path.join("index.html");
+        if index_path.exists() {
+            return serve_file(&index_path).await;
+        }
+    }
+
     serve_file(&file_path).await
 }
 
@@ -968,6 +979,63 @@ mod tests {
         // Unknown types fall back to mime_guess or octet-stream
         let mime = get_mime_type(&PathBuf::from("data.xyz"));
         assert!(!mime.is_empty());
+    }
+
+    // =========================================================================
+    // Directory Index Tests (Bug fix: serve index.html for directories)
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_serve_static_directory_serves_index_html() {
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        // Create temp directory with index.html
+        let temp_dir = TempDir::new().unwrap();
+        let subdir = temp_dir.path().join("subdir");
+        std::fs::create_dir(&subdir).unwrap();
+        std::fs::write(subdir.join("index.html"), "<html>test</html>").unwrap();
+
+        let directory = Arc::new(temp_dir.path().to_path_buf());
+        let uri: axum::http::Uri = "/subdir/".parse().unwrap();
+
+        let response = serve_static(directory, uri).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_serve_static_directory_without_trailing_slash() {
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let subdir = temp_dir.path().join("mydir");
+        std::fs::create_dir(&subdir).unwrap();
+        std::fs::write(subdir.join("index.html"), "<html>works</html>").unwrap();
+
+        let directory = Arc::new(temp_dir.path().to_path_buf());
+        let uri: axum::http::Uri = "/mydir".parse().unwrap();
+
+        let response = serve_static(directory, uri).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_serve_static_directory_no_index_returns_error() {
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let subdir = temp_dir.path().join("empty");
+        std::fs::create_dir(&subdir).unwrap();
+        // No index.html
+
+        let directory = Arc::new(temp_dir.path().to_path_buf());
+        let uri: axum::http::Uri = "/empty/".parse().unwrap();
+
+        let response = serve_static(directory, uri).await;
+        // Should return error since directory has no index.html
+        assert!(response.status().is_client_error() || response.status().is_server_error());
     }
 
     // =========================================================================
