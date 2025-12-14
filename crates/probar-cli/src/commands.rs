@@ -293,6 +293,23 @@ pub struct ServeArgs {
     /// Enable file watching for hot reload (default: true)
     #[arg(long, default_value = "true")]
     pub watch: bool,
+
+    /// Validate module imports before serving
+    ///
+    /// Scans HTML files for JS/WASM imports and verifies they resolve
+    /// with correct MIME types. Fails if any imports are broken.
+    #[arg(long)]
+    pub validate: bool,
+
+    /// Monitor requests and warn about issues (404s, MIME mismatches)
+    #[arg(long)]
+    pub monitor: bool,
+
+    /// Exclude directories from validation (e.g., node_modules)
+    ///
+    /// Can be specified multiple times: --exclude node_modules --exclude vendor
+    #[arg(long, value_name = "DIR")]
+    pub exclude: Vec<String>,
 }
 
 /// Serve subcommands
@@ -374,6 +391,17 @@ pub struct ScoreArgs {
     /// Show score trend over time
     #[arg(long)]
     pub trend: bool,
+
+    /// Run LIVE browser validation (starts server, launches headless browser)
+    ///
+    /// This actually tests if the app works rather than just checking for files.
+    /// Requires Chrome/Chromium installed. Recommended for accurate scoring.
+    #[arg(long)]
+    pub live: bool,
+
+    /// Port for live validation server (default: random available port)
+    #[arg(long, default_value = "0")]
+    pub port: u16,
 }
 
 /// Output format for score command

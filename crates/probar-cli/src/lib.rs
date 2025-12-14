@@ -37,7 +37,8 @@ pub use config::{CliConfig, ColorChoice, Verbosity};
 pub use debug::{create_tracer, DebugCategory, DebugTracer, DebugVerbosity, ResolutionRule};
 pub use dev_server::{
     get_mime_type, DevServer, DevServerConfig, DevServerConfigBuilder, FileChangeEvent,
-    FileWatcher, FileWatcherBuilder, HotReloadMessage,
+    FileWatcher, FileWatcherBuilder, HotReloadMessage, ImportRef, ImportType,
+    ImportValidationError, ModuleValidationResult, ModuleValidator,
 };
 pub use error::{CliError, CliResult};
 pub use output::{OutputFormat, ProgressReporter};

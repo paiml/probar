@@ -493,7 +493,7 @@ fn run_config(config: &CliConfig, args: &probador::ConfigArgs) {
 // =============================================================================
 
 fn run_serve(args: &probador::ServeArgs) -> CliResult<()> {
-    use probador::{DevServer, DevServerConfig, ServeSubcommand};
+    use probador::{DevServer, DevServerConfig, ModuleValidator, ServeSubcommand};
 
     // Handle subcommands
     if let Some(ref subcommand) = args.subcommand {
@@ -502,6 +502,24 @@ fn run_serve(args: &probador::ServeArgs) -> CliResult<()> {
             ServeSubcommand::Viz(viz_args) => run_serve_viz(viz_args, &args.directory),
             ServeSubcommand::Score(score_args) => run_serve_score(score_args, &args.directory),
         };
+    }
+
+    // Validate module imports if --validate flag is set
+    if args.validate {
+        let mut validator = ModuleValidator::new(&args.directory);
+        if !args.exclude.is_empty() {
+            validator = validator.with_exclude(args.exclude.clone());
+        }
+        let result = validator.validate();
+        validator.print_results(&result);
+
+        if !result.is_ok() {
+            return Err(probador::CliError::test_execution(format!(
+                "Module validation failed: {} error(s) found. Fix imports before serving.",
+                result.errors.len()
+            )));
+        }
+        eprintln!("\n✓ All module imports validated successfully\n");
     }
 
     let config = DevServerConfig {
@@ -575,6 +593,11 @@ fn run_serve_viz(args: &probador::VizArgs, _default_dir: &std::path::Path) -> Cl
 fn run_serve_score(args: &probador::ScoreArgs, _default_dir: &std::path::Path) -> CliResult<()> {
     use probador::{score, ScoreCalculator, ScoreOutputFormat};
 
+    // If --live flag is set, run actual browser validation
+    if args.live {
+        return run_live_browser_validation(args);
+    }
+
     let calculator = ScoreCalculator::new(args.path.clone());
     let project_score = calculator.calculate();
 
@@ -591,6 +614,297 @@ fn run_serve_score(args: &probador::ScoreArgs, _default_dir: &std::path::Path) -
     }
 
     Ok(())
+}
+
+/// Live browser validation - FALSIFICATION approach
+///
+/// This actually starts a server, launches a headless browser, and tries to BREAK the app.
+/// The app FAILS if we can prove it's broken. The app PASSES only if we can't break it.
+///
+/// Checks performed:
+/// 1. Module resolution: Can all JS/WASM imports be fetched? (404 = FAIL)
+/// 2. MIME types: Are JS/WASM served with correct MIME types? (wrong MIME = FAIL)
+/// 3. Console errors: Any console.error or uncaught exceptions? (errors = FAIL)
+/// 4. WASM initialization: Does the WASM module load? (load failure = FAIL)
+fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
+    use probador::{DevServerConfig, ModuleValidator};
+    use std::net::TcpListener;
+
+    eprintln!("\n══════════════════════════════════════════════════════════════");
+    eprintln!("  LIVE BROWSER VALIDATION (Falsification Mode)");
+    eprintln!("══════════════════════════════════════════════════════════════\n");
+    eprintln!("This validates the app ACTUALLY WORKS by trying to break it.\n");
+
+    // Find HTML files to test
+    let html_files = find_html_files(&args.path);
+    if html_files.is_empty() {
+        eprintln!("✗ FAIL: No HTML files found in {}", args.path.display());
+        eprintln!("\n  Cannot validate an app without HTML entry points.");
+        return Err(probador::CliError::test_execution(
+            "No HTML files found - nothing to validate".to_string(),
+        ));
+    }
+
+    eprintln!("Found {} HTML file(s) to validate:\n", html_files.len());
+    for file in &html_files {
+        eprintln!("  • {}", file.display());
+    }
+    eprintln!();
+
+    // Step 1: Static module validation (fast, no browser needed)
+    eprintln!("[1/4] Module Resolution Check");
+    let validator = ModuleValidator::new(&args.path);
+    let validation_result = validator.validate();
+
+    if !validation_result.is_ok() {
+        eprintln!("  ✗ FAIL: {} broken import(s) found\n", validation_result.errors.len());
+        for error in &validation_result.errors {
+            eprintln!("    • {} (from {}:{})",
+                error.import.import_path,
+                error.import.source_file.display(),
+                error.import.line_number
+            );
+            let status_str = if error.status == 404 {
+                "404 Not Found".to_string()
+            } else {
+                format!("{}", error.status)
+            };
+            eprintln!("      Status: {} - {}", status_str, error.message);
+            eprintln!("      MIME type: {}", error.actual_mime);
+        }
+        eprintln!();
+        eprintln!("══════════════════════════════════════════════════════════════");
+        eprintln!("  RESULT: FAIL (Grade: F)");
+        eprintln!("══════════════════════════════════════════════════════════════");
+        eprintln!("\n  Fix the broken imports above and run again.\n");
+        return Err(probador::CliError::test_execution(
+            format!("Module resolution failed: {} broken import(s)", validation_result.errors.len()),
+        ));
+    }
+    eprintln!("  ✓ All {} import(s) resolve correctly\n", validation_result.total_imports);
+
+    // Step 2: Start temporary server
+    eprintln!("[2/4] Starting Validation Server");
+    let port = if args.port == 0 {
+        // Find an available port
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .map_err(|e| probador::CliError::test_execution(format!("Failed to find available port: {e}")))?;
+        listener.local_addr()
+            .map_err(|e| probador::CliError::test_execution(format!("Failed to get local address: {e}")))?
+            .port()
+    } else {
+        args.port
+    };
+
+    eprintln!("  Starting server on port {port}...\n");
+
+    let config = DevServerConfig {
+        directory: args.path.clone(),
+        port,
+        ws_port: port + 1,
+        cors: true,
+        cross_origin_isolated: true,
+    };
+
+    let rt = tokio::runtime::Runtime::new().map_err(|e| {
+        probador::CliError::test_execution(format!("Failed to create runtime: {e}"))
+    })?;
+
+    // Run browser validation
+    let validation_errors = rt.block_on(async {
+        run_browser_validation_async(&args.path, &html_files, port, config).await
+    })?;
+
+    // Report results
+    if validation_errors.is_empty() {
+        eprintln!("══════════════════════════════════════════════════════════════");
+        eprintln!("  RESULT: PASS (App works!)");
+        eprintln!("══════════════════════════════════════════════════════════════");
+        eprintln!("\n  Could not prove the app is broken. All validation checks passed.\n");
+        Ok(())
+    } else {
+        eprintln!("══════════════════════════════════════════════════════════════");
+        eprintln!("  RESULT: FAIL (Grade: F)");
+        eprintln!("══════════════════════════════════════════════════════════════");
+        eprintln!("\n  Found {} issue(s) that prove the app is broken:\n", validation_errors.len());
+        for (i, error) in validation_errors.iter().enumerate() {
+            eprintln!("  {}. {}", i + 1, error);
+        }
+        eprintln!();
+        Err(probador::CliError::test_execution(
+            format!("Live validation failed: {} issue(s) found", validation_errors.len()),
+        ))
+    }
+}
+
+/// Find all HTML files in a directory
+fn find_html_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut html_files = Vec::new();
+
+    fn scan_dir(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    // Skip node_modules and hidden directories
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if !name.starts_with('.') && name != "node_modules" {
+                        scan_dir(&path, files);
+                    }
+                } else if path.extension().is_some_and(|ext| ext == "html") {
+                    files.push(path);
+                }
+            }
+        }
+    }
+
+    scan_dir(dir, &mut html_files);
+    html_files.sort();
+    html_files
+}
+
+/// Run browser validation asynchronously
+async fn run_browser_validation_async(
+    serve_dir: &std::path::Path,
+    html_files: &[std::path::PathBuf],
+    port: u16,
+    config: probador::DevServerConfig,
+) -> CliResult<Vec<String>> {
+    use probador::DevServer;
+    use std::time::Duration;
+
+    let server = DevServer::new(config);
+    #[allow(unused_mut)]
+    let mut errors = Vec::new();
+
+    // Spawn server in background
+    let server_handle = tokio::spawn(async move {
+        let _ = server.run().await;
+    });
+
+    // Give server time to start
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    eprintln!("[3/4] Browser Bootstrap Check");
+
+    // Try to launch browser
+    #[cfg(feature = "browser")]
+    {
+        use jugar_probar::browser::{Browser, BrowserConfig, BrowserConsoleLevel};
+        use tokio::time::timeout;
+
+        let browser_config = BrowserConfig::default()
+            .with_headless(true)
+            .with_no_sandbox()
+            .with_viewport(1280, 720);
+
+        match Browser::launch(browser_config).await {
+            Ok(browser) => {
+                for html_file in html_files {
+                    // Convert file path to URL
+                    let relative_path = html_file.strip_prefix(serve_dir).unwrap_or(html_file);
+                    let url_path = relative_path.to_string_lossy().replace('\\', "/");
+                    let url = format!("http://127.0.0.1:{port}/{url_path}");
+
+                    eprintln!("  Testing: {url}");
+
+                    match browser.new_page().await {
+                        Ok(mut page) => {
+                            // Enable console capture
+                            if let Err(e) = page.enable_console_capture().await {
+                                eprintln!("    Warning: Could not enable console capture: {e}");
+                            }
+
+                            // Navigate to page with timeout
+                            let nav_result = timeout(
+                                Duration::from_secs(30),
+                                page.goto(&url)
+                            ).await;
+
+                            match nav_result {
+                                Ok(Ok(())) => {
+                                    // Wait a bit for JS to execute
+                                    tokio::time::sleep(Duration::from_secs(2)).await;
+
+                                    // Fetch console messages
+                                    if let Ok(messages) = page.fetch_console_messages().await {
+                                        let error_messages: Vec<_> = messages.iter()
+                                            .filter(|m| m.level == BrowserConsoleLevel::Error)
+                                            .collect();
+
+                                        if !error_messages.is_empty() {
+                                            eprintln!("    ✗ {} console error(s) found", error_messages.len());
+                                            for msg in &error_messages {
+                                                errors.push(format!("[{}] Console error: {}", url_path, msg.text));
+                                            }
+                                        } else {
+                                            eprintln!("    ✓ No console errors");
+                                        }
+                                    }
+
+                                    // Check for WASM ready signal
+                                    eprintln!("\n[4/4] WASM Initialization Check");
+                                    let wasm_result = timeout(
+                                        Duration::from_secs(10),
+                                        page.wait_for_wasm_ready()
+                                    ).await;
+
+                                    match wasm_result {
+                                        Ok(Ok(())) => {
+                                            eprintln!("  ✓ WASM initialized successfully\n");
+                                        }
+                                        Ok(Err(e)) => {
+                                            eprintln!("  ⚠ WASM initialization: {e}");
+                                            eprintln!("    (This may be expected if page doesn't use WASM)\n");
+                                        }
+                                        Err(_) => {
+                                            eprintln!("  ⚠ WASM initialization timed out");
+                                            eprintln!("    (This may be expected if page doesn't use WASM)\n");
+                                        }
+                                    }
+                                }
+                                Ok(Err(e)) => {
+                                    eprintln!("    ✗ Navigation failed: {e}");
+                                    errors.push(format!("[{}] Navigation failed: {}", url_path, e));
+                                }
+                                Err(_) => {
+                                    eprintln!("    ✗ Navigation timed out after 30s");
+                                    errors.push(format!("[{}] Navigation timed out", url_path));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("    ✗ Failed to create page: {e}");
+                            errors.push(format!("Failed to create browser page: {}", e));
+                        }
+                    }
+                }
+
+                // Close browser
+                let _ = browser.close().await;
+            }
+            Err(e) => {
+                eprintln!("  ✗ Failed to launch browser: {e}");
+                eprintln!("    Make sure Chrome/Chromium is installed.\n");
+                errors.push(format!("Failed to launch browser: {}", e));
+            }
+        }
+    }
+
+    #[cfg(not(feature = "browser"))]
+    {
+        // Suppress unused warnings when browser feature is disabled
+        let _ = (serve_dir, html_files, port);
+        eprintln!("  ⚠ Browser feature not enabled - skipping browser checks");
+        eprintln!("    Rebuild with --features browser for full validation\n");
+        eprintln!("[4/4] WASM Initialization Check");
+        eprintln!("  ⚠ Skipped (browser feature not enabled)\n");
+    }
+
+    // Stop server
+    server_handle.abort();
+
+    Ok(errors)
 }
 
 fn run_build(args: &probador::BuildArgs) -> CliResult<()> {

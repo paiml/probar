@@ -10,6 +10,11 @@ readme = "README.md"
 keywords = ["testing", "wasm", "games", "cli", "automation"]
 categories = ["development-tools::testing", "command-line-utilities", "wasm"]
 
+[features]
+default = []
+# Enable real browser control for live validation (requires chromium)
+browser = ["jugar-probar/browser"]
+
 [[bin]]
 name = "probador"
 path = "src/main.rs"

@@ -72,6 +72,23 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 proptest = { workspace = true }
 tempfile = { workspace = true }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "locator_ops"
+harness = false
+
+[[bench]]
+name = "playbook_ops"
+harness = false
+
+[[bench]]
+name = "coverage_ops"
+harness = false
+
+[[bench]]
+name = "image_ops"
+harness = false
 
 [[example]]
 name = "locator_demo"

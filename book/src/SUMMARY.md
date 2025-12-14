@@ -48,6 +48,7 @@
 # Development Server
 
 - [Dev Server](./probar/dev-server.md)
+- [Runtime Validation](./probar/runtime-validation.md)
 - [Hot Reload](./probar/watch-mode.md)
 - [Load Testing](./probar/load-testing.md)
 
@@ -56,6 +57,7 @@
 - [Debugging](./probar/debugging.md)
 - [Execution Tracing](./probar/execution-tracing.md)
 - [Performance Profiling](./probar/performance-profiling.md)
+- [Benchmarking](./probar/benchmarking.md)
 
 # Coverage & Reports
 

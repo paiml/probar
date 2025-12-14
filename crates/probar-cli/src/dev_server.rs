@@ -845,6 +845,344 @@ impl FileWatcherBuilder {
 }
 
 // =============================================================================
+// Module Validation (PROBAR-SPEC-007)
+// =============================================================================
+
+/// Import reference found in HTML/JS files
+#[derive(Debug, Clone)]
+pub struct ImportRef {
+    /// Source file containing the import
+    pub source_file: PathBuf,
+    /// Import path (may be relative or absolute)
+    pub import_path: String,
+    /// Type of import
+    pub import_type: ImportType,
+    /// Line number in source file
+    pub line_number: u32,
+}
+
+/// Type of module import
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportType {
+    /// ES Module import (import ... from '...')
+    EsModule,
+    /// Script src attribute
+    Script,
+    /// WASM file
+    Wasm,
+    /// Worker URL (new Worker('...'))
+    Worker,
+}
+
+impl ImportType {
+    /// Expected MIME types for this import type
+    #[must_use]
+    pub fn expected_mime_types(&self) -> &[&str] {
+        match self {
+            Self::EsModule | Self::Script | Self::Worker => {
+                &["text/javascript", "application/javascript"]
+            }
+            Self::Wasm => &["application/wasm"],
+        }
+    }
+}
+
+/// Validation error for a single import
+#[derive(Debug, Clone)]
+pub struct ImportValidationError {
+    /// The import that failed
+    pub import: ImportRef,
+    /// HTTP status received
+    pub status: u16,
+    /// MIME type received
+    pub actual_mime: String,
+    /// Error description
+    pub message: String,
+}
+
+/// Result of validating all imports
+#[derive(Debug, Default)]
+pub struct ModuleValidationResult {
+    /// Total imports scanned
+    pub total_imports: usize,
+    /// Imports that passed validation
+    pub passed: usize,
+    /// Imports that failed validation
+    pub errors: Vec<ImportValidationError>,
+}
+
+impl ModuleValidationResult {
+    /// Check if all validations passed
+    #[must_use]
+    pub fn is_ok(&self) -> bool {
+        self.errors.is_empty()
+    }
+}
+
+/// Module validator for checking import resolution
+#[derive(Debug)]
+pub struct ModuleValidator {
+    /// Root directory being served
+    serve_root: PathBuf,
+    /// Directories to exclude from validation (e.g., node_modules)
+    exclude: Vec<String>,
+}
+
+impl ModuleValidator {
+    /// Create a new module validator
+    #[must_use]
+    pub fn new(serve_root: impl Into<PathBuf>) -> Self {
+        Self {
+            serve_root: serve_root.into(),
+            exclude: vec!["node_modules".to_string()], // Default exclusion
+        }
+    }
+
+    /// Set directories to exclude from validation
+    #[must_use]
+    pub fn with_exclude(mut self, exclude: Vec<String>) -> Self {
+        self.exclude = exclude;
+        self
+    }
+
+    /// Check if a path should be excluded from validation
+    fn is_excluded(&self, path: &std::path::Path) -> bool {
+        let path_str = path.to_string_lossy();
+        self.exclude
+            .iter()
+            .any(|excl| path_str.contains(&format!("/{}/", excl)) || path_str.contains(&format!("\\{}\\", excl)))
+    }
+
+    /// Scan all HTML files and extract module imports
+    pub fn scan_imports(&self) -> Vec<ImportRef> {
+        let mut imports = Vec::new();
+
+        // Find all HTML files
+        let pattern = self.serve_root.join("**/*.html");
+        if let Ok(paths) = glob::glob(&pattern.to_string_lossy()) {
+            for entry in paths.flatten() {
+                // Skip excluded directories
+                if self.is_excluded(&entry) {
+                    continue;
+                }
+                if let Ok(content) = std::fs::read_to_string(&entry) {
+                    imports.extend(self.extract_imports_from_html(&entry, &content));
+                }
+            }
+        }
+
+        imports
+    }
+
+    /// Extract imports from HTML content
+    fn extract_imports_from_html(&self, file: &std::path::Path, content: &str) -> Vec<ImportRef> {
+        let mut imports = Vec::new();
+
+        for (line_num, line) in content.lines().enumerate() {
+            let line_number = (line_num + 1) as u32;
+
+            // ES Module imports: import ... from '...' or import '...'
+            if let Some(path) = self.extract_es_import(line) {
+                imports.push(ImportRef {
+                    source_file: file.to_path_buf(),
+                    import_path: path,
+                    import_type: ImportType::EsModule,
+                    line_number,
+                });
+            }
+
+            // Script src: <script src="...">
+            if let Some(path) = self.extract_script_src(line) {
+                // Skip inline module scripts with type="module" (handled by ES import)
+                if !line.contains("type=\"module\"") || line.contains("src=") {
+                    imports.push(ImportRef {
+                        source_file: file.to_path_buf(),
+                        import_path: path,
+                        import_type: ImportType::Script,
+                        line_number,
+                    });
+                }
+            }
+
+            // Worker URLs: new Worker('...')
+            if let Some(path) = self.extract_worker_url(line) {
+                imports.push(ImportRef {
+                    source_file: file.to_path_buf(),
+                    import_path: path,
+                    import_type: ImportType::Worker,
+                    line_number,
+                });
+            }
+        }
+
+        imports
+    }
+
+    /// Extract ES module import path
+    fn extract_es_import(&self, line: &str) -> Option<String> {
+        // Match: import ... from '...' or import ... from "..."
+        let patterns = [
+            (r#"from '"#, "'"),
+            (r#"from ""#, "\""),
+            // Also match dynamic import()
+            (r#"import('"#, "'"),
+            (r#"import(""#, "\""),
+        ];
+
+        for (start, end) in patterns {
+            if let Some(idx) = line.find(start) {
+                let rest = &line[idx + start.len()..];
+                if let Some(end_idx) = rest.find(end) {
+                    let path = &rest[..end_idx];
+                    // Only include JS/WASM paths
+                    if path.ends_with(".js") || path.ends_with(".mjs") || path.ends_with(".wasm") {
+                        return Some(path.to_string());
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Extract script src attribute
+    fn extract_script_src(&self, line: &str) -> Option<String> {
+        let patterns = [
+            (r#"src=""#, "\""),
+            (r#"src='"#, "'"),
+        ];
+
+        for (start, end) in patterns {
+            if let Some(idx) = line.find(start) {
+                let rest = &line[idx + start.len()..];
+                if let Some(end_idx) = rest.find(end) {
+                    let path = &rest[..end_idx];
+                    if path.ends_with(".js") || path.ends_with(".mjs") {
+                        return Some(path.to_string());
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Extract Worker URL
+    fn extract_worker_url(&self, line: &str) -> Option<String> {
+        let patterns = [
+            (r#"new Worker('"#, "'"),
+            (r#"new Worker(""#, "\""),
+        ];
+
+        for (start, end) in patterns {
+            if let Some(idx) = line.find(start) {
+                let rest = &line[idx + start.len()..];
+                if let Some(end_idx) = rest.find(end) {
+                    let path = &rest[..end_idx];
+                    return Some(path.to_string());
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Resolve import path relative to source file
+    fn resolve_path(&self, import: &ImportRef) -> Option<PathBuf> {
+        let import_path = &import.import_path;
+
+        if import_path.starts_with('/') {
+            // Absolute path from serve root
+            Some(self.serve_root.join(import_path.trim_start_matches('/')))
+        } else if import_path.starts_with("./") || import_path.starts_with("../") {
+            // Relative path from source file
+            let source_dir = import.source_file.parent()?;
+            Some(source_dir.join(import_path))
+        } else {
+            // Bare specifier or absolute URL - skip validation
+            None
+        }
+    }
+
+    /// Validate all imports resolve correctly
+    pub fn validate(&self) -> ModuleValidationResult {
+        let imports = self.scan_imports();
+        let mut result = ModuleValidationResult {
+            total_imports: imports.len(),
+            ..Default::default()
+        };
+
+        for import in imports {
+            if let Some(resolved) = self.resolve_path(&import) {
+                // Check if file exists
+                let canonical = resolved.canonicalize();
+
+                match canonical {
+                    Ok(path) if path.exists() => {
+                        // Check MIME type
+                        let mime = get_mime_type(&path);
+                        let expected = import.import_type.expected_mime_types();
+
+                        if expected.iter().any(|&e| mime.starts_with(e)) {
+                            result.passed += 1;
+                        } else {
+                            result.errors.push(ImportValidationError {
+                                import: import.clone(),
+                                status: 200,
+                                actual_mime: mime.clone(),
+                                message: format!(
+                                    "MIME type mismatch: expected {:?}, got '{}'",
+                                    expected, mime
+                                ),
+                            });
+                        }
+                    }
+                    _ => {
+                        result.errors.push(ImportValidationError {
+                            import: import.clone(),
+                            status: 404,
+                            actual_mime: "text/plain".to_string(),
+                            message: format!(
+                                "File not found: {} (resolved to {})",
+                                import.import_path,
+                                resolved.display()
+                            ),
+                        });
+                    }
+                }
+            } else {
+                // External or unresolvable - count as passed
+                result.passed += 1;
+            }
+        }
+
+        result
+    }
+
+    /// Print validation results to stderr
+    pub fn print_results(&self, result: &ModuleValidationResult) {
+        eprintln!("\nValidating module imports...");
+        eprintln!("  Scanned: {} imports", result.total_imports);
+        eprintln!("  Passed:  {}", result.passed);
+        eprintln!("  Failed:  {}", result.errors.len());
+
+        if !result.errors.is_empty() {
+            eprintln!("\nErrors:");
+            for error in &result.errors {
+                eprintln!(
+                    "  {} {}:{}",
+                    if error.status == 404 { "✗" } else { "⚠" },
+                    error.import.source_file.display(),
+                    error.import.line_number
+                );
+                eprintln!("    Import: {}", error.import.import_path);
+                eprintln!("    {}", error.message);
+            }
+        }
+    }
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 
@@ -1350,5 +1688,168 @@ mod tests {
         let json = msg.to_json();
         assert!(json.contains("ClientDisconnected"));
         assert!(json.contains('2'));
+    }
+
+    // =========================================================================
+    // Module Validator Tests (PROBAR-SPEC-007)
+    // =========================================================================
+
+    #[test]
+    fn test_module_validator_extract_es_import() {
+        let validator = ModuleValidator::new("/tmp");
+
+        // Test basic import from
+        let line = r#"import init from './pkg/app.js';"#;
+        assert_eq!(validator.extract_es_import(line), Some("./pkg/app.js".to_string()));
+
+        // Test double quotes
+        let line = r#"import { foo } from "/lib/utils.mjs";"#;
+        assert_eq!(validator.extract_es_import(line), Some("/lib/utils.mjs".to_string()));
+
+        // Test WASM import
+        let line = r#"import wasm from '../module.wasm';"#;
+        assert_eq!(validator.extract_es_import(line), Some("../module.wasm".to_string()));
+
+        // Test non-JS import (should be None)
+        let line = r#"import styles from './styles.css';"#;
+        assert_eq!(validator.extract_es_import(line), None);
+    }
+
+    #[test]
+    fn test_module_validator_extract_script_src() {
+        let validator = ModuleValidator::new("/tmp");
+
+        let line = r#"<script src="./app.js"></script>"#;
+        assert_eq!(validator.extract_script_src(line), Some("./app.js".to_string()));
+
+        let line = r#"<script src='/lib/vendor.mjs'></script>"#;
+        assert_eq!(validator.extract_script_src(line), Some("/lib/vendor.mjs".to_string()));
+
+        // Non-JS src
+        let line = r#"<img src="./image.png">"#;
+        assert_eq!(validator.extract_script_src(line), None);
+    }
+
+    #[test]
+    fn test_module_validator_extract_worker_url() {
+        let validator = ModuleValidator::new("/tmp");
+
+        let line = r#"const worker = new Worker('./worker.js');"#;
+        assert_eq!(validator.extract_worker_url(line), Some("./worker.js".to_string()));
+
+        let line = r#"new Worker("/pkg/transcription_worker.js")"#;
+        assert_eq!(validator.extract_worker_url(line), Some("/pkg/transcription_worker.js".to_string()));
+    }
+
+    #[test]
+    fn test_module_validator_resolve_absolute_path() {
+        let validator = ModuleValidator::new("/srv/www");
+
+        let import = ImportRef {
+            source_file: PathBuf::from("/srv/www/index.html"),
+            import_path: "/pkg/app.js".to_string(),
+            import_type: ImportType::EsModule,
+            line_number: 10,
+        };
+
+        let resolved = validator.resolve_path(&import);
+        assert_eq!(resolved, Some(PathBuf::from("/srv/www/pkg/app.js")));
+    }
+
+    #[test]
+    fn test_module_validator_resolve_relative_path() {
+        let validator = ModuleValidator::new("/srv/www");
+
+        let import = ImportRef {
+            source_file: PathBuf::from("/srv/www/pages/demo.html"),
+            import_path: "../pkg/app.js".to_string(),
+            import_type: ImportType::EsModule,
+            line_number: 5,
+        };
+
+        let resolved = validator.resolve_path(&import);
+        assert_eq!(resolved, Some(PathBuf::from("/srv/www/pages/../pkg/app.js")));
+    }
+
+    #[test]
+    fn test_module_validator_skip_external_urls() {
+        let validator = ModuleValidator::new("/srv/www");
+
+        // Bare specifier (npm package)
+        let import = ImportRef {
+            source_file: PathBuf::from("/srv/www/index.html"),
+            import_path: "lodash".to_string(),
+            import_type: ImportType::EsModule,
+            line_number: 1,
+        };
+        assert_eq!(validator.resolve_path(&import), None);
+    }
+
+    #[test]
+    fn test_import_type_expected_mime_types() {
+        assert!(ImportType::EsModule.expected_mime_types().contains(&"text/javascript"));
+        assert!(ImportType::Script.expected_mime_types().contains(&"application/javascript"));
+        assert!(ImportType::Wasm.expected_mime_types().contains(&"application/wasm"));
+        assert!(ImportType::Worker.expected_mime_types().contains(&"text/javascript"));
+    }
+
+    #[test]
+    fn test_module_validation_result_is_ok() {
+        let mut result = ModuleValidationResult::default();
+        assert!(result.is_ok());
+
+        result.errors.push(ImportValidationError {
+            import: ImportRef {
+                source_file: PathBuf::from("test.html"),
+                import_path: "/missing.js".to_string(),
+                import_type: ImportType::EsModule,
+                line_number: 1,
+            },
+            status: 404,
+            actual_mime: "text/plain".to_string(),
+            message: "Not found".to_string(),
+        });
+
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn test_module_validator_validates_existing_file() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let pkg_dir = temp.path().join("pkg");
+        std::fs::create_dir(&pkg_dir).unwrap();
+        std::fs::write(pkg_dir.join("app.js"), "export default {}").unwrap();
+        std::fs::write(
+            temp.path().join("index.html"),
+            r#"<script type="module">import init from './pkg/app.js';</script>"#,
+        ).unwrap();
+
+        let validator = ModuleValidator::new(temp.path());
+        let result = validator.validate();
+
+        assert_eq!(result.total_imports, 1);
+        assert_eq!(result.passed, 1);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_module_validator_detects_missing_file() {
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        std::fs::write(
+            temp.path().join("index.html"),
+            r#"<script type="module">import init from './pkg/missing.js';</script>"#,
+        ).unwrap();
+
+        let validator = ModuleValidator::new(temp.path());
+        let result = validator.validate();
+
+        assert_eq!(result.total_imports, 1);
+        assert_eq!(result.passed, 0);
+        assert_eq!(result.errors.len(), 1);
+        assert_eq!(result.errors[0].status, 404);
     }
 }

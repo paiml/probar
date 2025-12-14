@@ -55,3 +55,27 @@ max_page_load_ms = 5000           # 5s max page load
 max_element_wait_ms = 10000       # 10s max element wait
 max_screenshot_ms = 2000          # 2s max screenshot capture
 max_regression_pct = 5.0          # ≤5% performance regression allowed
+
+# Benchmark performance budgets (PROBAR-SPEC-008)
+[benchmark_budgets]
+# Fast operations (must stay sub-microsecond)
+selector_parsing_ns = 20          # Baseline: 9-10 ns
+locator_creation_ns = 30          # Baseline: 14-15 ns
+locator_filtering_ns = 50         # Baseline: 27 ns
+color_contrast_ns = 100           # Baseline: 27-51 ns
+
+# Medium operations (microsecond range)
+yaml_parsing_simple_us = 15       # Baseline: 7.4 µs
+yaml_parsing_50_states_us = 500   # Baseline: 233 µs
+state_validation_50_us = 150      # Baseline: 72.5 µs
+pixel_report_100x100_us = 60      # Baseline: 27.5 µs
+ux_registration_500_us = 250      # Baseline: 120 µs
+
+# Slow operations (millisecond range - acceptable)
+mutation_gen_large_ms = 3         # Baseline: 1.25 ms (combinatorial)
+heatmap_render_large_ms = 2       # Baseline: 1.01 ms (pixel processing)
+
+[benchmark_enforcement]
+fail_on_regression = true
+regression_threshold_pct = 20.0   # Alert if >20% slower than baseline
+baseline_date = "2025-12-14"      # Baseline established date

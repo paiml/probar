@@ -189,8 +189,17 @@ probador serve --cors
 # Open browser automatically
 probador serve --open
 
+# Validate module imports before serving
+probador serve --validate
+
+# Validate with custom exclusions (node_modules excluded by default)
+probador serve --validate --exclude vendor --exclude dist
+
+# Monitor requests in real-time
+probador serve --monitor
+
 # Full example
-probador serve ./dist --port 8080 --cors --open
+probador serve ./dist --port 8080 --cors --open --validate
 ```
 
 **Options:**
@@ -202,12 +211,17 @@ probador serve ./dist --port 8080 --cors --open
 | `--ws-port <port>` | WebSocket port for hot reload | 8081 |
 | `--cors` | Enable CORS | false |
 | `--open` | Open browser automatically | false |
+| `--validate` | Validate module imports before serving | false |
+| `--monitor` | Monitor requests and warn about issues | false |
+| `--exclude <dir>` | Exclude directories from validation (repeatable) | node_modules |
 
 **Features:**
 - Serves WASM files with correct `application/wasm` MIME type
 - WebSocket endpoint at `/ws` for hot reload notifications
 - Automatic CORS headers when enabled
 - No-cache headers for development
+- Module import validation (catches broken imports before serving)
+- Request monitoring (shows 404s and MIME mismatches in real-time)
 
 ### probador serve tree
 

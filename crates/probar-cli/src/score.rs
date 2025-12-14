@@ -217,7 +217,12 @@ impl ScoreCalculator {
     /// Calculate the project score
     #[must_use]
     pub fn calculate(&self) -> ProjectScore {
+        // Runtime health is scored first as it affects grade caps
+        let runtime_health = self.score_runtime_health();
+        let runtime_passed = runtime_health.status == CategoryStatus::Complete;
+
         let categories = vec![
+            runtime_health,
             self.score_playbook_coverage(),
             self.score_pixel_testing(),
             self.score_gui_interaction(),
@@ -231,16 +236,32 @@ impl ScoreCalculator {
 
         let total: u32 = categories.iter().map(|c| c.score).sum();
         let max: u32 = categories.iter().map(|c| c.max).sum();
-        let grade = Grade::from_score(total, max);
+
+        // Apply grade caps based on runtime health (PROBAR-SPEC-007)
+        let grade = if !runtime_passed {
+            // Runtime failures cap the grade at C (max 79%)
+            let capped_percentage = std::cmp::min((total * 100) / max, 79);
+            Grade::from_score(capped_percentage, 100)
+        } else {
+            Grade::from_score(total, max)
+        };
 
         let recommendations = self.generate_recommendations(&categories);
 
-        let summary = format!(
-            "Project has {} testing coverage with {} in {} categories",
-            grade.as_str(),
-            format_percentage(total, max),
-            categories.iter().filter(|c| c.status == CategoryStatus::Complete).count()
-        );
+        let summary = if !runtime_passed {
+            format!(
+                "Project has {} testing coverage ({}) - GRADE CAPPED: Runtime validation failed",
+                grade.as_str(),
+                format_percentage(total, max)
+            )
+        } else {
+            format!(
+                "Project has {} testing coverage with {} in {} categories",
+                grade.as_str(),
+                format_percentage(total, max),
+                categories.iter().filter(|c| c.status == CategoryStatus::Complete).count()
+            )
+        };
 
         ProjectScore {
             total,
@@ -252,7 +273,123 @@ impl ScoreCalculator {
         }
     }
 
-    /// Score playbook coverage (15 points)
+    /// Score runtime health (15 points) - MANDATORY for grade above C
+    ///
+    /// This category validates that the application ACTUALLY WORKS by requiring
+    /// evidence of real browser test execution. File existence is NOT enough.
+    ///
+    /// Criteria:
+    /// - Browser tests executed (5 points) - probar test results exist
+    /// - App bootstraps successfully (5 points) - WASM init verified
+    /// - Critical path works (5 points) - happy path test passes
+    ///
+    /// IMPORTANT: Score is 0 if no browser tests have been run.
+    /// Failing this category caps the grade at C regardless of other scores.
+    fn score_runtime_health(&self) -> CategoryScore {
+        let mut criteria = Vec::new();
+        let mut score = 0;
+
+        // Check for browser test results (5 points)
+        // These indicate actual test execution, not just file existence
+        let test_results = self.find_files("**/probar-results.json")
+            + self.find_files("**/test-results.json")
+            + self.find_files("**/browser-test-results.json")
+            + self.find_files("**/.probar/results/*.json");
+
+        let has_test_results = test_results > 0;
+
+        let test_points = if has_test_results { 5 } else { 0 };
+        criteria.push(CriterionResult {
+            name: "Browser tests executed".to_string(),
+            points_earned: test_points,
+            points_possible: 5,
+            evidence: if has_test_results {
+                Some(format!("{} test result file(s)", test_results))
+            } else {
+                Some("No test results found".to_string())
+            },
+            suggestion: if test_points == 0 {
+                Some("Run `probar test` to execute browser tests and generate results".to_string())
+            } else {
+                None
+            },
+        });
+        score += test_points;
+
+        // Check for bootstrap verification (5 points)
+        // Look for evidence that WASM actually initialized
+        let bootstrap_evidence = self.find_files("**/bootstrap-verified.json")
+            + self.find_files("**/*.probar-recording") // Recordings prove app ran
+            + self.find_files("**/recordings/*.json"); // JSON recordings also work
+
+        let has_bootstrap = bootstrap_evidence > 0 || has_test_results;
+
+        let bootstrap_points = if has_bootstrap { 5 } else { 0 };
+        criteria.push(CriterionResult {
+            name: "App bootstrap verified".to_string(),
+            points_earned: bootstrap_points,
+            points_possible: 5,
+            evidence: if has_bootstrap {
+                Some("Bootstrap verification found".to_string())
+            } else {
+                Some("No bootstrap verification".to_string())
+            },
+            suggestion: if bootstrap_points == 0 {
+                Some("Run browser tests to verify WASM initialization".to_string())
+            } else {
+                None
+            },
+        });
+        score += bootstrap_points;
+
+        // Check for critical path validation (5 points)
+        // Happy path must have been tested
+        let critical_path = self.find_files("**/recordings/*happy*.json")
+            + self.find_files("**/recordings/*success*.json")
+            + self.find_files("**/*-passed.json");
+
+        // Also check if playbooks exist AND have been run
+        let playbooks_run = has_test_results && self.find_files("**/playbooks/*.yaml") > 0;
+
+        let has_critical = critical_path > 0 || playbooks_run;
+
+        let critical_points = if has_critical { 5 } else { 0 };
+        criteria.push(CriterionResult {
+            name: "Critical path tested".to_string(),
+            points_earned: critical_points,
+            points_possible: 5,
+            evidence: if has_critical {
+                Some("Happy path test evidence found".to_string())
+            } else {
+                Some("No critical path tests".to_string())
+            },
+            suggestion: if critical_points == 0 {
+                Some("Add recordings/happy-path.json or run playbook tests".to_string())
+            } else {
+                None
+            },
+        });
+        score += critical_points;
+
+        // CRITICAL: If no tests have been run at all, score is 0 regardless
+        // This prevents "100% score on empty directory" bug
+        if !has_test_results && bootstrap_evidence == 0 && critical_path == 0 {
+            score = 0;
+            for criterion in &mut criteria {
+                criterion.points_earned = 0;
+            }
+        }
+
+        CategoryScore {
+            name: "Runtime Health".to_string(),
+            score,
+            max: 15,
+            status: CategoryStatus::from_ratio(score, 15),
+            criteria,
+        }
+    }
+
+    /// Score playbook coverage (12 points - reduced from 15)
     fn score_playbook_coverage(&self) -> CategoryScore {
         let mut criteria = Vec::new();
         let mut score = 0;
