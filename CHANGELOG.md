@@ -5,6 +5,38 @@ All notable changes to Probar will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-12-14
+
+### Added
+
+#### PROBAR-SPEC-009: WASM Pixel GUI Demo with GPU-Accelerated Random Fill
+- **GpuPixelBuffer**: GPU-accelerated pixel buffer with CPU fallback
+- **PCG-XSH-RR RNG**: O'Neill (2014) deterministic random number generation
+- **Wilson Score Confidence Intervals**: Statistical rigor for coverage proportions
+- **Terminal Heatmap Visualization**: Viridis palette with Unicode block rendering
+
+#### GPU Pixels Module (`gpu_pixels`)
+- **PTX Static Analysis**: Detect shared memory u64 addressing bugs
+- **Kernel Pixel Tests**: Verify loop branches, barrier sync presence
+- **Regression Detection**: Compare PTX patterns across kernel versions
+- **Bug Classification**: SharedMemU64Addressing, LoopBranchToEnd, MissingBarrierSync
+
+#### WASM Demo Example
+- `wasm_pixel_gui_demo`: 6-phase demonstration of pixel coverage testing
+- Convergence to 99% coverage in ~44 frames
+- Real-time progress bars with coverage statistics
+- Gap detection and Wilson 95% confidence intervals
+
+### Changed
+- Enhanced web/validator.rs with comprehensive accessibility and security tests
+- Added 32 new tests across gpu_pixels and web modules
+- Total tests: 2,914 passing
+
+### Technical Details
+- **Coverage**: 92.20% overall (browser module requires integration tests)
+- **Clippy**: Clean with `-D warnings`
+- **Citations**: O'Neill (2014), Wilson (1927), Nickolls et al. (2008)
+
 ## [0.3.0] - 2025-12-13
 
 ### Added

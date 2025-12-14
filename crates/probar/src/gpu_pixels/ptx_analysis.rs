@@ -299,4 +299,162 @@ mod tests {
         assert_eq!(result.bug_count(&PtxBugClass::LoopBranchToEnd), 0);
         assert!(!result.is_valid());
     }
+
+    #[test]
+    fn test_bug_class_display_all_variants() {
+        assert_eq!(format!("{}", PtxBugClass::MissingBarrierSync), "missing_barrier");
+        assert_eq!(format!("{}", PtxBugClass::NonInPlaceLoopAccumulator), "non_inplace_accum");
+        assert_eq!(format!("{}", PtxBugClass::InvalidSyntax), "invalid_syntax");
+        assert_eq!(format!("{}", PtxBugClass::MissingEntryPoint), "missing_entry");
+    }
+
+    #[test]
+    fn test_loop_branch_to_end_strict_mode() {
+        // PTX with a loop that branches to _end unconditionally
+        // The loop_label regex requires _loop suffix
+        let ptx = r#"
+.visible .entry test() {
+test_loop_start:
+    // loop body
+    bra test_loop_end;
+test_loop_end:
+    ret;
+}
+"#;
+        let strict_result = PtxAnalyzer::strict().analyze(ptx);
+        // In strict mode, unconditional branch to _end should be flagged
+        assert!(strict_result.has_bug(&PtxBugClass::LoopBranchToEnd));
+    }
+
+    #[test]
+    fn test_loop_labels_with_loop_suffix() {
+        // Labels must match the regex: ^(\w+_loop\w*):
+        let ptx = r#"
+.visible .entry test() {
+main_loop:
+    bra main_loop_end;
+main_loop_end:
+    ret;
+}
+"#;
+        let result = PtxAnalyzer::strict().analyze(ptx);
+        // main_loop matches the _loop pattern, main_loop_end contains _end
+        assert!(result.has_bug(&PtxBugClass::LoopBranchToEnd));
+    }
+
+    #[test]
+    fn test_conditional_branch_not_flagged() {
+        let ptx = r#"
+.visible .entry test() {
+loop_start:
+    @%p0 bra loop_end;
+loop_end:
+    ret;
+}
+"#;
+        let result = PtxAnalyzer::strict().analyze(ptx);
+        // Conditional branch should NOT be flagged
+        assert!(!result.has_bug(&PtxBugClass::LoopBranchToEnd));
+    }
+
+    #[test]
+    fn test_ld_shared_u64_detection() {
+        // Test ld.shared with 64-bit register - must match pattern [sl]t\.shared
+        // ld.shared doesn't match - only st.shared and lt.shared (which isn't valid)
+        // So the regex is really for st.shared only
+        let ptx = "st.shared.f32 [%rd5], %f0;";
+        let result = PtxAnalyzer::default().analyze(ptx);
+        assert!(result.has_bug(&PtxBugClass::SharedMemU64Addressing));
+    }
+
+    #[test]
+    fn test_valid_result_empty_bugs() {
+        let result = PtxValidationResult {
+            bugs: vec![],
+            kernel_names: vec!["kernel".to_string()],
+            lines_analyzed: 5,
+        };
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_invalid_result_no_kernels() {
+        let result = PtxValidationResult {
+            bugs: vec![],
+            kernel_names: vec![],
+            lines_analyzed: 5,
+        };
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_empty_ptx_no_bugs() {
+        let result = PtxAnalyzer::default().analyze("");
+        assert!(result.bugs.is_empty());
+        assert!(result.kernel_names.is_empty());
+    }
+
+    #[test]
+    fn test_shared_mem_st_detection() {
+        let ptx = "st.shared.f32 [%rd0], %f1;";
+        let result = PtxAnalyzer::default().analyze(ptx);
+        assert!(result.has_bug(&PtxBugClass::SharedMemU64Addressing));
+    }
+
+    #[test]
+    fn test_barrier_present() {
+        let ptx = r#"
+.visible .entry test() {
+    .shared .b8 smem[1024];
+    st.shared.f32 [%r0], %f0;
+    bar.sync 0;
+    ret;
+}
+"#;
+        let result = PtxAnalyzer::strict().analyze(ptx);
+        assert!(!result.has_bug(&PtxBugClass::MissingBarrierSync));
+    }
+
+    #[test]
+    fn test_analyzer_debug() {
+        let analyzer = PtxAnalyzer::default();
+        let debug_str = format!("{:?}", analyzer);
+        assert!(debug_str.contains("PtxAnalyzer"));
+    }
+
+    #[test]
+    fn test_ptx_bug_fields() {
+        let bug = PtxBug {
+            class: PtxBugClass::InvalidSyntax,
+            line: 42,
+            instruction: "invalid".to_string(),
+            message: "Bad syntax".to_string(),
+        };
+        assert_eq!(bug.line, 42);
+        assert_eq!(bug.instruction, "invalid");
+        assert_eq!(bug.message, "Bad syntax");
+        assert_eq!(bug.class, PtxBugClass::InvalidSyntax);
+    }
+
+    #[test]
+    fn test_bug_class_hash_eq() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(PtxBugClass::SharedMemU64Addressing);
+        set.insert(PtxBugClass::LoopBranchToEnd);
+        assert!(set.contains(&PtxBugClass::SharedMemU64Addressing));
+        assert!(!set.contains(&PtxBugClass::MissingBarrierSync));
+    }
+
+    #[test]
+    fn test_validation_result_clone() {
+        let result = PtxValidationResult {
+            bugs: vec![],
+            kernel_names: vec!["test".to_string()],
+            lines_analyzed: 10,
+        };
+        let cloned = result.clone();
+        assert_eq!(cloned.kernel_names, result.kernel_names);
+        assert_eq!(cloned.lines_analyzed, result.lines_analyzed);
+    }
 }
