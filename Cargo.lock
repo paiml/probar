@@ -664,7 +664,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.1.14",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
@@ -4134,6 +4134,8 @@ dependencies = [
 [[package]]
 name = "trueno"
 version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "653f5bd34069774f1bbdf74c6c2a0ca5bc73e79667c21026f0efee10dfc65a25"
 dependencies = [
  "bytemuck",
  "futures-intrusive",

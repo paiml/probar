@@ -72,7 +72,7 @@ criterion = "0.5"
 tempfile = "3"
 
 # GPU compute (trueno - SIMD-accelerated tensor operations)
-trueno = { path = "../trueno", features = ["gpu"] }
+trueno = { version = "0.8", features = ["gpu"] }
 
 # TUI Testing (EDD compliance)
 ratatui = "0.29"
