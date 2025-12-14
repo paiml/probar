@@ -19,6 +19,8 @@
 
 #![warn(missing_docs)]
 // Lints are configured in workspace Cargo.toml [workspace.lints.clippy]
+// Allow large stack arrays in tests (e.g., test data generation)
+#![cfg_attr(test, allow(clippy::large_stack_arrays))]
 
 #[allow(
     clippy::suboptimal_flops,
@@ -255,6 +257,15 @@ pub mod web;
     clippy::cast_precision_loss
 )]
 pub mod pixel_coverage;
+
+/// GPU Pixel Testing: Atomic verification of CUDA kernel correctness
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod gpu_pixels;
 
 /// WASM Runner with Hot Reload (Advanced Feature D)
 #[allow(
@@ -508,6 +519,7 @@ pub mod prelude {
     pub use super::perf::*;
     pub use super::performance::*;
     pub use super::pixel_coverage::*;
+    pub use super::gpu_pixels::*;
     pub use super::replay::*;
     pub use super::reporter::*;
     pub use super::result::*;
