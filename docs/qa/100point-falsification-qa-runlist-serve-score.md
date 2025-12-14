@@ -53,17 +53,56 @@ The scoring system is **validated** only when all falsification attempts fail. A
 
 ---
 
+## Live Browser Validation (`--live` Flag)
+
+The `--live` flag implements **falsification-based validation** by actually launching a browser and attempting to **prove the app is broken**. This is the ultimate falsification test.
+
+### How It Works
+
+```
+probar serve score --live <directory>
+```
+
+| Step | Name | Action | Falsification Goal |
+|------|------|--------|-------------------|
+| 1/4 | Module Resolution | Scan HTML for JS/WASM imports, validate each resolves | FAIL if any import is broken |
+| 2/4 | Validation Server | Launch dev server on random port | Setup for browser test |
+| 3/4 | Browser Bootstrap | Launch headless Chrome, navigate to each page | FAIL if console errors detected |
+| 4/4 | WASM Initialization | Wait for WASM to initialize on pages with WASM imports | FAIL if WASM doesn't init |
+
+### Falsification Philosophy in Code
+
+```
+The validation tries to PROVE the app is broken:
+- If we can prove it's broken → FAIL (Grade: F)
+- Only passes if we cannot break it
+```
+
+This prevents "100% score on broken app" — the static scoring checks file existence, but `--live` validates the app **actually works**.
+
+### Build Requirements
+
+```bash
+# Browser feature required for --live
+cargo build --package probador --release --features browser
+```
+
+---
+
 ## Test Environment Setup
 
 ### Prerequisites
 
 ```bash
-# Build the CLI tool
+# Build the CLI tool (with browser support for --live tests)
 cd /home/noah/src/probar
-cargo build --release -p probar-cli
+cargo build --release -p probar-cli --features browser
 
 # Create alias for convenience
 alias probar='./target/release/probador'
+
+# Verify --live flag is available
+probar serve score --help | grep -A2 "\-\-live"
 
 # Create test workspace
 export TEST_ROOT="/tmp/probar-falsification-$$"
@@ -350,6 +389,102 @@ EOF
 
 ---
 
+## Bonus Section: Live Browser Validation (`--live` flag)
+
+**Hypothesis H11**: Live validation catches broken apps that pass static scoring.
+
+> **Requires**: `cargo build --package probador --release --features browser`
+
+These tests validate the **ultimate falsification** — actually running the app in a browser.
+
+| # | Falsification Attempt | Command | Expected Result | Score |
+|---|----------------------|---------|-----------------|-------|
+| B1 | --live on empty dir | `probar serve score $TEST_ROOT/empty --live` | Graceful handling (no HTML) | |
+| B2 | --live with broken imports | `mkdir -p $TEST_ROOT/broken && echo '<script src="missing.js"></script>' > $TEST_ROOT/broken/index.html && probar serve score $TEST_ROOT/broken --live` | FAIL: Module resolution error | |
+| B3 | --live with valid HTML only | `mkdir -p $TEST_ROOT/html && echo '<h1>Hello</h1>' > $TEST_ROOT/html/index.html && probar serve score $TEST_ROOT/html --live` | PASS: No WASM, no errors | |
+| B4 | --live with WASM import but no file | `mkdir -p $TEST_ROOT/nowasm && echo '<script type="module">import init from "./pkg/app.js";</script>' > $TEST_ROOT/nowasm/index.html && probar serve score $TEST_ROOT/nowasm --live` | FAIL: Import not found | |
+| B5 | --live with console.error | `mkdir -p $TEST_ROOT/err && echo '<script>console.error("broken")</script>' > $TEST_ROOT/err/index.html && probar serve score $TEST_ROOT/err --live` | FAIL: Console errors | |
+| B6 | --live with JS exception | `mkdir -p $TEST_ROOT/exc && echo '<script>throw new Error("crash")</script>' > $TEST_ROOT/exc/index.html && probar serve score $TEST_ROOT/exc --live` | FAIL: Unhandled exception | |
+| B7 | --live with custom port | `mkdir -p $TEST_ROOT/port && echo '<h1>Hi</h1>' > $TEST_ROOT/port/index.html && probar serve score $TEST_ROOT/port --live --port 9999` | Uses port 9999 | |
+| B8 | --live detects WASM pages | `bash -c 'source fixtures.sh && create_valid_project $TEST_ROOT/wasm' && probar serve score $TEST_ROOT/wasm --live 2>&1 \| grep "page(s) with WASM"` | Detects WASM imports | |
+| B9 | --live timeout handling | `mkdir -p $TEST_ROOT/slow && echo '<script>while(true){}</script>' > $TEST_ROOT/slow/index.html && timeout 30 probar serve score $TEST_ROOT/slow --live` | Timeout, not hang | |
+| B10 | --live multiple HTML files | `mkdir -p $TEST_ROOT/multi && echo '<h1>A</h1>' > $TEST_ROOT/multi/a.html && echo '<h1>B</h1>' > $TEST_ROOT/multi/b.html && probar serve score $TEST_ROOT/multi --live 2>&1` | Tests all HTML files | |
+
+### Live Validation Test Fixtures
+
+```bash
+# Create project with intentionally broken WASM import
+create_broken_wasm_project() {
+    local dir="$1"
+    mkdir -p "$dir"
+
+    cat > "$dir/index.html" << 'HTML'
+<!DOCTYPE html>
+<html>
+<head><title>Broken WASM</title></head>
+<body>
+<script type="module">
+import init from './pkg/app.js';
+await init();
+</script>
+</body>
+</html>
+HTML
+
+    # Note: NO pkg/app.js exists - this should FAIL --live
+}
+
+# Create project that passes static but fails live
+create_static_pass_live_fail_project() {
+    local dir="$1"
+    mkdir -p "$dir"/{playbooks,snapshots,tests,recordings,.probar/results}
+
+    # All static scoring artifacts (high score)
+    touch "$dir/playbooks/app.yaml"
+    touch "$dir/snapshots/home.png"
+    touch "$dir/tests/test.rs"
+    echo '{"passed": 1}' > "$dir/.probar/results/run.json"
+    echo '{"passed": 1}' > "$dir/probar-results.json"
+    touch "$dir/browsers.yaml"
+    touch "$dir/a11y.yaml"
+
+    # But the HTML has errors!
+    cat > "$dir/index.html" << 'HTML'
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+console.error("This app is broken!");
+throw new Error("Critical failure");
+</script>
+</body>
+</html>
+HTML
+
+    echo "Created project: passes static, fails --live: $dir"
+}
+```
+
+### Key Falsification: Static vs Live
+
+```bash
+# This is THE critical falsification test
+# If this project gets Grade A with static but Grade F with --live,
+# it proves --live catches broken apps
+
+create_static_pass_live_fail_project $TEST_ROOT/critical
+
+# Static scoring (should be high)
+probar serve score $TEST_ROOT/critical --format json | jq .grade
+# Expected: "A" or "B"
+
+# Live validation (should fail)
+probar serve score $TEST_ROOT/critical --live
+# Expected: FAIL with console errors, Grade: F
+```
+
+---
+
 ## Execution Summary
 
 ### Results Template
@@ -367,6 +502,8 @@ EOF
 | 9. Browser & Accessibility | /10 | | | /10 |
 | 10. Output & Edge Cases | /10 | | | /10 |
 | **TOTAL** | **/100** | | | **/100** |
+| | | | | |
+| **Bonus: Live Validation** | /10 | | | (extra) |
 
 ### Verdict
 

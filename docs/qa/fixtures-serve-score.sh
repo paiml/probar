@@ -388,21 +388,160 @@ cleanup_test_fixtures() {
     fi
 }
 
+# Create project with intentionally broken WASM import (for --live testing)
+create_broken_wasm_project() {
+    local dir="${1:?Usage: create_broken_wasm_project <dir>}"
+    mkdir -p "$dir"
+
+    cat > "$dir/index.html" << 'HTML'
+<!DOCTYPE html>
+<html>
+<head><title>Broken WASM</title></head>
+<body>
+<script type="module">
+import init from './pkg/app.js';
+await init();
+</script>
+</body>
+</html>
+HTML
+
+    # Note: NO pkg/app.js exists - this should FAIL --live
+    echo "Created broken WASM project (missing import): $dir"
+}
+
+# Create project that passes static scoring but fails live validation
+# This is THE critical falsification test
+create_static_pass_live_fail_project() {
+    local dir="${1:?Usage: create_static_pass_live_fail_project <dir>}"
+    mkdir -p "$dir"/{playbooks,snapshots,tests,recordings,.probar/results}
+
+    # All static scoring artifacts (high score)
+    cat > "$dir/playbooks/app.yaml" << 'YAML'
+version: "1.0"
+name: Fake App
+machine:
+  initial: idle
+  states:
+    idle: {}
+YAML
+
+    printf '\x89PNG\r\n\x1a\n' > "$dir/snapshots/home.png"
+    printf '\x89PNG\r\n\x1a\n' > "$dir/snapshots/mobile-home.png"
+    printf '\x89PNG\r\n\x1a\n' > "$dir/snapshots/dark-home.png"
+
+    echo '// fake test' > "$dir/tests/test.rs"
+    echo '{"passed": 1}' > "$dir/.probar/results/run.json"
+    echo '{"passed": 1}' > "$dir/probar-results.json"
+    echo '{"events": []}' > "$dir/recordings/happy.json"
+    echo '{"events": []}' > "$dir/recordings/error.json"
+    echo '{"events": []}' > "$dir/recordings/edge.json"
+
+    echo 'browsers: [chrome, firefox, safari]' > "$dir/browsers.yaml"
+    echo 'wcag_level: AA' > "$dir/a11y.yaml"
+    echo 'scenarios: []' > "$dir/load-test.yaml"
+    echo '{}' > "$dir/load-test-results.json"
+    echo 'injections: []' > "$dir/chaos.yaml"
+    echo '{}' > "$dir/baseline.json"
+    echo '# Tests' > "$dir/tests/README.md"
+    echo '# App' > "$dir/README.md"
+
+    # But the HTML has errors! This should FAIL --live
+    cat > "$dir/index.html" << 'HTML'
+<!DOCTYPE html>
+<html>
+<head><title>Fake Working App</title></head>
+<body>
+<h1>This looks fine...</h1>
+<script>
+// But there are runtime errors!
+console.error("This app is broken!");
+throw new Error("Critical failure - app doesn't actually work");
+</script>
+</body>
+</html>
+HTML
+
+    echo "Created project: passes static, fails --live: $dir"
+    echo "  Static: should get high score (A or B)"
+    echo "  Live:   should FAIL with console errors"
+}
+
+# Create project with console warnings (not errors) - should pass --live
+create_warning_only_project() {
+    local dir="${1:?Usage: create_warning_only_project <dir>}"
+    mkdir -p "$dir"
+
+    cat > "$dir/index.html" << 'HTML'
+<!DOCTYPE html>
+<html>
+<head><title>Warnings Only</title></head>
+<body>
+<h1>App with warnings</h1>
+<script>
+// Warnings should not fail --live
+console.warn("This is just a warning");
+console.log("Normal log message");
+</script>
+</body>
+</html>
+HTML
+
+    echo "Created warning-only project: $dir"
+}
+
+# Create project with slow initialization (tests timeout handling)
+create_slow_project() {
+    local dir="${1:?Usage: create_slow_project <dir>}"
+    mkdir -p "$dir"
+
+    cat > "$dir/index.html" << 'HTML'
+<!DOCTYPE html>
+<html>
+<head><title>Slow App</title></head>
+<body>
+<h1>Slow initialization...</h1>
+<script>
+// Simulate slow WASM init
+const start = Date.now();
+while (Date.now() - start < 5000) {
+    // Block for 5 seconds
+}
+console.log("Finally loaded!");
+</script>
+</body>
+</html>
+HTML
+
+    echo "Created slow project (5s init): $dir"
+}
+
 # Print usage if sourced with --help
 if [[ "${1:-}" == "--help" ]]; then
     cat << 'USAGE'
 Fixture Generator for probar serve score Falsification Testing
 
 Functions:
-  create_empty_project <dir>         - Create empty directory
-  create_fake_high_score_project <dir> - Files without runtime (tests grade cap)
-  create_valid_project <dir>         - Full valid project with runtime evidence
-  create_boundary_project <dir> [grade] - Project at grade boundary (A/B/C/D/F)
-  cleanup_test_fixtures [root]       - Remove test fixtures
+  create_empty_project <dir>              - Create empty directory
+  create_fake_high_score_project <dir>    - Files without runtime (tests grade cap)
+  create_valid_project <dir>              - Full valid project with runtime evidence
+  create_boundary_project <dir> [grade]   - Project at grade boundary (A/B/C/D/F)
+  cleanup_test_fixtures [root]            - Remove test fixtures
+
+  Live Validation (--live flag):
+  create_broken_wasm_project <dir>        - Missing WASM import (FAIL --live)
+  create_static_pass_live_fail_project <dir> - High static score, fails --live
+  create_warning_only_project <dir>       - Console warnings only (PASS --live)
+  create_slow_project <dir>               - 5s init delay (tests timeout)
 
 Example:
   source fixtures-serve-score.sh
   create_valid_project /tmp/test-project
   probar serve score /tmp/test-project --verbose
+
+  # Test --live validation
+  create_static_pass_live_fail_project /tmp/critical
+  probar serve score /tmp/critical --format json | jq .grade  # High
+  probar serve score /tmp/critical --live                      # FAIL
 USAGE
 fi
