@@ -654,6 +654,23 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
     // Step 1: Static module validation (fast, no browser needed)
     eprintln!("[1/4] Module Resolution Check");
     let validator = ModuleValidator::new(&args.path);
+
+    // First scan imports to identify which pages have WASM
+    let imports = validator.scan_imports();
+    let pages_with_wasm: std::collections::HashSet<_> = imports
+        .iter()
+        .filter(|imp| imp.import_type == probador::ImportType::Wasm)
+        .map(|imp| imp.source_file.clone())
+        .collect();
+
+    if !pages_with_wasm.is_empty() {
+        eprintln!("  Detected {} page(s) with WASM imports:", pages_with_wasm.len());
+        for page in &pages_with_wasm {
+            eprintln!("    • {}", page.display());
+        }
+        eprintln!();
+    }
+
     let validation_result = validator.validate();
 
     if !validation_result.is_ok() {
@@ -712,7 +729,7 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
 
     // Run browser validation
     let validation_errors = rt.block_on(async {
-        run_browser_validation_async(&args.path, &html_files, port, config).await
+        run_browser_validation_async(&args.path, &html_files, port, config, &pages_with_wasm).await
     })?;
 
     // Report results
@@ -764,11 +781,15 @@ fn find_html_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 }
 
 /// Run browser validation asynchronously
+///
+/// Uses FALSIFICATION approach: we try to PROVE the app is broken.
+/// If we can prove it's broken, it FAILS. Only passes if we cannot break it.
 async fn run_browser_validation_async(
     serve_dir: &std::path::Path,
     html_files: &[std::path::PathBuf],
     port: u16,
     config: probador::DevServerConfig,
+    pages_with_wasm: &std::collections::HashSet<std::path::PathBuf>,
 ) -> CliResult<Vec<String>> {
     use probador::DevServer;
     use std::time::Duration;
@@ -790,7 +811,7 @@ async fn run_browser_validation_async(
     // Try to launch browser
     #[cfg(feature = "browser")]
     {
-        use jugar_probar::browser::{Browser, BrowserConfig, BrowserConsoleLevel};
+        use jugar_probar::{Browser, BrowserConfig, BrowserConsoleLevel};
         use tokio::time::timeout;
 
         let browser_config = BrowserConfig::default()
@@ -806,13 +827,22 @@ async fn run_browser_validation_async(
                     let url_path = relative_path.to_string_lossy().replace('\\', "/");
                     let url = format!("http://127.0.0.1:{port}/{url_path}");
 
+                    // Check if this page is expected to have WASM
+                    let expects_wasm = pages_with_wasm.contains(html_file);
+
                     eprintln!("  Testing: {url}");
+                    if expects_wasm {
+                        eprintln!("    (WASM required - imported in HTML)");
+                    }
 
                     match browser.new_page().await {
                         Ok(mut page) => {
-                            // Enable console capture
+                            // Enable console capture BEFORE navigation to catch load errors
                             if let Err(e) = page.enable_console_capture().await {
                                 eprintln!("    Warning: Could not enable console capture: {e}");
+                            }
+                            if let Err(e) = page.inject_console_capture().await {
+                                eprintln!("    Warning: Could not inject console capture: {e}");
                             }
 
                             // Navigate to page with timeout
@@ -826,15 +856,16 @@ async fn run_browser_validation_async(
                                     // Wait a bit for JS to execute
                                     tokio::time::sleep(Duration::from_secs(2)).await;
 
-                                    // Fetch console messages
+                                    // Fetch console messages - FALSIFICATION: any error proves broken
                                     if let Ok(messages) = page.fetch_console_messages().await {
                                         let error_messages: Vec<_> = messages.iter()
                                             .filter(|m| m.level == BrowserConsoleLevel::Error)
                                             .collect();
 
                                         if !error_messages.is_empty() {
-                                            eprintln!("    ✗ {} console error(s) found", error_messages.len());
+                                            eprintln!("    ✗ {} console error(s) found - APP IS BROKEN", error_messages.len());
                                             for msg in &error_messages {
+                                                eprintln!("      └─ {}", msg.text);
                                                 errors.push(format!("[{}] Console error: {}", url_path, msg.text));
                                             }
                                         } else {
@@ -842,10 +873,10 @@ async fn run_browser_validation_async(
                                         }
                                     }
 
-                                    // Check for WASM ready signal
+                                    // Check for WASM ready signal - FALSIFICATION if page requires WASM
                                     eprintln!("\n[4/4] WASM Initialization Check");
                                     let wasm_result = timeout(
-                                        Duration::from_secs(10),
+                                        Duration::from_secs(15),
                                         page.wait_for_wasm_ready()
                                     ).await;
 
@@ -854,21 +885,36 @@ async fn run_browser_validation_async(
                                             eprintln!("  ✓ WASM initialized successfully\n");
                                         }
                                         Ok(Err(e)) => {
-                                            eprintln!("  ⚠ WASM initialization: {e}");
-                                            eprintln!("    (This may be expected if page doesn't use WASM)\n");
+                                            if expects_wasm {
+                                                // FALSIFICATION: WASM was required but failed
+                                                eprintln!("  ✗ WASM initialization FAILED - APP IS BROKEN");
+                                                eprintln!("    Error: {e}\n");
+                                                errors.push(format!("[{}] WASM required but failed: {}", url_path, e));
+                                            } else {
+                                                eprintln!("  ⚠ WASM initialization: {e}");
+                                                eprintln!("    (No WASM imports detected - may be expected)\n");
+                                            }
                                         }
                                         Err(_) => {
-                                            eprintln!("  ⚠ WASM initialization timed out");
-                                            eprintln!("    (This may be expected if page doesn't use WASM)\n");
+                                            if expects_wasm {
+                                                // FALSIFICATION: WASM was required but timed out
+                                                eprintln!("  ✗ WASM initialization TIMED OUT - APP IS BROKEN");
+                                                eprintln!("    Page imports WASM but it failed to initialize.\n");
+                                                errors.push(format!("[{}] WASM required but timed out after 15s", url_path));
+                                            } else {
+                                                eprintln!("  ⚠ WASM initialization timed out");
+                                                eprintln!("    (No WASM imports detected - may be expected)\n");
+                                            }
                                         }
                                     }
                                 }
                                 Ok(Err(e)) => {
-                                    eprintln!("    ✗ Navigation failed: {e}");
+                                    eprintln!("    ✗ Navigation failed - APP IS BROKEN");
+                                    eprintln!("    Error: {e}");
                                     errors.push(format!("[{}] Navigation failed: {}", url_path, e));
                                 }
                                 Err(_) => {
-                                    eprintln!("    ✗ Navigation timed out after 30s");
+                                    eprintln!("    ✗ Navigation timed out after 30s - APP IS BROKEN");
                                     errors.push(format!("[{}] Navigation timed out", url_path));
                                 }
                             }
@@ -894,7 +940,7 @@ async fn run_browser_validation_async(
     #[cfg(not(feature = "browser"))]
     {
         // Suppress unused warnings when browser feature is disabled
-        let _ = (serve_dir, html_files, port);
+        let _ = (serve_dir, html_files, port, pages_with_wasm);
         eprintln!("  ⚠ Browser feature not enabled - skipping browser checks");
         eprintln!("    Rebuild with --features browser for full validation\n");
         eprintln!("[4/4] WASM Initialization Check");
