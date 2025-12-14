@@ -817,7 +817,10 @@ fn run_playbook(config: &CliConfig, args: &probar_cli::PlaybookArgs) -> CliResul
                     "valid": validation_result.is_valid,
                     "issues": validation_result.issues.len(),
                 });
-                println!("{}", serde_json::to_string_pretty(&result).unwrap_or_default());
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&result).unwrap_or_default()
+                );
             }
             probar_cli::PlaybookOutputFormat::Junit => {
                 let timestamp = chrono::Utc::now().to_rfc3339();

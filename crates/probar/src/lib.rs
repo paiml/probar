@@ -408,18 +408,6 @@ pub use har::{
     HarRequest, HarResponse, HarTimings, NotFoundBehavior,
 };
 pub use harness::{TestCase, TestHarness, TestResult, TestSuite};
-pub use playbook::{
-    check_complexity_violation, calculate_mutation_score, to_dot,
-    Action as PlaybookAction, ActionExecutor,
-    Assertion as PlaybookAssertion, AssertionFailure as PlaybookAssertionFailure,
-    ComplexityAnalyzer, ComplexityClass, ComplexityResult, DeterminismInfo,
-    ExecutionResult as PlaybookExecutionResult, ExecutorError, Invariant, IssueSeverity,
-    MutantResult, MutationClass, MutationGenerator, MutationScore, PerformanceBudget, Playbook,
-    PlaybookError, PlaybookExecutor, ReachabilityInfo,
-    State as PlaybookState, StateMachine, StateMachineValidator,
-    Transition as PlaybookTransition, ValidationIssue, ValidationResult,
-    WaitCondition as PlaybookWaitCondition,
-};
 pub use locator::{
     expect, BoundingBox, DragBuilder, DragOperation, Expect, ExpectAssertion, Locator,
     LocatorAction, LocatorOptions, LocatorQuery, Point, Selector, DEFAULT_POLL_INTERVAL_MS,
@@ -435,6 +423,16 @@ pub use page_object::{
 pub use performance::{
     Measurement, MetricStats, MetricType, PerformanceMonitor, PerformanceProfile,
     PerformanceProfiler, PerformanceProfilerBuilder, PerformanceSummary, PerformanceThreshold,
+};
+pub use playbook::{
+    calculate_mutation_score, check_complexity_violation, to_dot, Action as PlaybookAction,
+    ActionExecutor, Assertion as PlaybookAssertion, AssertionFailure as PlaybookAssertionFailure,
+    ComplexityAnalyzer, ComplexityClass, ComplexityResult, DeterminismInfo,
+    ExecutionResult as PlaybookExecutionResult, ExecutorError, Invariant, IssueSeverity,
+    MutantResult, MutationClass, MutationGenerator, MutationScore, PerformanceBudget, Playbook,
+    PlaybookError, PlaybookExecutor, ReachabilityInfo, State as PlaybookState, StateMachine,
+    StateMachineValidator, Transition as PlaybookTransition, ValidationIssue, ValidationResult,
+    WaitCondition as PlaybookWaitCondition,
 };
 pub use renacer_integration::{
     ChromeTrace, ChromeTraceEvent, TraceCollector, TraceContext, TraceSpan,

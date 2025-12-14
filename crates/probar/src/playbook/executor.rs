@@ -170,9 +170,10 @@ impl<E: ActionExecutor> PlaybookExecutor<E> {
             match self.trigger_event(event) {
                 Ok(result) => {
                     // Track timing for complexity analysis
-                    metrics
-                        .transition_times
-                        .push((self.transition_count, result.duration.as_secs_f64() * 1000.0));
+                    metrics.transition_times.push((
+                        self.transition_count,
+                        result.duration.as_secs_f64() * 1000.0,
+                    ));
 
                     // Check for assertion failures
                     if !result.assertions_passed {
@@ -205,11 +206,10 @@ impl<E: ActionExecutor> PlaybookExecutor<E> {
         metrics.transition_count = transitions_executed.len();
 
         // Check complexity if budget specified
-        let complexity_result = self
-            .playbook
-            .performance
-            .complexity_class
-            .map(|expected| check_complexity_violation(metrics.transition_times.clone(), expected));
+        let complexity_result =
+            self.playbook.performance.complexity_class.map(|expected| {
+                check_complexity_violation(metrics.transition_times.clone(), expected)
+            });
 
         // Check for complexity violation
         if let Some(ref cr) = complexity_result {
@@ -330,25 +330,23 @@ impl<E: ActionExecutor> PlaybookExecutor<E> {
     /// Check a single assertion.
     fn check_assertion(&self, assertion: &Assertion) -> AssertionResult {
         match assertion {
-            Assertion::ElementExists { selector } => {
-                match self.executor.element_exists(selector) {
-                    Ok(true) => AssertionResult {
-                        passed: true,
-                        description: format!("Element exists: {}", selector),
-                        error: None,
-                    },
-                    Ok(false) => AssertionResult {
-                        passed: false,
-                        description: format!("Element exists: {}", selector),
-                        error: Some(format!("Element not found: {}", selector)),
-                    },
-                    Err(e) => AssertionResult {
-                        passed: false,
-                        description: format!("Element exists: {}", selector),
-                        error: Some(e.to_string()),
-                    },
-                }
-            }
+            Assertion::ElementExists { selector } => match self.executor.element_exists(selector) {
+                Ok(true) => AssertionResult {
+                    passed: true,
+                    description: format!("Element exists: {}", selector),
+                    error: None,
+                },
+                Ok(false) => AssertionResult {
+                    passed: false,
+                    description: format!("Element exists: {}", selector),
+                    error: Some(format!("Element not found: {}", selector)),
+                },
+                Err(e) => AssertionResult {
+                    passed: false,
+                    description: format!("Element exists: {}", selector),
+                    error: Some(e.to_string()),
+                },
+            },
             Assertion::TextEquals { selector, expected } => {
                 match self.executor.get_text(selector) {
                     Ok(actual) if actual == *expected => AssertionResult {
@@ -368,25 +366,26 @@ impl<E: ActionExecutor> PlaybookExecutor<E> {
                     },
                 }
             }
-            Assertion::TextContains { selector, substring } => {
-                match self.executor.get_text(selector) {
-                    Ok(actual) if actual.contains(substring) => AssertionResult {
-                        passed: true,
-                        description: format!("Text contains '{}': {}", substring, selector),
-                        error: None,
-                    },
-                    Ok(actual) => AssertionResult {
-                        passed: false,
-                        description: format!("Text contains '{}': {}", substring, selector),
-                        error: Some(format!("'{}' not found in '{}'", substring, actual)),
-                    },
-                    Err(e) => AssertionResult {
-                        passed: false,
-                        description: format!("Text contains '{}': {}", substring, selector),
-                        error: Some(e.to_string()),
-                    },
-                }
-            }
+            Assertion::TextContains {
+                selector,
+                substring,
+            } => match self.executor.get_text(selector) {
+                Ok(actual) if actual.contains(substring) => AssertionResult {
+                    passed: true,
+                    description: format!("Text contains '{}': {}", substring, selector),
+                    error: None,
+                },
+                Ok(actual) => AssertionResult {
+                    passed: false,
+                    description: format!("Text contains '{}': {}", substring, selector),
+                    error: Some(format!("'{}' not found in '{}'", substring, actual)),
+                },
+                Err(e) => AssertionResult {
+                    passed: false,
+                    description: format!("Text contains '{}': {}", substring, selector),
+                    error: Some(e.to_string()),
+                },
+            },
             Assertion::AttributeEquals {
                 selector,
                 attribute,
@@ -522,7 +521,11 @@ mod tests {
                 })
         }
 
-        fn get_attribute(&self, _selector: &str, _attribute: &str) -> Result<String, ExecutorError> {
+        fn get_attribute(
+            &self,
+            _selector: &str,
+            _attribute: &str,
+        ) -> Result<String, ExecutorError> {
             Ok("value".to_string())
         }
 
@@ -628,5 +631,487 @@ machine:
 
         assert!(!result.success);
         assert!(!result.assertion_failures.is_empty());
+    }
+
+    #[test]
+    fn test_current_state_and_reset() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        assert_eq!(runner.current_state(), "start");
+
+        runner.execute(&["go"]);
+        assert_eq!(runner.current_state(), "end");
+
+        runner.reset();
+        assert_eq!(runner.current_state(), "start");
+    }
+
+    #[test]
+    fn test_text_equals_assertion_pass() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      assertions:
+        - type: text_equals
+          selector: "#welcome"
+          expected: "Welcome, User!"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["go"]);
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_text_equals_assertion_fail() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      assertions:
+        - type: text_equals
+          selector: "#welcome"
+          expected: "Wrong Text"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["go"]);
+        assert!(!result.success);
+    }
+
+    #[test]
+    fn test_text_contains_assertion_pass() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      assertions:
+        - type: text_contains
+          selector: "#welcome"
+          substring: "Welcome"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["go"]);
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_text_contains_assertion_fail() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      assertions:
+        - type: text_contains
+          selector: "#welcome"
+          substring: "Goodbye"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["go"]);
+        assert!(!result.success);
+    }
+
+    #[test]
+    fn test_attribute_equals_assertion_pass() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      assertions:
+        - type: attribute_equals
+          selector: "#welcome"
+          attribute: "data-test"
+          expected: "value"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["go"]);
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_attribute_equals_assertion_fail() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      assertions:
+        - type: attribute_equals
+          selector: "#welcome"
+          attribute: "data-test"
+          expected: "wrong_value"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["go"]);
+        assert!(!result.success);
+    }
+
+    #[test]
+    fn test_url_matches_assertion_pass() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      assertions:
+        - type: url_matches
+          pattern: "localhost"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["go"]);
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_url_matches_assertion_fail() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      assertions:
+        - type: url_matches
+          pattern: "example.com"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["go"]);
+        assert!(!result.success);
+    }
+
+    #[test]
+    fn test_script_assertion_pass() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      assertions:
+        - type: script
+          expression: "true"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["go"]);
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_transition_with_actions() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      actions:
+        - type: click
+          selector: "#button"
+        - type: type
+          selector: "#input"
+          text: "hello"
+        - type: wait
+          condition:
+            type: duration
+            ms: 100
+        - type: navigate
+          url: "http://example.com"
+        - type: script
+          code: "console.log('test')"
+        - type: screenshot
+          name: "test_screenshot"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["go"]);
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_entry_exit_actions() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+      on_exit:
+        - type: click
+          selector: "#exit-start"
+    middle:
+      id: "middle"
+      on_entry:
+        - type: click
+          selector: "#enter-middle"
+      on_exit:
+        - type: click
+          selector: "#exit-middle"
+    end:
+      id: "end"
+      on_entry:
+        - type: click
+          selector: "#enter-end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "middle"
+      event: "step1"
+    - id: "t2"
+      from: "middle"
+      to: "end"
+      event: "step2"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["step1", "step2"]);
+        assert!(result.success);
+        assert_eq!(result.transitions_executed.len(), 2);
+        assert_eq!(result.final_state, "end");
+    }
+
+    #[test]
+    fn test_multiple_transitions() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "a"
+  states:
+    a:
+      id: "a"
+    b:
+      id: "b"
+    c:
+      id: "c"
+  transitions:
+    - id: "t1"
+      from: "a"
+      to: "b"
+      event: "next"
+    - id: "t2"
+      from: "b"
+      to: "c"
+      event: "next"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["next", "next"]);
+        assert!(result.success);
+        assert_eq!(result.final_state, "c");
+        assert_eq!(result.metrics.transition_count, 2);
+    }
+
+    #[test]
+    fn test_text_assertion_element_not_found() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      assertions:
+        - type: text_equals
+          selector: "#nonexistent"
+          expected: "some text"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["go"]);
+        assert!(!result.success);
+    }
+
+    #[test]
+    fn test_text_contains_element_not_found() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      assertions:
+        - type: text_contains
+          selector: "#nonexistent"
+          substring: "text"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let executor = MockExecutor::new();
+        let mut runner = PlaybookExecutor::new(playbook, executor);
+
+        let result = runner.execute(&["go"]);
+        assert!(!result.success);
     }
 }

@@ -294,9 +294,7 @@ impl<E: ActionExecutor> PlaybookRunner<E> {
         let value = self.variables.get(&output.var);
 
         // Check not_empty
-        if output.not_empty == Some(true)
-            && value.map_or(true, String::is_empty)
-        {
+        if output.not_empty == Some(true) && value.map_or(true, String::is_empty) {
             return AssertionCheckResult {
                 description: format!("Variable '{}' is not empty", output.var),
                 passed: false,
@@ -557,7 +555,9 @@ machine:
         let playbook = Playbook::from_yaml(yaml).expect("parse");
         let mut runner = PlaybookRunner::new(playbook, MockExecutor);
 
-        runner.variables.insert("name".to_string(), "test".to_string());
+        runner
+            .variables
+            .insert("name".to_string(), "test".to_string());
         runner
             .variables
             .insert("value".to_string(), "123".to_string());
@@ -591,5 +591,697 @@ machine:
         assert!(svg.contains("<svg"));
         assert!(svg.contains("test_machine"));
         assert!(svg.contains("</svg>"));
+    }
+
+    #[test]
+    fn test_run_empty_playbook() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t_loop"
+      from: "start"
+      to: "start"
+      event: "noop"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(result.passed);
+        assert!(result.error.is_none());
+        assert_eq!(result.state_path, vec!["start"]);
+    }
+
+    #[test]
+    fn test_run_with_steps_and_transitions() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    middle:
+      id: "middle"
+    end:
+      id: "end"
+      final_state: true
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "middle"
+      event: "go"
+    - id: "t2"
+      from: "middle"
+      to: "end"
+      event: "finish"
+playbook:
+  setup: []
+  steps:
+    - name: "Go to middle"
+      transitions: ["t1"]
+      capture: []
+    - name: "Go to end"
+      transitions: ["t2"]
+      capture: []
+  teardown: []
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(result.passed);
+        assert_eq!(result.state_path, vec!["start", "middle", "end"]);
+        assert_eq!(result.step_results.len(), 2);
+    }
+
+    #[test]
+    fn test_run_with_variable_capture() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "start"
+      event: "loop"
+playbook:
+  setup: []
+  steps:
+    - name: "Capture step"
+      transitions: ["t1"]
+      capture:
+        - var: "captured_val"
+          from: "test_value"
+  teardown: []
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(result.passed);
+        assert_eq!(
+            result.variables.get("captured_val"),
+            Some(&"test_value".to_string())
+        );
+    }
+
+    #[test]
+    fn test_run_forbidden_transition_fails() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+      final_state: true
+  transitions:
+    - id: "forbidden_t"
+      from: "start"
+      to: "end"
+      event: "skip"
+  forbidden:
+    - from: "start"
+      to: "end"
+      reason: "Cannot skip"
+playbook:
+  setup: []
+  steps:
+    - name: "Try forbidden"
+      transitions: ["forbidden_t"]
+      capture: []
+  teardown: []
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(!result.passed);
+        assert!(result.step_results[0]
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("Forbidden"));
+    }
+
+    #[test]
+    fn test_path_assertion_pass() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+playbook:
+  setup: []
+  steps:
+    - name: "Go"
+      transitions: ["t1"]
+      capture: []
+  teardown: []
+assertions:
+  path:
+    expected: ["start", "end"]
+  output: []
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(result.passed);
+        assert!(result.assertion_results.iter().all(|a| a.passed));
+    }
+
+    #[test]
+    fn test_path_assertion_fail() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t_loop"
+      from: "start"
+      to: "start"
+      event: "noop"
+assertions:
+  path:
+    expected: ["start", "end"]
+  output: []
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(!result.passed);
+        assert!(result.assertion_results.iter().any(|a| !a.passed));
+    }
+
+    #[test]
+    fn test_output_assertion_not_empty() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "start"
+      event: "loop"
+playbook:
+  setup: []
+  steps:
+    - name: "Capture"
+      transitions: ["t1"]
+      capture:
+        - var: "my_var"
+          from: "some_value"
+  teardown: []
+assertions:
+  output:
+    - var: "my_var"
+      not_empty: true
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_output_assertion_not_empty_fails() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t_loop"
+      from: "start"
+      to: "start"
+      event: "noop"
+assertions:
+  output:
+    - var: "missing_var"
+      not_empty: true
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(!result.passed);
+    }
+
+    #[test]
+    fn test_output_assertion_matches() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "start"
+      event: "loop"
+playbook:
+  setup: []
+  steps:
+    - name: "Capture"
+      transitions: ["t1"]
+      capture:
+        - var: "email"
+          from: "test@example.com"
+  teardown: []
+assertions:
+  output:
+    - var: "email"
+      matches: ".*@.*\\.com"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_output_assertion_matches_fails() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "start"
+      event: "loop"
+playbook:
+  setup: []
+  steps:
+    - name: "Capture"
+      transitions: ["t1"]
+      capture:
+        - var: "value"
+          from: "abc"
+  teardown: []
+assertions:
+  output:
+    - var: "value"
+      matches: "^[0-9]+$"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(!result.passed);
+    }
+
+    #[test]
+    fn test_output_assertion_matches_undefined() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t_loop"
+      from: "start"
+      to: "start"
+      event: "noop"
+assertions:
+  output:
+    - var: "undefined_var"
+      matches: ".*"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(!result.passed);
+    }
+
+    #[test]
+    fn test_output_assertion_less_than() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "start"
+      event: "loop"
+playbook:
+  setup: []
+  steps:
+    - name: "Capture"
+      transitions: ["t1"]
+      capture:
+        - var: "count"
+          from: "5"
+  teardown: []
+assertions:
+  output:
+    - var: "count"
+      less_than: 10
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_output_assertion_less_than_fails() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "start"
+      event: "loop"
+playbook:
+  setup: []
+  steps:
+    - name: "Capture"
+      transitions: ["t1"]
+      capture:
+        - var: "count"
+          from: "15"
+  teardown: []
+assertions:
+  output:
+    - var: "count"
+      less_than: 10
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(!result.passed);
+    }
+
+    #[test]
+    fn test_output_assertion_greater_than() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "start"
+      event: "loop"
+playbook:
+  setup: []
+  steps:
+    - name: "Capture"
+      transitions: ["t1"]
+      capture:
+        - var: "count"
+          from: "100"
+  teardown: []
+assertions:
+  output:
+    - var: "count"
+      greater_than: 50
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_output_assertion_greater_than_fails() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "start"
+      event: "loop"
+playbook:
+  setup: []
+  steps:
+    - name: "Capture"
+      transitions: ["t1"]
+      capture:
+        - var: "count"
+          from: "10"
+  teardown: []
+assertions:
+  output:
+    - var: "count"
+      greater_than: 50
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(!result.passed);
+    }
+
+    #[test]
+    fn test_output_assertion_equals() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "start"
+      event: "loop"
+playbook:
+  setup: []
+  steps:
+    - name: "Capture"
+      transitions: ["t1"]
+      capture:
+        - var: "result"
+          from: "success"
+  teardown: []
+assertions:
+  output:
+    - var: "result"
+      equals: "success"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_output_assertion_equals_fails() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "start"
+      event: "loop"
+playbook:
+  setup: []
+  steps:
+    - name: "Capture"
+      transitions: ["t1"]
+      capture:
+        - var: "result"
+          from: "failure"
+  teardown: []
+assertions:
+  output:
+    - var: "result"
+      equals: "success"
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(!result.passed);
+    }
+
+    #[test]
+    fn test_export_trace_json() {
+        let yaml = r##"
+version: "1.0"
+name: "Trace Test"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+playbook:
+  setup: []
+  steps:
+    - name: "Go"
+      transitions: ["t1"]
+      capture:
+        - var: "test_var"
+          from: "test_value"
+  teardown: []
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        runner.run();
+
+        let json = runner.export_trace_json();
+        assert!(json.contains("Trace Test"));
+        assert!(json.contains("state_path"));
+        assert!(json.contains("test_var"));
+    }
+
+    #[test]
+    fn test_teardown_with_ignore_errors() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t_loop"
+      from: "start"
+      to: "start"
+      event: "noop"
+playbook:
+  setup: []
+  steps: []
+  teardown:
+    - action:
+        wasm: "cleanup"
+        args: []
+      ignore_errors: true
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_run_step_with_nonexistent_transition() {
+        let yaml = r##"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+  transitions:
+    - id: "t_loop"
+      from: "start"
+      to: "start"
+      event: "noop"
+playbook:
+  setup: []
+  steps:
+    - name: "Bad transition"
+      transitions: ["nonexistent"]
+      capture: []
+  teardown: []
+"##;
+        let playbook = Playbook::from_yaml(yaml).expect("parse");
+        let mut runner = PlaybookRunner::new(playbook, MockExecutor);
+        let result = runner.run();
+
+        // Should still pass, just no state change
+        assert!(result.passed);
     }
 }

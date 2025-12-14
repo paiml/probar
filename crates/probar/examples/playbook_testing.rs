@@ -117,7 +117,11 @@ performance:
 
     println!(
         "   Valid: {}",
-        if validation.is_valid { "✓ Yes" } else { "✗ No" }
+        if validation.is_valid {
+            "✓ Yes"
+        } else {
+            "✗ No"
+        }
     );
     println!(
         "   Reachable states: {:?}",
@@ -159,6 +163,16 @@ performance:
     let svg = to_svg(&playbook);
     println!("\n   SVG format ({} bytes):", svg.len());
     println!("   (Use `probar playbook login.yaml --export svg` for full export)");
+
+    // Save SVG to book assets for documentation
+    let svg_path = std::path::Path::new("book/src/assets/login_state_machine.svg");
+    if svg_path.parent().map(|p| p.exists()).unwrap_or(false) {
+        if let Err(e) = std::fs::write(svg_path, &svg) {
+            eprintln!("   Warning: Could not save SVG to book: {e}");
+        } else {
+            println!("   ✓ Saved SVG to book/src/assets/login_state_machine.svg");
+        }
+    }
 
     // 4. Mutation Testing (M1-M5 Falsification)
     println!("\n4. Mutation Testing (Falsification Protocol)");
@@ -212,10 +226,7 @@ performance:
         "   │ Total mutants                  │ {:7} │",
         score.total_mutants
     );
-    println!(
-        "   │ Killed                         │ {:7} │",
-        score.killed
-    );
+    println!("   │ Killed                         │ {:7} │", score.killed);
     println!(
         "   │ Survived                       │ {:7} │",
         score.survived

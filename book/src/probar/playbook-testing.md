@@ -70,6 +70,17 @@ Run validation:
 probar playbook login.yaml --validate
 ```
 
+## State Machine Diagram
+
+Here's a visualization of the login flow state machine:
+
+![Login State Machine](../assets/login_state_machine.svg)
+
+The diagram shows:
+- **States** as rounded rectangles (double border = final state)
+- **Transitions** as arrows with event labels
+- **Forbidden transitions** are checked at runtime
+
 ## State Machine Schema
 
 ### States
@@ -361,6 +372,120 @@ Processing: login.yaml
 4. **Use guards for determinism** - Avoid ambiguous transitions
 5. **Target 80%+ mutation score** - Ensures comprehensive testing
 6. **Export diagrams for review** - Visual verification catches errors
+
+## PlaybookRunner API
+
+For programmatic execution with custom executors:
+
+```rust
+use jugar_probar::playbook::{
+    Playbook, PlaybookRunner, ActionExecutor, ExecutorError, WaitCondition,
+};
+
+// Implement your custom executor
+struct MyExecutor;
+
+impl ActionExecutor for MyExecutor {
+    fn click(&mut self, selector: &str) -> Result<(), ExecutorError> {
+        println!("Clicking: {}", selector);
+        Ok(())
+    }
+
+    fn type_text(&mut self, selector: &str, text: &str) -> Result<(), ExecutorError> {
+        println!("Typing '{}' into {}", text, selector);
+        Ok(())
+    }
+
+    fn wait(&mut self, _condition: &WaitCondition) -> Result<(), ExecutorError> {
+        Ok(())
+    }
+
+    fn navigate(&mut self, url: &str) -> Result<(), ExecutorError> {
+        println!("Navigating to: {}", url);
+        Ok(())
+    }
+
+    fn execute_script(&mut self, code: &str) -> Result<String, ExecutorError> {
+        println!("Executing script: {}", code);
+        Ok("result".to_string())
+    }
+
+    fn screenshot(&mut self, name: &str) -> Result<(), ExecutorError> {
+        println!("Taking screenshot: {}", name);
+        Ok(())
+    }
+
+    fn element_exists(&self, selector: &str) -> Result<bool, ExecutorError> {
+        Ok(selector.starts_with("#"))
+    }
+
+    fn get_text(&self, _selector: &str) -> Result<String, ExecutorError> {
+        Ok("Sample text".to_string())
+    }
+
+    fn get_attribute(&self, _selector: &str, _attr: &str) -> Result<String, ExecutorError> {
+        Ok("value".to_string())
+    }
+
+    fn get_url(&self) -> Result<String, ExecutorError> {
+        Ok("http://localhost/app".to_string())
+    }
+
+    fn evaluate(&self, _expression: &str) -> Result<bool, ExecutorError> {
+        Ok(true)
+    }
+}
+
+// Run the playbook
+fn test_playbook() {
+    let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start: { id: "start" }
+    end: { id: "end", final_state: true }
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+playbook:
+  steps:
+    - name: "Go to end"
+      transitions: ["t1"]
+      capture:
+        - var: "result"
+          from: "captured_value"
+assertions:
+  path:
+    expected: ["start", "end"]
+  output:
+    - var: "result"
+      not_empty: true
+"#;
+
+    let playbook = Playbook::from_yaml(yaml).unwrap();
+    let mut runner = PlaybookRunner::new(playbook, MyExecutor);
+
+    let result = runner.run();
+
+    assert!(result.passed);
+    assert_eq!(result.state_path, vec!["start", "end"]);
+    println!("Playbook passed: {:?}", result.variables);
+}
+```
+
+## Output Assertion Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `not_empty` | Variable must have a value | `not_empty: true` |
+| `equals` | Exact string match | `equals: "success"` |
+| `matches` | Regex pattern match | `matches: "^[0-9]+$"` |
+| `less_than` | Numeric comparison | `less_than: 100` |
+| `greater_than` | Numeric comparison | `greater_than: 0` |
 
 ## References
 

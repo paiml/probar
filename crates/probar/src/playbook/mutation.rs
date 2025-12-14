@@ -362,7 +362,9 @@ machine:
 
         // Should generate 2 mutants (middle and end, not start)
         assert_eq!(mutants.len(), 2);
-        assert!(mutants.iter().all(|m| m.class == MutationClass::StateRemoval));
+        assert!(mutants
+            .iter()
+            .all(|m| m.class == MutationClass::StateRemoval));
     }
 
     #[test]
@@ -425,7 +427,9 @@ machine:
         let mutants = generator.generate_all();
 
         // Should have mutants from all classes
-        let has_m1 = mutants.iter().any(|m| m.class == MutationClass::StateRemoval);
+        let has_m1 = mutants
+            .iter()
+            .any(|m| m.class == MutationClass::StateRemoval);
         let has_m2 = mutants
             .iter()
             .any(|m| m.class == MutationClass::TransitionRemoval);

@@ -122,9 +122,7 @@ impl<'a> StateMachineValidator<'a> {
         // Check paths to final states
         self.check_final_reachability(&reachability, &mut issues);
 
-        let has_errors = issues
-            .iter()
-            .any(|i| i.severity() == IssueSeverity::Error);
+        let has_errors = issues.iter().any(|i| i.severity() == IssueSeverity::Error);
 
         ValidationResult {
             is_valid: !has_errors,
@@ -394,10 +392,9 @@ machine:
 
         assert!(!result.is_valid);
         assert!(result.reachability.orphaned_states.contains("orphan"));
-        assert!(result
-            .issues
-            .iter()
-            .any(|i| matches!(i, ValidationIssue::OrphanedState { state_id } if state_id == "orphan")));
+        assert!(result.issues.iter().any(
+            |i| matches!(i, ValidationIssue::OrphanedState { state_id } if state_id == "orphan")
+        ));
     }
 
     #[test]
@@ -423,10 +420,9 @@ machine:
         let result = validator.validate();
 
         assert!(!result.is_valid);
-        assert!(result
-            .issues
-            .iter()
-            .any(|i| matches!(i, ValidationIssue::DeadEndState { state_id } if state_id == "dead_end")));
+        assert!(result.issues.iter().any(
+            |i| matches!(i, ValidationIssue::DeadEndState { state_id } if state_id == "dead_end")
+        ));
     }
 
     #[test]

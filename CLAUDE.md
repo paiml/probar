@@ -96,6 +96,25 @@ crates/
 - **Zero tolerance for panic paths** (clippy: deny unwrap_used, expect_used)
 - **Comprehensive inline documentation**
 
+### FORBIDDEN: cargo-tarpaulin
+
+```
+❌ FORBIDDEN                         ✅ REQUIRED
+─────────────────────────────────────────────────────
+• cargo-tarpaulin                    • cargo-llvm-cov
+• tarpaulin in CI                    • make coverage (llvm-cov)
+• Any tarpaulin config               • cargo-nextest for speed
+```
+
+**Rationale**: tarpaulin is slow, unreliable, and produces inconsistent results. Use `cargo-llvm-cov` + `cargo-nextest` exclusively (bashrs pattern).
+
+**Coverage Commands**:
+```bash
+make coverage          # Generate HTML report (<5 min target)
+make coverage-summary  # Show coverage percentage
+make coverage-ci       # Generate LCOV for CI
+```
+
 ## Dogfooding: Book Screenshots
 
 Probar generates its own documentation screenshots using its pixel coverage heatmap feature. This validates our PNG export functionality.

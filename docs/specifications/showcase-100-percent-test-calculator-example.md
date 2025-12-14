@@ -492,7 +492,6 @@ async fn test_wasm_complex() {
 ### Exclusion Policy
 
 **NO EXCLUSIONS ALLOWED**. Every line must be tested:
-- No `#[cfg(not(tarpaulin_include))]`
 - No `// LCOV_EXCL_LINE`
 - No `#[coverage(off)]`
 

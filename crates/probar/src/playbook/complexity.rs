@@ -47,10 +47,8 @@ impl ComplexityAnalyzer {
     /// # Arguments
     /// * `measurements` - Pairs of (input_size, execution_time)
     pub fn new(measurements: Vec<(usize, f64)>) -> Self {
-        let (input_sizes, execution_times): (Vec<f64>, Vec<f64>) = measurements
-            .into_iter()
-            .map(|(n, t)| (n as f64, t))
-            .unzip();
+        let (input_sizes, execution_times): (Vec<f64>, Vec<f64>) =
+            measurements.into_iter().map(|(n, t)| (n as f64, t)).unzip();
 
         Self {
             input_sizes,
@@ -288,8 +286,7 @@ mod tests {
     #[test]
     fn test_detect_constant_complexity() {
         // Generate O(1) data: t = 100 (exactly constant)
-        let measurements: Vec<(usize, f64)> =
-            (1..=10).map(|n| (n * 100, 100.0)).collect();
+        let measurements: Vec<(usize, f64)> = (1..=10).map(|n| (n * 100, 100.0)).collect();
 
         let analyzer = ComplexityAnalyzer::new(measurements);
         let result = analyzer.analyze(None);
