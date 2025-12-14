@@ -529,7 +529,9 @@ machine:
         // Check forbidden transition
         let err = runner.check_forbidden("start", "end");
         assert!(err.is_some());
-        assert!(err.expect("should have error").contains("Cannot skip middle state"));
+        assert!(err
+            .expect("should have error")
+            .contains("Cannot skip middle state"));
 
         // Check allowed transition
         let ok = runner.check_forbidden("start", "middle");

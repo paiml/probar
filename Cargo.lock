@@ -2412,8 +2412,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "probar-cli"
-version = "0.1.0"
+name = "probador"
+version = "0.3.3"
 dependencies = [
  "assert_cmd",
  "axum",

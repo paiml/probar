@@ -3,9 +3,9 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-/// Probar: Rust-native testing framework for WASM games
+/// Probador: CLI for Probar - Rust-native testing framework for WASM games
 #[derive(Parser, Debug)]
-#[command(name = "probar")]
+#[command(name = "probador")]
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct Cli {

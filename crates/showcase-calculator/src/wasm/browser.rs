@@ -3,7 +3,7 @@
 //! This module provides the actual browser integration using wasm-bindgen.
 //! Probar: Direct observation - Go and see the real browser behavior
 
-#![cfg(feature = "wasm")]
+// Note: This module is already conditionally compiled via #[cfg(feature = "wasm")] in mod.rs
 
 use wasm_bindgen::prelude::*;
 use web_sys::console;

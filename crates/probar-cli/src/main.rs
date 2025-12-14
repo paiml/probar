@@ -10,7 +10,7 @@
 //! ```
 
 use clap::Parser;
-use probar_cli::{Cli, CliConfig, CliResult, ColorChoice, Commands, TestRunner, Verbosity};
+use probador::{Cli, CliConfig, CliResult, ColorChoice, Commands, TestRunner, Verbosity};
 use std::process::ExitCode;
 
 // Re-export CoverageCell for use in create_sample_coverage_data
@@ -74,7 +74,7 @@ fn build_config(cli: &Cli) -> CliConfig {
     CliConfig::new().with_verbosity(verbosity).with_color(color)
 }
 
-fn run_tests(config: CliConfig, args: &probar_cli::TestArgs) -> CliResult<()> {
+fn run_tests(config: CliConfig, args: &probador::TestArgs) -> CliResult<()> {
     let config = config
         .with_parallel_jobs(args.parallel)
         .with_fail_fast(args.fail_fast)
@@ -88,14 +88,14 @@ fn run_tests(config: CliConfig, args: &probar_cli::TestArgs) -> CliResult<()> {
     if results.all_passed() {
         Ok(())
     } else {
-        Err(probar_cli::CliError::test_execution(format!(
+        Err(probador::CliError::test_execution(format!(
             "{} test(s) failed",
             results.failed()
         )))
     }
 }
 
-fn run_record(_config: &CliConfig, args: &probar_cli::RecordArgs) {
+fn run_record(_config: &CliConfig, args: &probador::RecordArgs) {
     println!("Recording test: {}", args.test);
     println!("Format: {:?}", args.format);
     println!("FPS: {}", args.fps);
@@ -106,7 +106,7 @@ fn run_record(_config: &CliConfig, args: &probar_cli::RecordArgs) {
     println!("Recording configuration ready. Run test with --record flag to capture.");
 }
 
-fn run_report(_config: &CliConfig, args: &probar_cli::ReportArgs) {
+fn run_report(_config: &CliConfig, args: &probador::ReportArgs) {
     use std::fs;
     use std::io::Write;
 
@@ -121,11 +121,11 @@ fn run_report(_config: &CliConfig, args: &probar_cli::ReportArgs) {
 
     // Generate report based on format
     let report_content = match args.format {
-        probar_cli::ReportFormat::Html => generate_html_report(),
-        probar_cli::ReportFormat::Json => generate_json_report(),
-        probar_cli::ReportFormat::Lcov => generate_lcov_report(),
-        probar_cli::ReportFormat::Junit => generate_junit_report(),
-        probar_cli::ReportFormat::Cobertura => generate_cobertura_report(),
+        probador::ReportFormat::Html => generate_html_report(),
+        probador::ReportFormat::Json => generate_json_report(),
+        probador::ReportFormat::Lcov => generate_lcov_report(),
+        probador::ReportFormat::Junit => generate_junit_report(),
+        probador::ReportFormat::Cobertura => generate_cobertura_report(),
     };
 
     match fs::File::create(&args.output) {
@@ -157,7 +157,7 @@ fn run_report(_config: &CliConfig, args: &probar_cli::ReportArgs) {
     }
 }
 
-fn run_coverage(_config: &CliConfig, args: &probar_cli::CoverageArgs) -> CliResult<()> {
+fn run_coverage(_config: &CliConfig, args: &probador::CoverageArgs) -> CliResult<()> {
     use jugar_probar::pixel_coverage::{ColorPalette, CoverageCell, PngHeatmap};
 
     println!("Generating coverage heatmap...");
@@ -173,9 +173,9 @@ fn run_coverage(_config: &CliConfig, args: &probar_cli::CoverageArgs) -> CliResu
 
     // Select palette
     let palette = match args.palette {
-        probar_cli::PaletteArg::Viridis => ColorPalette::viridis(),
-        probar_cli::PaletteArg::Magma => ColorPalette::magma(),
-        probar_cli::PaletteArg::Heat => ColorPalette::heat(),
+        probador::PaletteArg::Viridis => ColorPalette::viridis(),
+        probador::PaletteArg::Magma => ColorPalette::magma(),
+        probador::PaletteArg::Heat => ColorPalette::heat(),
     };
 
     // Build heatmap
@@ -197,7 +197,7 @@ fn run_coverage(_config: &CliConfig, args: &probar_cli::CoverageArgs) -> CliResu
     if let Some(ref png_path) = args.png {
         heatmap
             .export_to_file(&cells, png_path)
-            .map_err(|e| probar_cli::CliError::report_generation(e.to_string()))?;
+            .map_err(|e| probador::CliError::report_generation(e.to_string()))?;
         println!("PNG heatmap exported to: {}", png_path.display());
     }
 
@@ -205,9 +205,9 @@ fn run_coverage(_config: &CliConfig, args: &probar_cli::CoverageArgs) -> CliResu
     if let Some(ref json_path) = args.json {
         let report = generate_coverage_report(&cells);
         let json = serde_json::to_string_pretty(&report)
-            .map_err(|e| probar_cli::CliError::report_generation(e.to_string()))?;
+            .map_err(|e| probador::CliError::report_generation(e.to_string()))?;
         std::fs::write(json_path, json)
-            .map_err(|e| probar_cli::CliError::report_generation(e.to_string()))?;
+            .map_err(|e| probador::CliError::report_generation(e.to_string()))?;
         println!("Coverage report exported to: {}", json_path.display());
     }
 
@@ -245,7 +245,7 @@ fn load_coverage_from_json(path: &std::path::Path) -> CliResult<Vec<Vec<Coverage
     }
 
     let content = std::fs::read_to_string(path).map_err(|e| {
-        probar_cli::CliError::report_generation(format!("Failed to read {}: {}", path.display(), e))
+        probador::CliError::report_generation(format!("Failed to read {}: {}", path.display(), e))
     })?;
 
     // Try parsing as wrapped format first
@@ -257,7 +257,7 @@ fn load_coverage_from_json(path: &std::path::Path) -> CliResult<Vec<Vec<Coverage
 
     // Try parsing as bare array
     serde_json::from_str::<Vec<Vec<CoverageCell>>>(&content)
-        .map_err(|e| probar_cli::CliError::report_generation(format!("Invalid JSON format: {}", e)))
+        .map_err(|e| probador::CliError::report_generation(format!("Invalid JSON format: {}", e)))
 }
 
 /// Check if a cell is in a gap region (no coverage)
@@ -419,7 +419,7 @@ fn generate_cobertura_report() -> String {
     )
 }
 
-fn run_init(args: &probar_cli::InitArgs) {
+fn run_init(args: &probador::InitArgs) {
     println!("Initializing Probar project in: {}", args.path.display());
 
     if args.force {
@@ -454,7 +454,7 @@ fn test_example() {
     println!("Probar project initialized successfully!");
 }
 
-fn run_config(config: &CliConfig, args: &probar_cli::ConfigArgs) {
+fn run_config(config: &CliConfig, args: &probador::ConfigArgs) {
     if args.show {
         println!("Current configuration:");
         println!("  Verbosity: {:?}", config.verbosity);
@@ -492,8 +492,8 @@ fn run_config(config: &CliConfig, args: &probar_cli::ConfigArgs) {
 // WASM Development Commands
 // =============================================================================
 
-fn run_serve(args: &probar_cli::ServeArgs) -> CliResult<()> {
-    use probar_cli::{DevServer, DevServerConfig};
+fn run_serve(args: &probador::ServeArgs) -> CliResult<()> {
+    use probador::{DevServer, DevServerConfig};
 
     let config = DevServerConfig {
         directory: args.directory.clone(),
@@ -519,22 +519,22 @@ fn run_serve(args: &probar_cli::ServeArgs) -> CliResult<()> {
 
     // Run server (blocking)
     let rt = tokio::runtime::Runtime::new().map_err(|e| {
-        probar_cli::CliError::test_execution(format!("Failed to create runtime: {e}"))
+        probador::CliError::test_execution(format!("Failed to create runtime: {e}"))
     })?;
 
     rt.block_on(async {
         server
             .run()
             .await
-            .map_err(|e| probar_cli::CliError::test_execution(format!("Server error: {e}")))
+            .map_err(|e| probador::CliError::test_execution(format!("Server error: {e}")))
     })
 }
 
-fn run_build(args: &probar_cli::BuildArgs) -> CliResult<()> {
-    use probar_cli::dev_server::run_wasm_pack_build;
+fn run_build(args: &probador::BuildArgs) -> CliResult<()> {
+    use probador::dev_server::run_wasm_pack_build;
 
     let rt = tokio::runtime::Runtime::new().map_err(|e| {
-        probar_cli::CliError::test_execution(format!("Failed to create runtime: {e}"))
+        probador::CliError::test_execution(format!("Failed to create runtime: {e}"))
     })?;
 
     rt.block_on(async {
@@ -546,17 +546,17 @@ fn run_build(args: &probar_cli::BuildArgs) -> CliResult<()> {
             args.profiling,
         )
         .await
-        .map_err(|e| probar_cli::CliError::test_execution(e))
+        .map_err(|e| probador::CliError::test_execution(e))
     })
 }
 
-fn run_watch(args: &probar_cli::WatchArgs) -> CliResult<()> {
-    use probar_cli::{dev_server::run_wasm_pack_build, DevServer, DevServerConfig, FileWatcher};
+fn run_watch(args: &probador::WatchArgs) -> CliResult<()> {
+    use probador::{dev_server::run_wasm_pack_build, DevServer, DevServerConfig, FileWatcher};
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
     let rt = tokio::runtime::Runtime::new().map_err(|e| {
-        probar_cli::CliError::test_execution(format!("Failed to create runtime: {e}"))
+        probador::CliError::test_execution(format!("Failed to create runtime: {e}"))
     })?;
 
     let path = args.path.clone();
@@ -568,7 +568,7 @@ fn run_watch(args: &probar_cli::WatchArgs) -> CliResult<()> {
     rt.block_on(async {
         run_wasm_pack_build(&path, &target, release, None, false)
             .await
-            .map_err(|e| probar_cli::CliError::test_execution(e))
+            .map_err(|e| probador::CliError::test_execution(e))
     })?;
 
     // Start server if requested
@@ -631,7 +631,7 @@ fn run_watch(args: &probar_cli::WatchArgs) -> CliResult<()> {
                     );
 
                     if let Some(ref tx) = reload_tx {
-                        let _ = tx.send(probar_cli::dev_server::HotReloadMessage::FileChanged {
+                        let _ = tx.send(probador::dev_server::HotReloadMessage::FileChanged {
                             path: changed_file.clone(),
                         });
                     }
@@ -646,7 +646,7 @@ fn run_watch(args: &probar_cli::WatchArgs) -> CliResult<()> {
                             println!("Build successful!");
                             if let Some(ref tx) = reload_tx {
                                 let _ = tx.send(
-                                    probar_cli::dev_server::HotReloadMessage::RebuildComplete {
+                                    probador::dev_server::HotReloadMessage::RebuildComplete {
                                         duration_ms,
                                     },
                                 );
@@ -656,7 +656,7 @@ fn run_watch(args: &probar_cli::WatchArgs) -> CliResult<()> {
                             eprintln!("Build failed: {e}");
                             if let Some(ref tx) = reload_tx {
                                 let _ = tx.send(
-                                    probar_cli::dev_server::HotReloadMessage::RebuildFailed {
+                                    probador::dev_server::HotReloadMessage::RebuildFailed {
                                         error: e,
                                     },
                                 );
@@ -669,11 +669,11 @@ fn run_watch(args: &probar_cli::WatchArgs) -> CliResult<()> {
                 });
             })
             .await
-            .map_err(|e| probar_cli::CliError::test_execution(format!("Watch error: {e}")))
+            .map_err(|e| probador::CliError::test_execution(format!("Watch error: {e}")))
     })
 }
 
-fn run_playbook(config: &CliConfig, args: &probar_cli::PlaybookArgs) -> CliResult<()> {
+fn run_playbook(config: &CliConfig, args: &probador::PlaybookArgs) -> CliResult<()> {
     use jugar_probar::playbook::{
         to_dot, to_svg, MutationClass, MutationGenerator, Playbook, StateMachineValidator,
     };
@@ -691,7 +691,7 @@ fn run_playbook(config: &CliConfig, args: &probar_cli::PlaybookArgs) -> CliResul
 
         // Load playbook from YAML file
         let yaml_content = std::fs::read_to_string(file).map_err(|e| {
-            probar_cli::CliError::test_execution(format!(
+            probador::CliError::test_execution(format!(
                 "Failed to read playbook {}: {}",
                 file.display(),
                 e
@@ -699,7 +699,7 @@ fn run_playbook(config: &CliConfig, args: &probar_cli::PlaybookArgs) -> CliResul
         })?;
 
         let playbook = Playbook::from_yaml(&yaml_content).map_err(|e| {
-            probar_cli::CliError::test_execution(format!(
+            probador::CliError::test_execution(format!(
                 "Failed to parse playbook {}: {}",
                 file.display(),
                 e
@@ -742,16 +742,13 @@ fn run_playbook(config: &CliConfig, args: &probar_cli::PlaybookArgs) -> CliResul
         // Handle --export
         if let Some(ref format) = args.export {
             let diagram = match format {
-                probar_cli::DiagramFormat::Dot => to_dot(&playbook),
-                probar_cli::DiagramFormat::Svg => to_svg(&playbook),
+                probador::DiagramFormat::Dot => to_dot(&playbook),
+                probador::DiagramFormat::Svg => to_svg(&playbook),
             };
 
             if let Some(ref output_path) = args.export_output {
                 std::fs::write(output_path, &diagram).map_err(|e| {
-                    probar_cli::CliError::report_generation(format!(
-                        "Failed to write diagram: {}",
-                        e
-                    ))
+                    probador::CliError::report_generation(format!("Failed to write diagram: {}", e))
                 })?;
                 if config.verbosity != Verbosity::Quiet {
                     println!("  Diagram exported to: {}", output_path.display());
@@ -808,7 +805,7 @@ fn run_playbook(config: &CliConfig, args: &probar_cli::PlaybookArgs) -> CliResul
 
         // Output results based on format
         match args.format {
-            probar_cli::PlaybookOutputFormat::Json => {
+            probador::PlaybookOutputFormat::Json => {
                 let result = serde_json::json!({
                     "file": file.display().to_string(),
                     "machine_id": playbook.machine.id,
@@ -822,7 +819,7 @@ fn run_playbook(config: &CliConfig, args: &probar_cli::PlaybookArgs) -> CliResul
                     serde_json::to_string_pretty(&result).unwrap_or_default()
                 );
             }
-            probar_cli::PlaybookOutputFormat::Junit => {
+            probador::PlaybookOutputFormat::Junit => {
                 let timestamp = chrono::Utc::now().to_rfc3339();
                 let failures = i32::from(!validation_result.is_valid);
                 let junit = format!(
@@ -850,13 +847,13 @@ fn run_playbook(config: &CliConfig, args: &probar_cli::PlaybookArgs) -> CliResul
                 );
                 println!("{junit}");
             }
-            probar_cli::PlaybookOutputFormat::Text => {
+            probador::PlaybookOutputFormat::Text => {
                 // Already printed above
             }
         }
 
         if args.fail_fast && !validation_result.is_valid {
-            return Err(probar_cli::CliError::test_execution(
+            return Err(probador::CliError::test_execution(
                 "Playbook validation failed (--fail-fast)".to_string(),
             ));
         }
@@ -865,7 +862,7 @@ fn run_playbook(config: &CliConfig, args: &probar_cli::PlaybookArgs) -> CliResul
     if all_passed {
         Ok(())
     } else {
-        Err(probar_cli::CliError::test_execution(
+        Err(probador::CliError::test_execution(
             "One or more playbooks failed validation".to_string(),
         ))
     }
@@ -875,7 +872,7 @@ fn run_playbook(config: &CliConfig, args: &probar_cli::PlaybookArgs) -> CliResul
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use probar_cli::{
+    use probador::{
         ConfigArgs, CoverageArgs, InitArgs, PaletteArg, RecordArgs, RecordFormat, ReportArgs,
         ReportFormat,
     };
@@ -1101,7 +1098,7 @@ mod tests {
 
     mod run_tests_tests {
         use super::*;
-        use probar_cli::TestArgs;
+        use probador::TestArgs;
 
         #[test]
         #[ignore] // Spawns `cargo test --list` subprocess - causes nested builds in CI

@@ -1,14 +1,17 @@
 [package]
-name = "probar-cli"
-version.workspace = true
+name = "probador"
+version = "0.3.3"
 edition.workspace = true
 rust-version.workspace = true
-description = "Probar CLI: Command-line interface for WASM testing"
+description = "CLI for Probar: Rust-native testing framework for WASM games"
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["testing", "wasm", "games", "cli", "automation"]
+categories = ["development-tools::testing", "command-line-utilities", "wasm"]
 
 [[bin]]
-name = "probar"
+name = "probador"
 path = "src/main.rs"
 
 [dependencies]
