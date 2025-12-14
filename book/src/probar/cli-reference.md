@@ -281,6 +281,72 @@ probar watch ./my-game --serve --port 8080 --target web
 
 **Watched files:** `.rs`, `.toml`
 
+### probar playbook
+
+Run YAML-driven state machine playbook tests with validation and mutation testing.
+
+```bash
+# Validate a playbook
+probar playbook login.yaml --validate
+
+# Run multiple playbooks
+probar playbook login.yaml checkout.yaml profile.yaml
+
+# Export state diagram as SVG
+probar playbook login.yaml --export svg --export-output diagram.svg
+
+# Export as DOT (Graphviz)
+probar playbook login.yaml --export dot --export-output diagram.dot
+
+# Run mutation testing (M1-M5)
+probar playbook login.yaml --mutate
+
+# Run specific mutation classes
+probar playbook login.yaml --mutate --mutation-classes M1,M2,M3
+
+# JSON output for CI integration
+probar playbook login.yaml --format json
+
+# JUnit XML for test reporting
+probar playbook login.yaml --format junit
+
+# Fail fast on first error
+probar playbook login.yaml --fail-fast
+
+# Full example
+probar playbook tests/*.yaml \
+  --validate \
+  --mutate \
+  --mutation-classes M1,M2,M5 \
+  --format json \
+  --output results/
+```
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<files>...` | Playbook YAML file(s) | (required) |
+| `--validate` | Validate without executing | false |
+| `--export <format>` | Export diagram (dot/svg) | - |
+| `--export-output <path>` | Diagram output file | - |
+| `--mutate` | Run mutation testing | false |
+| `--mutation-classes <M>` | Mutation classes (M1-M5) | all |
+| `--fail-fast` | Stop on first error | false |
+| `--continue-on-error` | Continue on step failure | false |
+| `-f, --format <format>` | Output format (text/json/junit) | text |
+| `-o, --output <dir>` | Output directory | target/probar/playbooks |
+
+**Mutation Classes:**
+
+| Class | Description |
+|-------|-------------|
+| M1 | State removal |
+| M2 | Transition removal |
+| M3 | Event swap |
+| M4 | Target swap |
+| M5 | Guard negation |
+
 ## Global Options
 
 These options work with all commands:
