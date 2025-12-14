@@ -15,8 +15,8 @@ name = "probador"
 path = "src/main.rs"
 
 [dependencies]
-# Core library (local path for development)
-jugar-probar = { path = "../probar" }
+# Core library
+jugar-probar = { version = "0.3.3", path = "../probar" }
 
 # CLI framework
 clap = { workspace = true }
