@@ -1,5 +1,7 @@
 # Development Server
 
+![Dev Server Coverage](../assets/coverage_viridis.png)
+
 The `probador serve` command provides a full-featured development server for WASM applications with hot reload, file visualization, and content linting.
 
 ## Architecture

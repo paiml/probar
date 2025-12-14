@@ -68,3 +68,25 @@ milestones:
           - All transitions have explicit triggers
           - O(n) violations detected empirically
           - Mutation testing catches all M1-M5 classes
+
+  - id: M5
+    name: "Enhanced Developer Experience"
+    status: planned
+    tickets:
+      - id: PROBAR-005
+        title: "Enhanced Serving & Debugging"
+        description: |
+          Implement advanced developer tools for WASM/TUI:
+          - File tree visualization (tree/viz)
+          - Content linting & Hot reload
+          - Load testing & Memory profiling
+          - Debug mode with step-by-step playback
+          - Project Testing Score (100-point metric)
+        priority: high
+        status: planned
+        spec: docs/specifications/enhanced-serving-debugging.md
+        acceptance_criteria:
+          - All 115 points in QA checklist passed
+          - Score command accurately evaluates project maturity
+          - Debug mode exposes internal state without recompilation
+

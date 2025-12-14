@@ -1,5 +1,7 @@
 # Debugging
 
+![Debug Coverage Analysis](../assets/coverage_pattern.png)
+
 probador provides comprehensive debugging capabilities for WASM applications, including verbose tracing, step-by-step playback, and breakpoint support.
 
 ## Debug Mode Architecture

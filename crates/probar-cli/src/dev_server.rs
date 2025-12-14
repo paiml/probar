@@ -36,6 +36,8 @@
 #![allow(clippy::missing_const_for_fn)]
 #![allow(clippy::doc_markdown)]
 #![allow(clippy::redundant_else)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_precision_loss)]
 
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
@@ -75,6 +77,45 @@ pub enum HotReloadMessage {
     },
     /// Server ready
     ServerReady,
+    /// Enhanced file change with size tracking (spec C.2)
+    FileModified {
+        /// Path to the changed file
+        path: String,
+        /// Event type (created, modified, deleted, renamed)
+        event: FileChangeEvent,
+        /// Timestamp in milliseconds since epoch
+        timestamp: u64,
+        /// Size before change (None for created files)
+        size_before: Option<u64>,
+        /// Size after change (None for deleted files)
+        size_after: Option<u64>,
+        /// Human-readable diff summary
+        diff_summary: String,
+    },
+    /// Client connected notification
+    ClientConnected {
+        /// Number of connected clients
+        client_count: usize,
+    },
+    /// Client disconnected notification
+    ClientDisconnected {
+        /// Number of connected clients
+        client_count: usize,
+    },
+}
+
+/// File change event types
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum FileChangeEvent {
+    /// New file created
+    Created,
+    /// Existing file modified
+    Modified,
+    /// File deleted
+    Deleted,
+    /// File renamed
+    Renamed,
 }
 
 impl HotReloadMessage {
@@ -82,6 +123,72 @@ impl HotReloadMessage {
     #[must_use]
     pub fn to_json(&self) -> String {
         serde_json::to_string(self).unwrap_or_else(|_| r#"{"type":"Error"}"#.to_string())
+    }
+
+    /// Create a file modified message with size tracking
+    #[must_use]
+    pub fn file_modified(
+        path: impl Into<String>,
+        event: FileChangeEvent,
+        size_before: Option<u64>,
+        size_after: Option<u64>,
+    ) -> Self {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        let diff_summary = match (&event, size_before, size_after) {
+            (FileChangeEvent::Created, _, Some(after)) => format!("+{}", format_bytes(after)),
+            (FileChangeEvent::Deleted, Some(before), _) => format!("-{}", format_bytes(before)),
+            (FileChangeEvent::Modified, Some(before), Some(after)) => {
+                if after >= before {
+                    format!("+{}", format_bytes(after - before))
+                } else {
+                    format!("-{}", format_bytes(before - after))
+                }
+            }
+            (FileChangeEvent::Renamed, _, _) => "renamed".to_string(),
+            _ => "changed".to_string(),
+        };
+
+        Self::FileModified {
+            path: path.into(),
+            event,
+            timestamp,
+            size_before,
+            size_after,
+            diff_summary,
+        }
+    }
+}
+
+impl FileChangeEvent {
+    /// Get display string for the event type
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Created => "CREATED",
+            Self::Modified => "MODIFIED",
+            Self::Deleted => "DELETED",
+            Self::Renamed => "RENAMED",
+        }
+    }
+}
+
+/// Format bytes in human-readable form
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+
+    if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{bytes} bytes")
     }
 }
 
@@ -1108,5 +1215,140 @@ mod tests {
             // Verify it can be parsed back
             let _: HotReloadMessage = serde_json::from_str(&json).expect("parse failed");
         }
+    }
+
+    // =========================================================================
+    // FileChangeEvent Tests (Phase 4 - Hot Reload Enhancements)
+    // =========================================================================
+
+    #[test]
+    fn test_file_change_event_as_str() {
+        assert_eq!(FileChangeEvent::Created.as_str(), "CREATED");
+        assert_eq!(FileChangeEvent::Modified.as_str(), "MODIFIED");
+        assert_eq!(FileChangeEvent::Deleted.as_str(), "DELETED");
+        assert_eq!(FileChangeEvent::Renamed.as_str(), "RENAMED");
+    }
+
+    #[test]
+    fn test_file_modified_created() {
+        let msg = HotReloadMessage::file_modified(
+            "new_file.rs",
+            FileChangeEvent::Created,
+            None,
+            Some(1024),
+        );
+
+        match msg {
+            HotReloadMessage::FileModified {
+                path,
+                event,
+                diff_summary,
+                size_after,
+                ..
+            } => {
+                assert_eq!(path, "new_file.rs");
+                assert_eq!(event, FileChangeEvent::Created);
+                assert!(diff_summary.contains('+'));
+                assert_eq!(size_after, Some(1024));
+            }
+            _ => panic!("Expected FileModified"),
+        }
+    }
+
+    #[test]
+    fn test_file_modified_deleted() {
+        let msg = HotReloadMessage::file_modified(
+            "old_file.rs",
+            FileChangeEvent::Deleted,
+            Some(2048),
+            None,
+        );
+
+        match msg {
+            HotReloadMessage::FileModified {
+                event,
+                diff_summary,
+                size_before,
+                ..
+            } => {
+                assert_eq!(event, FileChangeEvent::Deleted);
+                assert!(diff_summary.contains('-'));
+                assert_eq!(size_before, Some(2048));
+            }
+            _ => panic!("Expected FileModified"),
+        }
+    }
+
+    #[test]
+    fn test_file_modified_size_increase() {
+        let msg = HotReloadMessage::file_modified(
+            "lib.rs",
+            FileChangeEvent::Modified,
+            Some(1000),
+            Some(1500),
+        );
+
+        match msg {
+            HotReloadMessage::FileModified { diff_summary, .. } => {
+                assert!(diff_summary.contains("+500 bytes"));
+            }
+            _ => panic!("Expected FileModified"),
+        }
+    }
+
+    #[test]
+    fn test_file_modified_size_decrease() {
+        let msg = HotReloadMessage::file_modified(
+            "lib.rs",
+            FileChangeEvent::Modified,
+            Some(2000),
+            Some(1500),
+        );
+
+        match msg {
+            HotReloadMessage::FileModified { diff_summary, .. } => {
+                assert!(diff_summary.contains("-500 bytes"));
+            }
+            _ => panic!("Expected FileModified"),
+        }
+    }
+
+    #[test]
+    fn test_file_modified_json_roundtrip() {
+        let msg = HotReloadMessage::file_modified(
+            "test.rs",
+            FileChangeEvent::Modified,
+            Some(100),
+            Some(200),
+        );
+        let json = msg.to_json();
+        assert!(json.contains("FileModified"));
+        assert!(json.contains("test.rs"));
+        assert!(json.contains("modified"));
+
+        let parsed: HotReloadMessage = serde_json::from_str(&json).expect("parse failed");
+        match parsed {
+            HotReloadMessage::FileModified { path, event, .. } => {
+                assert_eq!(path, "test.rs");
+                assert_eq!(event, FileChangeEvent::Modified);
+            }
+            _ => panic!("Wrong variant after roundtrip"),
+        }
+    }
+
+    #[test]
+    fn test_client_connected_message() {
+        let msg = HotReloadMessage::ClientConnected { client_count: 3 };
+        let json = msg.to_json();
+        assert!(json.contains("ClientConnected"));
+        assert!(json.contains('3'));
+    }
+
+    #[test]
+    fn test_client_disconnected_message() {
+        let msg = HotReloadMessage::ClientDisconnected { client_count: 2 };
+        let json = msg.to_json();
+        assert!(json.contains("ClientDisconnected"));
+        assert!(json.contains('2'));
     }
 }

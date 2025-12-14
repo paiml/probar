@@ -1,5 +1,7 @@
 # Load Testing
 
+![Load Testing Coverage Analysis](../assets/coverage_heat.png)
+
 probador includes load testing capabilities to verify your WASM application performs well under realistic traffic conditions.
 
 ## Load Testing Flow
@@ -219,8 +221,8 @@ probador load-test --scenario test.yaml
 # JSON for CI integration
 probador load-test --scenario test.yaml --format json > results.json
 
-# HTML report with charts
-probador load-test --scenario test.yaml --report report.html
+# Binary report (view with TUI)
+probador load-test --scenario test.yaml --report report.msgpack
 ```
 
 ## CLI Reference
@@ -283,5 +285,61 @@ probador load-test \
   --users 1-100 \
   --ramp 30s \
   --duration 120s \
-  --report load-test-report.html
+  --report results.msgpack
 ```
+
+## Advanced Features
+
+### Real-Time Visualization
+
+Enable the TUI dashboard for live metrics:
+
+```bash
+probador load-test --scenario boot.yaml --viz
+```
+
+### Statistical Analysis
+
+Generate variance decomposition and tail latency attribution:
+
+```bash
+probador load-test --scenario boot.yaml --stats --stats-report stats.msgpack
+```
+
+Key metrics include:
+- **Variance Tree**: Hierarchical breakdown of latency variance sources
+- **Apdex Score**: User satisfaction index (0.0-1.0)
+- **Throughput Knee**: Automatic detection of capacity limits
+- **Quantile Regression**: p95/p99 latency attribution
+
+### Deep Tracing (renacer integration)
+
+Enable syscall-level tracing for bottleneck detection:
+
+```bash
+probador load-test --scenario boot.yaml --trace
+probador trace flamegraph trace.renacer --output flame.svg
+```
+
+### Simulation Playback (simular integration)
+
+Record and replay with Monte Carlo analysis:
+
+```bash
+# Record session
+probador load-test --scenario boot.yaml --record session.simular
+
+# Monte Carlo analysis (1000 iterations)
+probador simulate monte-carlo session.simular --iterations 1000
+```
+
+## Academic Foundation
+
+The load testing implementation is based on peer-reviewed research:
+
+1. **Variance Attribution**: VProfiler methodology from Huang et al. (EuroSys 2017)
+2. **Tail Latency**: Treadmill approach from Zhang et al. (SIGARCH 2016)
+3. **WebAssembly Testing**: WarpDiff differential testing from ASE 2023
+4. **Tail at Scale**: Dean & Barroso's foundational paper (CACM 2013)
+
+See `docs/specifications/load-testing-visualization.md` for complete specification.

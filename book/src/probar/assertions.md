@@ -1,5 +1,7 @@
 # Assertions
 
+![Assertion Coverage](../assets/coverage_viridis.png)
+
 Probar provides a rich set of assertions for testing game state with full Playwright parity.
 
 ## Assertion Flow

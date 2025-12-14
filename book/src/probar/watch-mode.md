@@ -1,5 +1,7 @@
 # Watch Mode
 
+![Watch Mode Coverage](../assets/coverage_heat.png)
+
 > **Toyota Way**: Genchi Genbutsu (Go and See) - Real-time feedback on changes
 
 Hot reload during development with file watching for rapid test iteration.

@@ -1,5 +1,7 @@
 # TUI Testing
 
+![TUI Coverage Heatmap](../assets/coverage_pattern.png)
+
 > **Toyota Way**: Mieruka (Visibility) - Visual TUI verification
 
 Test terminal user interfaces with frame capture and comparison.

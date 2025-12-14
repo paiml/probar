@@ -493,7 +493,16 @@ fn run_config(config: &CliConfig, args: &probador::ConfigArgs) {
 // =============================================================================
 
 fn run_serve(args: &probador::ServeArgs) -> CliResult<()> {
-    use probador::{DevServer, DevServerConfig};
+    use probador::{DevServer, DevServerConfig, ServeSubcommand};
+
+    // Handle subcommands
+    if let Some(ref subcommand) = args.subcommand {
+        return match subcommand {
+            ServeSubcommand::Tree(tree_args) => run_serve_tree(tree_args, &args.directory),
+            ServeSubcommand::Viz(viz_args) => run_serve_viz(viz_args, &args.directory),
+            ServeSubcommand::Score(score_args) => run_serve_score(score_args, &args.directory),
+        };
+    }
 
     let config = DevServerConfig {
         directory: args.directory.clone(),
@@ -528,6 +537,60 @@ fn run_serve(args: &probador::ServeArgs) -> CliResult<()> {
             .await
             .map_err(|e| probador::CliError::test_execution(format!("Server error: {e}")))
     })
+}
+
+fn run_serve_tree(args: &probador::TreeArgs, _default_dir: &std::path::Path) -> CliResult<()> {
+    use probador::{build_tree, render_tree, TreeConfig};
+
+    let config = TreeConfig::default()
+        .with_depth(args.depth)
+        .with_filter(args.filter.as_deref())
+        .with_sizes(args.sizes)
+        .with_mime_types(args.mime_types);
+
+    let tree = build_tree(&args.path, &config)
+        .map_err(|e| probador::CliError::test_execution(format!("Failed to build tree: {e}")))?;
+
+    let output = render_tree(&tree, &config);
+    print!("{output}");
+
+    Ok(())
+}
+
+fn run_serve_viz(args: &probador::VizArgs, _default_dir: &std::path::Path) -> CliResult<()> {
+    use probador::{build_tree, render_tree, TreeConfig};
+
+    // VizArgs only has path and port - use defaults for other options
+    let config = TreeConfig::default();
+
+    let tree = build_tree(&args.path, &config)
+        .map_err(|e| probador::CliError::test_execution(format!("Failed to build tree: {e}")))?;
+
+    let output = render_tree(&tree, &config);
+    print!("{output}");
+
+    Ok(())
+}
+
+fn run_serve_score(args: &probador::ScoreArgs, _default_dir: &std::path::Path) -> CliResult<()> {
+    use probador::{score, ScoreCalculator, ScoreOutputFormat};
+
+    let calculator = ScoreCalculator::new(args.path.clone());
+    let project_score = calculator.calculate();
+
+    match args.format {
+        ScoreOutputFormat::Text => {
+            let output = score::render_score_text(&project_score, args.detailed);
+            print!("{output}");
+        }
+        ScoreOutputFormat::Json => {
+            let output = score::render_score_json(&project_score)
+                .map_err(|e| probador::CliError::report_generation(format!("JSON serialization error: {e}")))?;
+            println!("{output}");
+        }
+    }
+
+    Ok(())
 }
 
 fn run_build(args: &probador::BuildArgs) -> CliResult<()> {

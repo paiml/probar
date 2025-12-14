@@ -1,5 +1,7 @@
 # Locators
 
+![Locator Coverage](../assets/coverage_magma.png)
+
 Probar provides Playwright-style locators for finding game elements with full Playwright parity.
 
 ## Locator Strategy

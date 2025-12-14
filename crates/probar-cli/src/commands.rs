@@ -248,9 +248,14 @@ pub struct ConfigArgs {
 
 /// Arguments for the serve command
 #[derive(Parser, Debug)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ServeArgs {
+    /// Subcommand for serve (tree, viz, score)
+    #[command(subcommand)]
+    pub subcommand: Option<ServeSubcommand>,
+
     /// Directory to serve (default: current directory)
-    #[arg(default_value = ".")]
+    #[arg(short = 'd', long = "dir", default_value = ".")]
     pub directory: PathBuf,
 
     /// HTTP port to listen on
@@ -276,6 +281,109 @@ pub struct ServeArgs {
     /// Cross-Origin-Embedder-Policy: require-corp headers.
     #[arg(long)]
     pub cross_origin_isolated: bool,
+
+    /// Enable debug mode with verbose request/response logging
+    #[arg(long)]
+    pub debug: bool,
+
+    /// Enable content linting (HTML/CSS/JS validation)
+    #[arg(long)]
+    pub lint: bool,
+
+    /// Enable file watching for hot reload (default: true)
+    #[arg(long, default_value = "true")]
+    pub watch: bool,
+}
+
+/// Serve subcommands
+#[derive(Subcommand, Debug, Clone)]
+pub enum ServeSubcommand {
+    /// Display file tree of served directory
+    Tree(TreeArgs),
+
+    /// Interactive TUI visualization of served files
+    Viz(VizArgs),
+
+    /// Generate project testing score (0-100)
+    Score(ScoreArgs),
+}
+
+/// Arguments for the tree subcommand
+#[derive(Parser, Debug, Clone)]
+pub struct TreeArgs {
+    /// Directory to display (default: current directory)
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Maximum depth to display (0 = root only)
+    #[arg(long)]
+    pub depth: Option<usize>,
+
+    /// Filter files by glob pattern (e.g., "*.html")
+    #[arg(long)]
+    pub filter: Option<String>,
+
+    /// Show file sizes
+    #[arg(long, default_value = "true")]
+    pub sizes: bool,
+
+    /// Show MIME types
+    #[arg(long, default_value = "true")]
+    pub mime_types: bool,
+}
+
+/// Arguments for the viz subcommand
+#[derive(Parser, Debug, Clone)]
+pub struct VizArgs {
+    /// Directory to visualize (default: current directory)
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// HTTP port for TUI server
+    #[arg(short, long, default_value = "8080")]
+    pub port: u16,
+}
+
+/// Arguments for the score subcommand
+#[derive(Parser, Debug, Clone)]
+pub struct ScoreArgs {
+    /// Project directory to score (default: current directory)
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Minimum score threshold (exit non-zero if below)
+    #[arg(long)]
+    pub min: Option<u32>,
+
+    /// Output format
+    #[arg(long, default_value = "text")]
+    pub format: ScoreOutputFormat,
+
+    /// Output HTML report to file
+    #[arg(long)]
+    pub report: Option<PathBuf>,
+
+    /// Show detailed breakdown of all criteria
+    #[arg(long)]
+    pub detailed: bool,
+
+    /// Append score to history file (JSONL)
+    #[arg(long)]
+    pub history: Option<PathBuf>,
+
+    /// Show score trend over time
+    #[arg(long)]
+    pub trend: bool,
+}
+
+/// Output format for score command
+#[derive(ValueEnum, Clone, Debug, Default)]
+pub enum ScoreOutputFormat {
+    /// Human-readable text
+    #[default]
+    Text,
+    /// JSON output for CI integration
+    Json,
 }
 
 /// Arguments for the build command

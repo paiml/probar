@@ -254,8 +254,8 @@ probador serve score --min 80
 # JSON output
 probador serve score --format json
 
-# HTML report
-probador serve score --report score.html
+# Binary report (view with TUI)
+probador serve score --report score.msgpack
 
 # Track history
 probador serve score --history scores.jsonl
@@ -317,7 +317,7 @@ probador load-test --scenario scenarios/boot.yaml
 
 # Output formats
 probador load-test --scenario test.yaml --format json
-probador load-test --scenario test.yaml --report report.html
+probador load-test --scenario test.yaml --report report.msgpack
 ```
 
 **Options:**

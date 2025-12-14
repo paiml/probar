@@ -1,5 +1,7 @@
 # Project Testing Score
 
+![Project Score Coverage](../assets/coverage_combined.png)
+
 The `probador serve score` command generates a comprehensive 100-point score evaluating how thoroughly your project implements probar's testing capabilities.
 
 ## Score Overview
@@ -51,8 +53,8 @@ probador serve score --min 80
 # Output as JSON
 probador serve score --format json
 
-# Generate HTML report
-probador serve score --report score-report.html
+# Generate binary report (view with TUI)
+probador serve score --report score-report.msgpack
 ```
 
 ## Score Output
