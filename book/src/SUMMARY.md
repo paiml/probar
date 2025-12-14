@@ -45,11 +45,17 @@
 - [TUI Testing](./probar/tui-testing.md)
 - [Playbook Testing](./probar/playbook-testing.md)
 
+# Development Server
+
+- [Dev Server](./probar/dev-server.md)
+- [Hot Reload](./probar/watch-mode.md)
+- [Load Testing](./probar/load-testing.md)
+
 # Analysis & Debugging
 
+- [Debugging](./probar/debugging.md)
 - [Execution Tracing](./probar/execution-tracing.md)
 - [Performance Profiling](./probar/performance-profiling.md)
-- [Watch Mode](./probar/watch-mode.md)
 
 # Coverage & Reports
 
@@ -59,6 +65,7 @@
 - [Cobertura XML](./probar/coverage-cobertura.md)
 - [GUI Coverage](./probar/ux-coverage.md)
 - [Pixel Coverage Heatmaps](./probar/pixel-coverage.md)
+- [Project Score](./probar/project-score.md)
 
 # Advanced Topics
 

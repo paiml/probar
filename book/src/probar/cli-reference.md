@@ -209,6 +209,131 @@ probador serve ./dist --port 8080 --cors --open
 - Automatic CORS headers when enabled
 - No-cache headers for development
 
+### probador serve tree
+
+Visualize files being served as an ASCII tree.
+
+```bash
+# Show file tree
+probador serve tree
+
+# Limit depth
+probador serve tree --depth 2
+
+# Filter by pattern
+probador serve tree --filter "*.wasm"
+
+# Show specific directory
+probador serve tree ./www
+```
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<path>` | Directory to visualize | `.` |
+| `--depth <n>` | Maximum depth | unlimited |
+| `--filter <glob>` | Filter files by pattern | - |
+| `--sizes` | Show file sizes | true |
+| `--mime` | Show MIME types | true |
+
+### probador serve score
+
+Generate project testing score (100-point evaluation).
+
+```bash
+# Generate score
+probador serve score
+
+# Detailed breakdown
+probador serve score --verbose
+
+# CI gate (exit non-zero if below threshold)
+probador serve score --min 80
+
+# JSON output
+probador serve score --format json
+
+# HTML report
+probador serve score --report score.html
+
+# Track history
+probador serve score --history scores.jsonl
+
+# Show trend
+probador serve score --trend
+```
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<path>` | Project directory | `.` |
+| `--verbose` | Show detailed breakdown | false |
+| `--min <score>` | Minimum required score | - |
+| `--format <fmt>` | Output format (console/json) | console |
+| `--report <path>` | Generate HTML report | - |
+| `--history <path>` | Append to JSONL history | - |
+| `--trend` | Show score trend chart | false |
+
+### probador lint
+
+Lint HTML, CSS, JavaScript, and WASM files.
+
+```bash
+# Lint all files
+probador lint
+
+# Lint specific types
+probador lint --html --css
+
+# Lint specific directory
+probador lint ./www
+```
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<path>` | Directory to lint | `.` |
+| `--html` | Lint HTML files | true |
+| `--css` | Lint CSS files | true |
+| `--js` | Lint JavaScript files | true |
+| `--wasm` | Validate WASM modules | true |
+
+### probador load-test
+
+Run load tests against a server.
+
+```bash
+# Basic load test
+probador load-test --url http://localhost:8080 --users 100 --duration 30s
+
+# Ramp-up test
+probador load-test --url http://localhost:8080 --users 1-100 --ramp 60s --duration 120s
+
+# Scenario-based test
+probador load-test --scenario scenarios/boot.yaml
+
+# Output formats
+probador load-test --scenario test.yaml --format json
+probador load-test --scenario test.yaml --report report.html
+```
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--url <url>` | Target URL | - |
+| `--users <n>` | Concurrent users | 10 |
+| `--users <n1>-<n2>` | Ramp users | - |
+| `--ramp <duration>` | Ramp-up duration | - |
+| `--duration <duration>` | Test duration | 30s |
+| `--scenario <file>` | Load scenario YAML | - |
+| `--format <fmt>` | Output format (console/json/html) | console |
+| `--report <path>` | Generate HTML report | - |
+| `--timeout <ms>` | Request timeout | 30000 |
+
 ### probador build
 
 Build a Rust project to WASM using wasm-pack.
