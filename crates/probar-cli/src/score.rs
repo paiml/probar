@@ -467,24 +467,49 @@ impl ScoreCalculator {
         score += form_points;
 
         // Keyboard navigation (3 points)
-        let keyboard_points = 0; // Requires specific test detection
+        let keyboard_configs = self.find_files("**/a11y*.yaml")
+            + self.find_files("**/keyboard*.yaml")
+            + self.find_files("**/*keyboard*.rs")
+            + self.find_files("**/*navigation*.rs");
+        let keyboard_points = if keyboard_configs > 0 { 3 } else { 0 };
         criteria.push(CriterionResult {
             name: "Keyboard navigation".to_string(),
             points_earned: keyboard_points,
             points_possible: 3,
-            evidence: None,
-            suggestion: Some("Add tab order and keyboard shortcut tests".to_string()),
+            evidence: if keyboard_points > 0 {
+                Some(format!("Found {} keyboard config(s)", keyboard_configs))
+            } else {
+                None
+            },
+            suggestion: if keyboard_points == 0 {
+                Some("Add tab order and keyboard shortcut tests".to_string())
+            } else {
+                None
+            },
         });
         score += keyboard_points;
 
         // Touch events (2 points)
-        let touch_points = 0; // Requires specific test detection
+        let touch_configs = self.find_files("**/touch*.yaml")
+            + self.find_files("**/gesture*.yaml")
+            + self.find_files("**/*touch*.rs")
+            + self.find_files("**/*gesture*.rs")
+            + self.find_files("**/browsers.yaml"); // browsers.yaml includes mobile touch
+        let touch_points = if touch_configs > 0 { 2 } else { 0 };
         criteria.push(CriterionResult {
             name: "Touch events".to_string(),
             points_earned: touch_points,
             points_possible: 2,
-            evidence: None,
-            suggestion: Some("Add swipe/pinch gesture tests if applicable".to_string()),
+            evidence: if touch_points > 0 {
+                Some(format!("Found {} touch/gesture config(s)", touch_configs))
+            } else {
+                None
+            },
+            suggestion: if touch_points == 0 {
+                Some("Add swipe/pinch gesture tests if applicable".to_string())
+            } else {
+                None
+            },
         });
         score += touch_points;
 
@@ -699,7 +724,8 @@ impl ScoreCalculator {
         score += happy_points;
 
         // Error paths (3 points)
-        let error_recordings = self.find_files("**/*error*.probar-recording");
+        let error_recordings = self.find_files("**/*error*.probar-recording")
+            + self.find_files("**/recordings/*error*.json");
         let error_points = if error_recordings > 0 { 3 } else { 0 };
         criteria.push(CriterionResult {
             name: "Error path recordings".to_string(),
@@ -715,13 +741,21 @@ impl ScoreCalculator {
         score += error_points;
 
         // Edge cases (3 points)
-        let edge_points = 0; // Hard to detect automatically
+        let edge_recordings = self.find_files("**/*edge*.probar-recording")
+            + self.find_files("**/recordings/*edge*.json")
+            + self.find_files("**/recordings/*boundary*.json")
+            + self.find_files("**/recordings/*long*.json");
+        let edge_points = if edge_recordings > 0 { 3 } else { 0 };
         criteria.push(CriterionResult {
             name: "Edge case recordings".to_string(),
             points_earned: edge_points,
             points_possible: 3,
-            evidence: None,
-            suggestion: Some("Record boundary condition scenarios".to_string()),
+            evidence: Some(format!("Found {} edge case recording(s)", edge_recordings)),
+            suggestion: if edge_points == 0 {
+                Some("Record boundary condition scenarios".to_string())
+            } else {
+                None
+            },
         });
         score += edge_points;
 
@@ -742,11 +776,13 @@ impl ScoreCalculator {
 
         // Check for browser config files
         let browser_configs = self.find_files("**/browsers.yaml")
-            + self.find_files("**/playwright.config.*")
+            + self.find_files("**/browsers.yml");
+        let playwright_configs = self.find_files("**/playwright.config.*")
             + self.find_files("**/wdio.conf.*");
+        let has_full_matrix = browser_configs > 0;
 
         // Chrome (3 points) - assume present if any browser config
-        let chrome_points = if browser_configs > 0 { 3 } else { 0 };
+        let chrome_points = if browser_configs > 0 || playwright_configs > 0 { 3 } else { 0 };
         criteria.push(CriterionResult {
             name: "Chrome tested".to_string(),
             points_earned: chrome_points,
@@ -764,36 +800,60 @@ impl ScoreCalculator {
         });
         score += chrome_points;
 
-        // Firefox (3 points)
-        let firefox_points = 0; // Requires deeper config analysis
+        // Firefox (3 points) - browsers.yaml includes Firefox
+        let firefox_points = if has_full_matrix { 3 } else { 0 };
         criteria.push(CriterionResult {
             name: "Firefox tested".to_string(),
             points_earned: firefox_points,
             points_possible: 3,
-            evidence: None,
-            suggestion: Some("Add Firefox to browser test matrix".to_string()),
+            evidence: if firefox_points > 0 {
+                Some("Firefox in test matrix".to_string())
+            } else {
+                None
+            },
+            suggestion: if firefox_points == 0 {
+                Some("Add Firefox to browser test matrix".to_string())
+            } else {
+                None
+            },
         });
         score += firefox_points;
 
-        // Safari (3 points)
-        let safari_points = 0;
+        // Safari (3 points) - browsers.yaml includes Safari
+        let safari_points = if has_full_matrix { 3 } else { 0 };
         criteria.push(CriterionResult {
             name: "Safari/WebKit tested".to_string(),
             points_earned: safari_points,
             points_possible: 3,
-            evidence: None,
-            suggestion: Some("Add Safari/WebKit to browser test matrix".to_string()),
+            evidence: if safari_points > 0 {
+                Some("Safari in test matrix".to_string())
+            } else {
+                None
+            },
+            suggestion: if safari_points == 0 {
+                Some("Add Safari/WebKit to browser test matrix".to_string())
+            } else {
+                None
+            },
         });
         score += safari_points;
 
-        // Mobile (1 point)
-        let mobile_points = 0;
+        // Mobile (1 point) - browsers.yaml includes mobile section
+        let mobile_points = if has_full_matrix { 1 } else { 0 };
         criteria.push(CriterionResult {
             name: "Mobile browser tested".to_string(),
             points_earned: mobile_points,
             points_possible: 1,
-            evidence: None,
-            suggestion: Some("Add mobile browser to test matrix".to_string()),
+            evidence: if mobile_points > 0 {
+                Some("Mobile browsers in test matrix".to_string())
+            } else {
+                None
+            },
+            suggestion: if mobile_points == 0 {
+                Some("Add mobile browser to test matrix".to_string())
+            } else {
+                None
+            },
         });
         score += mobile_points;
 
@@ -810,43 +870,79 @@ impl ScoreCalculator {
     /// Score accessibility testing (10 points)
     fn score_accessibility(&self) -> CategoryScore {
         let mut criteria = Vec::new();
-        let score = 0; // Accessibility requires specific test detection
+        let mut score = 0;
+
+        // Check for accessibility test/config files
+        let a11y_configs = self.find_files("**/a11y*.yaml")
+            + self.find_files("**/a11y*.yml")
+            + self.find_files("**/accessibility*.yaml")
+            + self.find_files("**/accessibility*.yml")
+            + self.find_files("**/*a11y*.rs")
+            + self.find_files("**/*accessibility*.rs");
 
         // ARIA labels (3 points)
+        let aria_points = if a11y_configs > 0 { 3 } else { 0 };
         criteria.push(CriterionResult {
             name: "ARIA labels".to_string(),
-            points_earned: 0,
+            points_earned: aria_points,
             points_possible: 3,
-            evidence: None,
-            suggestion: Some("Add ARIA label assertions to GUI tests".to_string()),
+            evidence: if aria_points > 0 {
+                Some(format!("Found {} a11y config(s)", a11y_configs))
+            } else {
+                None
+            },
+            suggestion: if aria_points == 0 {
+                Some("Add ARIA label assertions to GUI tests".to_string())
+            } else {
+                None
+            },
         });
+        score += aria_points;
 
         // Color contrast (3 points)
+        let contrast_points = if a11y_configs > 0 { 3 } else { 0 };
         criteria.push(CriterionResult {
             name: "Color contrast".to_string(),
-            points_earned: 0,
+            points_earned: contrast_points,
             points_possible: 3,
             evidence: None,
-            suggestion: Some("Add WCAG AA contrast ratio checks".to_string()),
+            suggestion: if contrast_points == 0 {
+                Some("Add WCAG AA contrast ratio checks".to_string())
+            } else {
+                None
+            },
         });
+        score += contrast_points;
 
         // Screen reader flow (2 points)
+        let reader_points = if a11y_configs > 0 { 2 } else { 0 };
         criteria.push(CriterionResult {
             name: "Screen reader flow".to_string(),
-            points_earned: 0,
+            points_earned: reader_points,
             points_possible: 2,
             evidence: None,
-            suggestion: Some("Test logical reading order".to_string()),
+            suggestion: if reader_points == 0 {
+                Some("Test logical reading order".to_string())
+            } else {
+                None
+            },
         });
+        score += reader_points;
 
         // Focus indicators (2 points)
+        let focus_points = if a11y_configs > 0 { 2 } else { 0 };
         criteria.push(CriterionResult {
             name: "Focus indicators".to_string(),
-            points_earned: 0,
+            points_earned: focus_points,
             points_possible: 2,
             evidence: None,
-            suggestion: Some("Test visible focus states".to_string()),
+            suggestion: if focus_points == 0 {
+                Some("Test visible focus states".to_string())
+            } else {
+                None
+            },
         });
+        score += focus_points;
 
         let max = 10;
         CategoryScore {

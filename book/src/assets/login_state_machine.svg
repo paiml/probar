@@ -12,14 +12,14 @@
     </marker>
   </defs>
   <text x="10" y="20" class="label">State Machine: login_flow</text>
-  <ellipse cx="400" cy="100" rx="60" ry="30" class="state"/>
-  <text x="400" y="105" text-anchor="middle" class="label">error</text>
-  <ellipse cx="400" cy="200" rx="60" ry="30" class="state state-final"/>
-  <text x="400" y="205" text-anchor="middle" class="label">logged_in</text>
+  <ellipse cx="400" cy="100" rx="60" ry="30" class="state state-final"/>
+  <text x="400" y="105" text-anchor="middle" class="label">logged_in</text>
+  <ellipse cx="400" cy="200" rx="60" ry="30" class="state"/>
+  <text x="400" y="205" text-anchor="middle" class="label">authenticating</text>
   <ellipse cx="400" cy="300" rx="60" ry="30" class="state"/>
-  <text x="400" y="305" text-anchor="middle" class="label">logged_out</text>
+  <text x="400" y="305" text-anchor="middle" class="label">error</text>
   <ellipse cx="400" cy="400" rx="60" ry="30" class="state"/>
-  <text x="400" y="405" text-anchor="middle" class="label">authenticating</text>
+  <text x="400" y="405" text-anchor="middle" class="label">logged_out</text>
 
   <!-- DOT source:
        digraph StateMachine {
@@ -27,10 +27,10 @@
          node [shape=ellipse];
          __start [shape=point];
          __start -> "logged_out";
-         "error" [shape=ellipse];
          "logged_in" [shape=doublecircle];
-         "logged_out" [shape=ellipse];
          "authenticating" [shape=ellipse];
+         "error" [shape=ellipse];
+         "logged_out" [shape=ellipse];
          "logged_out" -> "authenticating" [label="submit"];
          "authenticating" -> "logged_in" [label="auth_ok"];
          "authenticating" -> "error" [label="auth_fail"];
