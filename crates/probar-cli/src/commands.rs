@@ -265,6 +265,14 @@ pub struct ServeArgs {
     /// Enable CORS for cross-origin requests
     #[arg(long)]
     pub cors: bool,
+
+    /// Enable Cross-Origin Isolation (COOP/COEP headers)
+    ///
+    /// Required for SharedArrayBuffer and parallel WASM with Web Workers.
+    /// Sets Cross-Origin-Opener-Policy: same-origin and
+    /// Cross-Origin-Embedder-Policy: require-corp headers.
+    #[arg(long)]
+    pub cross_origin_isolated: bool,
 }
 
 /// Arguments for the build command

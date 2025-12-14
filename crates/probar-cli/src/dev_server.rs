@@ -96,6 +96,8 @@ pub struct DevServerConfig {
     pub ws_port: u16,
     /// Enable CORS
     pub cors: bool,
+    /// Enable Cross-Origin Isolation (COOP/COEP headers for SharedArrayBuffer)
+    pub cross_origin_isolated: bool,
 }
 
 impl Default for DevServerConfig {
@@ -105,6 +107,7 @@ impl Default for DevServerConfig {
             port: 8080,
             ws_port: 8081,
             cors: false,
+            cross_origin_isolated: false,
         }
     }
 }
@@ -149,6 +152,18 @@ impl DevServerConfigBuilder {
     #[must_use]
     pub fn cors(mut self, enabled: bool) -> Self {
         self.config.cors = enabled;
+        self
+    }
+
+    /// Enable Cross-Origin Isolation (COOP/COEP headers)
+    ///
+    /// Required for SharedArrayBuffer and parallel WASM with Web Workers.
+    /// Sets the following headers:
+    /// - `Cross-Origin-Opener-Policy: same-origin`
+    /// - `Cross-Origin-Embedder-Policy: require-corp`
+    #[must_use]
+    pub fn cross_origin_isolated(mut self, enabled: bool) -> Self {
+        self.config.cross_origin_isolated = enabled;
         self
     }
 
@@ -236,6 +251,21 @@ impl DevServer {
             app
         };
 
+        // Add Cross-Origin Isolation headers if enabled (for SharedArrayBuffer/Web Workers)
+        let app = if self.config.cross_origin_isolated {
+            use tower_http::set_header::SetResponseHeaderLayer;
+            app.layer(SetResponseHeaderLayer::overriding(
+                header::HeaderName::from_static("cross-origin-opener-policy"),
+                header::HeaderValue::from_static("same-origin"),
+            ))
+            .layer(SetResponseHeaderLayer::overriding(
+                header::HeaderName::from_static("cross-origin-embedder-policy"),
+                header::HeaderValue::from_static("require-corp"),
+            ))
+        } else {
+            app
+        };
+
         let addr = SocketAddr::from(([0, 0, 0, 0], self.config.port));
 
         println!("╔══════════════════════════════════════════════════════════════╗");
@@ -260,6 +290,14 @@ impl DevServer {
             "║  CORS:      {:<48}║",
             if self.config.cors {
                 "enabled"
+            } else {
+                "disabled"
+            }
+        );
+        println!(
+            "║  COOP/COEP: {:<48}║",
+            if self.config.cross_origin_isolated {
+                "enabled (SharedArrayBuffer available)"
             } else {
                 "disabled"
             }
@@ -706,6 +744,7 @@ mod tests {
         assert_eq!(config.port, 8080);
         assert_eq!(config.ws_port, 8081);
         assert!(!config.cors);
+        assert!(!config.cross_origin_isolated);
         assert_eq!(config.directory, PathBuf::from("."));
     }
 
@@ -724,6 +763,15 @@ mod tests {
         assert_eq!(config.directory, PathBuf::from("./www"));
     }
 
+    #[test]
+    fn test_dev_server_config_cross_origin_isolated() {
+        let config = DevServerConfig::builder()
+            .cross_origin_isolated(true)
+            .build();
+
+        assert!(config.cross_origin_isolated);
+    }
+
     // =========================================================================
     // DevServer Tests
     // =========================================================================
@@ -735,6 +783,7 @@ mod tests {
             port: 9000,
             ws_port: 9001,
             cors: true,
+            cross_origin_isolated: false,
         };
         let server = DevServer::new(config);
         assert_eq!(server.http_url(), "http://localhost:9000");

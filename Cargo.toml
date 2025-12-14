@@ -58,7 +58,7 @@ notify = "7.0"
 # HTTP Server (for WASM dev server)
 axum = { version = "0.8", features = ["ws"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["fs", "cors"] }
+tower-http = { version = "0.6", features = ["fs", "cors", "set-header"] }
 tokio-tungstenite = "0.26"
 mime_guess = "2.0"
 

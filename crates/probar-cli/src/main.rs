@@ -499,6 +499,7 @@ fn run_serve(args: &probar_cli::ServeArgs) -> CliResult<()> {
         port: args.port,
         ws_port: args.ws_port,
         cors: args.cors,
+        cross_origin_isolated: args.cross_origin_isolated,
     };
 
     let server = DevServer::new(config);
@@ -576,6 +577,7 @@ fn run_watch(args: &probar_cli::WatchArgs) -> CliResult<()> {
             port: args.port,
             ws_port: args.ws_port,
             cors: true,
+            cross_origin_isolated: false,
         };
         let server = DevServer::new(config);
         let reload_tx = server.reload_sender();
