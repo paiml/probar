@@ -355,6 +355,7 @@ mod tests {
         }
 
         #[test]
+        #[ignore] // Spawns `cargo test --list` subprocess - causes nested builds in CI
         fn test_run_no_tests() {
             let config = CliConfig::default();
             let mut runner = TestRunner::new(config);
@@ -363,6 +364,7 @@ mod tests {
         }
 
         #[test]
+        #[ignore] // Spawns `cargo test --list` subprocess - causes nested builds in CI
         fn test_run_with_filter() {
             let config = CliConfig::default();
             let mut runner = TestRunner::new(config);

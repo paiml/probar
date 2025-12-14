@@ -905,6 +905,7 @@ mod tests {
         use probar_cli::TestArgs;
 
         #[test]
+        #[ignore] // Spawns `cargo test --list` subprocess - causes nested builds in CI
         fn test_run_tests_no_tests() {
             let config = CliConfig::default();
             let args = TestArgs {
@@ -923,6 +924,7 @@ mod tests {
         }
 
         #[test]
+        #[ignore] // Spawns `cargo test --list` subprocess - causes nested builds in CI
         fn test_run_tests_with_filter() {
             let config = CliConfig::default();
             let args = TestArgs {

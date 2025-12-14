@@ -268,7 +268,7 @@ pub struct ServeArgs {
 
     /// Enable Cross-Origin Isolation (COOP/COEP headers)
     ///
-    /// Required for SharedArrayBuffer and parallel WASM with Web Workers.
+    /// Required for `SharedArrayBuffer` and parallel WASM with Web Workers.
     /// Sets Cross-Origin-Opener-Policy: same-origin and
     /// Cross-Origin-Embedder-Policy: require-corp headers.
     #[arg(long)]

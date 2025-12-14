@@ -50,3 +50,19 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: PROBAR-004
+  github_issue: null
+  item_type: task
+  title: 'New task: PROBAR-004'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2025-12-14T12:00:15.173040740+00:00
+  updated: 2025-12-14T12:13:02.783604379+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null

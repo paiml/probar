@@ -46,3 +46,25 @@ milestones:
         description: "Add .pmat-gates.toml with strict thresholds"
         priority: high
         status: planned
+
+  - id: M4
+    name: "State Machine Testing"
+    status: in_progress
+    tickets:
+      - id: PROBAR-004
+        title: "GUI Playbook Testing: State Machine Verification"
+        description: |
+          Implement YAML-driven state machine testing framework:
+          - SCXML-inspired state definitions
+          - Transition-based assertions
+          - O(n) complexity verification via curve fitting
+          - Falsification protocol with M1-M5 mutation classes
+        priority: high
+        status: in_progress
+        spec: docs/specifications/gui-playbook-testing-spec.md
+        acceptance_criteria:
+          - YAML schema validates all playbooks
+          - State machine rejects orphaned states
+          - All transitions have explicit triggers
+          - O(n) violations detected empirically
+          - Mutation testing catches all M1-M5 classes
