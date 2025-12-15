@@ -1,6 +1,6 @@
 # Simulation
 
-Probar provides deterministic game simulation for testing.
+Probar provides deterministic game simulation for testing, built on **trueno's simulation testing framework** (v0.8.5+) which implements Toyota Production System principles for quality assurance.
 
 ## Simulation Architecture
 
@@ -222,4 +222,94 @@ fn benchmark_simulation() {
     // Should run faster than real-time
     assert!(elapsed.as_secs_f64() < 10000.0 / 60.0);
 }
+```
+
+## Trueno Simulation Primitives
+
+Probar's simulation testing is powered by trueno's simulation module (v0.8.5+), which provides Toyota Production System-based testing primitives.
+
+### SimRng: Deterministic RNG
+
+The `SimRng` provides PCG-based deterministic random number generation:
+
+```rust
+use trueno::simulation::SimRng;
+
+// Same seed = same sequence, always
+let mut rng = SimRng::new(42);
+
+let value = rng.next_f32();        // Deterministic [0.0, 1.0)
+let range = rng.range(1.0, 10.0);  // Deterministic range
+let normal = rng.normal(0.0, 1.0); // Deterministic Gaussian
+
+// Fork for parallel testing (child has deterministic offset)
+let child_rng = rng.fork();
+```
+
+### JidokaGuard: Quality Gates
+
+Stop-on-defect quality checking inspired by Toyota's Jidoka principle:
+
+```rust
+use trueno::simulation::JidokaGuard;
+
+let guard = JidokaGuard::new();
+
+// Automatic NaN/Inf detection
+guard.check_finite(&game_state.ball_velocity)?;
+
+// Custom invariants
+guard.assert_invariant(
+    || score <= MAX_SCORE,
+    "Score exceeded maximum"
+)?;
+```
+
+### BackendTolerance: Cross-Platform Validation
+
+Ensure simulation results are consistent across different compute backends:
+
+```rust
+use trueno::simulation::BackendTolerance;
+
+let tolerance = BackendTolerance::relaxed();
+
+// Compare GPU vs CPU simulation results
+let tol = tolerance.for_backends(Backend::GPU, Backend::Scalar);
+assert!((gpu_state_hash - cpu_state_hash).abs() < tol);
+```
+
+### BufferRenderer: Visual Regression
+
+Render simulation state to RGBA buffers for visual regression testing:
+
+```rust
+use trueno::simulation::{BufferRenderer, ColorPalette};
+
+let renderer = BufferRenderer::new(800, 600);
+let buffer = renderer.render_heatmap(&coverage_data, &ColorPalette::viridis())?;
+
+// Compare with golden baseline
+let diff = renderer.compare_buffers(&buffer, &golden_buffer)?;
+assert!(diff.max_error < 1e-5, "Visual regression detected");
+```
+
+## Integration with Jugar
+
+Probar's simulation integrates with [jugar](https://crates.io/crates/jugar) game engine:
+
+```rust
+use jugar::GameState;
+use jugar_probar::{run_simulation, SimulationConfig};
+use trueno::simulation::SimRng;
+
+// Jugar uses trueno's SimRng internally for determinism
+let config = SimulationConfig::new(42, 1000);
+let result = run_simulation(config, |frame| {
+    // Deterministic input generation
+    vec![InputEvent::key_press("Space")]
+});
+
+// Same seed + same inputs = same final state (guaranteed)
+assert_eq!(result.state_hash, expected_hash);
 ```

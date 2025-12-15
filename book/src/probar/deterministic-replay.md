@@ -1,6 +1,6 @@
 # Deterministic Replay
 
-Probar enables frame-perfect replay of game sessions.
+Probar enables frame-perfect replay of game sessions using **trueno's SimRng** (PCG-based deterministic RNG) to guarantee reproducibility across platforms and runs.
 
 ![Replay Coverage Analysis](../assets/coverage_magma.png)
 
@@ -201,3 +201,67 @@ println!("Bug first occurs at frame {}", bug_frame);
 let inputs = recording.frames[..bug_frame].to_vec();
 println!("Inputs: {:?}", inputs);
 ```
+
+## Determinism Guarantees via Trueno
+
+Probar's deterministic replay is powered by trueno's simulation testing framework (v0.8.5+):
+
+### SimRng: PCG-Based Determinism
+
+All randomness in simulations uses `trueno::simulation::SimRng`:
+
+```rust
+use trueno::simulation::SimRng;
+
+// PCG algorithm guarantees identical sequences across:
+// - Different operating systems (Linux, macOS, Windows)
+// - Different CPU architectures (x86_64, ARM64, WASM)
+// - Different compiler versions
+let mut rng = SimRng::new(recording.seed);
+
+// Every call produces identical results given same seed
+let ball_angle = rng.range(0.0, std::f32::consts::TAU);
+let spawn_delay = rng.range(30, 120);  // frames
+```
+
+### Cross-Backend Consistency
+
+Trueno ensures consistent results even when switching compute backends:
+
+```rust
+use trueno::simulation::BackendTolerance;
+
+// Simulation results are identical whether running on:
+// - CPU Scalar backend
+// - SIMD (SSE2/AVX2/AVX-512/NEON)
+// - GPU (via wgpu)
+let tolerance = BackendTolerance::strict();
+assert!(verify_cross_backend_determinism(&recording, tolerance));
+```
+
+### JidokaGuard: Replay Validation
+
+Automatic quality checks during replay:
+
+```rust
+use trueno::simulation::JidokaGuard;
+
+let guard = JidokaGuard::new();
+
+// Automatically detects non-determinism sources
+guard.check_finite(&state)?;  // NaN/Inf corrupts determinism
+guard.assert_invariant(
+    || state.frame == expected_frame,
+    "Frame count mismatch - possible non-determinism"
+)?;
+```
+
+### Why SimRng over std::rand?
+
+| Feature | SimRng (trueno) | std::rand |
+|---------|-----------------|-----------|
+| Cross-platform identical | Yes | No (implementation-defined) |
+| WASM compatible | Yes | Requires `getrandom` |
+| Fork for parallelism | Yes (deterministic) | No |
+| Serializable state | Yes | No |
+| Performance | ~2ns/call | ~3ns/call |
