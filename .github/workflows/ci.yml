@@ -29,9 +29,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-v2-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-v2-
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -40,7 +40,8 @@ jobs:
         run: cargo clippy --all-targets --features tui
 
       - name: Run tests
-        run: cargo test --features tui
+        run: cargo test --features tui -- --nocapture
+        timeout-minutes: 15
 
       - name: Run GPU pixel tests
         run: cargo test -p jugar-probar gpu_pixels --lib
