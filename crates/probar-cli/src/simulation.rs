@@ -175,7 +175,8 @@ impl SimulationConfig {
 
     /// Add parameter variation
     pub fn with_variation(mut self, name: &str, variation: ParameterVariation) -> Self {
-        self.parameter_variations.insert(name.to_string(), variation);
+        self.parameter_variations
+            .insert(name.to_string(), variation);
         self
     }
 }
@@ -217,17 +218,13 @@ impl ParameterVariation {
     /// Sample a value (simple implementation without external RNG)
     pub fn sample(&self, random_value: f64) -> f64 {
         match &self.distribution {
-            Distribution::Uniform => {
-                self.min + random_value * (self.max - self.min)
-            }
+            Distribution::Uniform => self.min + random_value * (self.max - self.min),
             Distribution::Normal { mean, std_dev } => {
                 // Box-Muller approximation (using single random value)
                 let z = (random_value - 0.5) * 6.0; // Rough approximation
                 mean + z * std_dev
             }
-            Distribution::Exponential { lambda } => {
-                -random_value.ln() / lambda
-            }
+            Distribution::Exponential { lambda } => -random_value.ln() / lambda,
             Distribution::Poisson { lambda } => {
                 // Approximation for Poisson
                 (random_value * lambda * 2.0).round()
@@ -560,7 +557,12 @@ pub struct ChaosObservation {
 
 impl ChaosObservation {
     /// Create new observation
-    pub fn new(timestamp_ms: u64, component: &str, description: &str, severity: ObservationSeverity) -> Self {
+    pub fn new(
+        timestamp_ms: u64,
+        component: &str,
+        description: &str,
+        severity: ObservationSeverity,
+    ) -> Self {
         Self {
             timestamp_ms,
             component: component.to_string(),
@@ -614,11 +616,20 @@ pub fn render_monte_carlo_report(result: &MonteCarloResult) -> String {
 
     // Histogram visualization
     if !result.latency_distribution.histogram.is_empty() {
-        let max_count = result.latency_distribution.histogram.iter().map(|(_, c)| *c).max().unwrap_or(1);
+        let max_count = result
+            .latency_distribution
+            .histogram
+            .iter()
+            .map(|(_, c)| *c)
+            .max()
+            .unwrap_or(1);
         for (latency, count) in &result.latency_distribution.histogram {
             let bar_len = (*count as f64 / max_count as f64 * 30.0) as usize;
             let bar: String = "█".repeat(bar_len.max(1));
-            out.push_str(&format!("│ {:>6.0}ms │ {:30} │ {:>4}\n", latency, bar, count));
+            out.push_str(&format!(
+                "│ {:>6.0}ms │ {:30} │ {:>4}\n",
+                latency, bar, count
+            ));
         }
     }
 
@@ -637,9 +648,15 @@ pub fn render_monte_carlo_report(result: &MonteCarloResult) -> String {
     // SLA probabilities
     if !result.sla_probabilities.is_empty() {
         out.push_str("FAILURE PROBABILITY\n");
-        out.push_str("┌─────────────────────────┬────────────────────────┬─────────────────────────┐\n");
-        out.push_str("│ SLA Target              │ Probability of Meeting │ Risk Level              │\n");
-        out.push_str("├─────────────────────────┼────────────────────────┼─────────────────────────┤\n");
+        out.push_str(
+            "┌─────────────────────────┬────────────────────────┬─────────────────────────┐\n",
+        );
+        out.push_str(
+            "│ SLA Target              │ Probability of Meeting │ Risk Level              │\n",
+        );
+        out.push_str(
+            "├─────────────────────────┼────────────────────────┼─────────────────────────┤\n",
+        );
 
         for sla in &result.sla_probabilities {
             out.push_str(&format!(
@@ -650,15 +667,23 @@ pub fn render_monte_carlo_report(result: &MonteCarloResult) -> String {
                 sla.risk.as_str()
             ));
         }
-        out.push_str("└─────────────────────────┴────────────────────────┴─────────────────────────┘\n\n");
+        out.push_str(
+            "└─────────────────────────┴────────────────────────┴─────────────────────────┘\n\n",
+        );
     }
 
     // Sensitivity analysis
     if !result.sensitivity_analysis.is_empty() {
         out.push_str("SENSITIVITY ANALYSIS\n");
-        out.push_str("┌─────────────────────────┬──────────────────────┬───────────────────────────┐\n");
-        out.push_str("│ Parameter               │ Correlation with p95 │ Impact                    │\n");
-        out.push_str("├─────────────────────────┼──────────────────────┼───────────────────────────┤\n");
+        out.push_str(
+            "┌─────────────────────────┬──────────────────────┬───────────────────────────┐\n",
+        );
+        out.push_str(
+            "│ Parameter               │ Correlation with p95 │ Impact                    │\n",
+        );
+        out.push_str(
+            "├─────────────────────────┼──────────────────────┼───────────────────────────┤\n",
+        );
 
         for factor in &result.sensitivity_analysis {
             out.push_str(&format!(
@@ -669,7 +694,9 @@ pub fn render_monte_carlo_report(result: &MonteCarloResult) -> String {
                 factor.impact.as_str()
             ));
         }
-        out.push_str("└─────────────────────────┴──────────────────────┴───────────────────────────┘\n\n");
+        out.push_str(
+            "└─────────────────────────┴──────────────────────┴───────────────────────────┘\n\n",
+        );
     }
 
     // Recommendations
@@ -717,7 +744,9 @@ pub fn render_chaos_report(result: &ChaosResult) -> String {
             truncate(&obs.description, 45)
         ));
     }
-    out.push_str("└──────────┴─────────────┴─────────────────────────────────────────────────┘\n\n");
+    out.push_str(
+        "└──────────┴─────────────┴─────────────────────────────────────────────────┘\n\n",
+    );
 
     // Verdict
     let verdict = if result.graceful_degradation {
@@ -780,7 +809,13 @@ mod tests {
         assert!(matches!(config.mode, SimulationMode::DeterministicReplay));
 
         let mc_config = SimulationConfig::monte_carlo(PathBuf::from("session.simular"), 1000);
-        assert!(matches!(mc_config.mode, SimulationMode::MonteCarlo { iterations: 1000, .. }));
+        assert!(matches!(
+            mc_config.mode,
+            SimulationMode::MonteCarlo {
+                iterations: 1000,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -847,7 +882,9 @@ mod tests {
     #[test]
     fn test_chaos_result() {
         let mut result = ChaosResult::new("Network Partition");
-        result.injections.push(FailureInjection::packet_loss("network", 0.5));
+        result
+            .injections
+            .push(FailureInjection::packet_loss("network", 0.5));
         result.add_observation(ChaosObservation::new(
             1000,
             "frontend",
@@ -886,7 +923,9 @@ mod tests {
     #[test]
     fn test_render_chaos_report() {
         let mut result = ChaosResult::new("Test Chaos");
-        result.injections.push(FailureInjection::latency("api", 0.1, 50));
+        result
+            .injections
+            .push(FailureInjection::latency("api", 0.1, 50));
 
         let report = render_chaos_report(&result);
         assert!(report.contains("Test Chaos"));

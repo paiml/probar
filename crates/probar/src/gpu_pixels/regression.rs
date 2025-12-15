@@ -78,7 +78,8 @@ impl GpuRegressionSuite {
 
     /// Add baseline PTX for a kernel
     pub fn add_baseline(&mut self, kernel_name: &str, ptx: &str) {
-        self.baselines.insert(kernel_name.to_string(), ptx.to_string());
+        self.baselines
+            .insert(kernel_name.to_string(), ptx.to_string());
     }
 
     /// Test kernel against baseline
@@ -148,7 +149,8 @@ impl GpuRegressionSuite {
 
         PtxPatterns {
             kernel_names: result.kernel_names,
-            uses_u32_shared: !ptx.contains("[%rd") || !ptx.contains("st.shared") && !ptx.contains("ld.shared"),
+            uses_u32_shared: !ptx.contains("[%rd")
+                || !ptx.contains("st.shared") && !ptx.contains("ld.shared"),
             has_barrier: ptx.contains("bar.sync"),
             has_shared_mem: ptx.contains(".shared"),
         }

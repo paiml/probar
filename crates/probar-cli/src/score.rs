@@ -113,11 +113,7 @@ impl Grade {
     /// Get grade from score
     #[must_use]
     pub const fn from_score(score: u32, max: u32) -> Self {
-        let percentage = if max > 0 {
-            (score * 100) / max
-        } else {
-            0
-        };
+        let percentage = if max > 0 { (score * 100) / max } else { 0 };
 
         match percentage {
             90..=100 => Self::A,
@@ -253,7 +249,10 @@ impl ScoreCalculator {
                 "Project has {} testing coverage with {} in {} categories",
                 grade.as_str(),
                 format_percentage(total, max),
-                categories.iter().filter(|c| c.status == CategoryStatus::Complete).count()
+                categories
+                    .iter()
+                    .filter(|c| c.status == CategoryStatus::Complete)
+                    .count()
             )
         } else {
             format!(
@@ -395,8 +394,8 @@ impl ScoreCalculator {
         let mut score = 0;
 
         // Check for playbook files (4 points)
-        let playbooks = self.find_files("**/playbooks/*.yaml")
-            + self.find_files("**/playbooks/*.yml");
+        let playbooks =
+            self.find_files("**/playbooks/*.yaml") + self.find_files("**/playbooks/*.yml");
         let playbook_points = if playbooks > 0 { 4 } else { 0 };
         criteria.push(CriterionResult {
             name: "Playbook exists".to_string(),
@@ -491,8 +490,8 @@ impl ScoreCalculator {
         let mut score = 0;
 
         // Baseline snapshots (4 points)
-        let snapshots = self.find_files("**/snapshots/*.png")
-            + self.find_files("**/screenshots/*.png");
+        let snapshots =
+            self.find_files("**/snapshots/*.png") + self.find_files("**/screenshots/*.png");
         let snapshot_points = if snapshots > 0 { 4 } else { 0 };
         criteria.push(CriterionResult {
             name: "Baseline snapshots exist".to_string(),
@@ -508,12 +507,21 @@ impl ScoreCalculator {
         score += snapshot_points;
 
         // Coverage of states (4 points)
-        let coverage_points = if snapshots >= 3 { 4 } else if snapshots > 0 { 2 } else { 0 };
+        let coverage_points = if snapshots >= 3 {
+            4
+        } else if snapshots > 0 {
+            2
+        } else {
+            0
+        };
         criteria.push(CriterionResult {
             name: "Coverage of states".to_string(),
             points_earned: coverage_points,
             points_possible: 4,
-            evidence: Some(format!("{}% state coverage estimated", coverage_points * 25)),
+            evidence: Some(format!(
+                "{}% state coverage estimated",
+                coverage_points * 25
+            )),
             suggestion: if coverage_points < 4 {
                 Some("Add snapshots for all UI states".to_string())
             } else {
@@ -769,10 +777,13 @@ impl ScoreCalculator {
         score += config_points;
 
         // SLA assertions (3 points)
-        let sla_files = self.find_files("**/sla*.yaml")
-            + self.find_files("**/assertions*.yaml");
+        let sla_files = self.find_files("**/sla*.yaml") + self.find_files("**/assertions*.yaml");
         let has_playbooks = self.find_files("**/playbooks/*.yaml") > 0;
-        let sla_points = if sla_files > 0 || (has_playbooks && load_configs > 0) { 3 } else { 0 };
+        let sla_points = if sla_files > 0 || (has_playbooks && load_configs > 0) {
+            3
+        } else {
+            0
+        };
         criteria.push(CriterionResult {
             name: "SLA assertions defined".to_string(),
             points_earned: sla_points,
@@ -842,8 +853,8 @@ impl ScoreCalculator {
         let mut score = 0;
 
         // Recording files
-        let recordings = self.find_files("**/*.probar-recording")
-            + self.find_files("**/recordings/*.json");
+        let recordings =
+            self.find_files("**/*.probar-recording") + self.find_files("**/recordings/*.json");
 
         // Happy path (4 points)
         let happy_points = if recordings > 0 { 4 } else { 0 };
@@ -912,14 +923,18 @@ impl ScoreCalculator {
         let mut score = 0;
 
         // Check for browser config files
-        let browser_configs = self.find_files("**/browsers.yaml")
-            + self.find_files("**/browsers.yml");
-        let playwright_configs = self.find_files("**/playwright.config.*")
-            + self.find_files("**/wdio.conf.*");
+        let browser_configs =
+            self.find_files("**/browsers.yaml") + self.find_files("**/browsers.yml");
+        let playwright_configs =
+            self.find_files("**/playwright.config.*") + self.find_files("**/wdio.conf.*");
         let has_full_matrix = browser_configs > 0;
 
         // Chrome (3 points) - assume present if any browser config
-        let chrome_points = if browser_configs > 0 || playwright_configs > 0 { 3 } else { 0 };
+        let chrome_points = if browser_configs > 0 || playwright_configs > 0 {
+            3
+        } else {
+            0
+        };
         criteria.push(CriterionResult {
             name: "Chrome tested".to_string(),
             points_earned: chrome_points,
@@ -1097,8 +1112,8 @@ impl ScoreCalculator {
         let mut score = 0;
 
         // Test README (2 points)
-        let test_readme = self.find_files("**/tests/README.md")
-            + self.find_files("**/tests/README.rst");
+        let test_readme =
+            self.find_files("**/tests/README.md") + self.find_files("**/tests/README.rst");
         let readme_points = if test_readme > 0 { 2 } else { 0 };
         criteria.push(CriterionResult {
             name: "Test README exists".to_string(),
@@ -1231,9 +1246,12 @@ pub fn render_score_text(score: &ProjectScore, verbose: bool) -> String {
     ));
 
     // Category table
-    output.push_str("┌─────────────────────┬────────┬────────┬─────────────────────────────────┐\n");
-    output.push_str("│ Category            │ Score  │ Max    │ Status                          │\n");
-    output.push_str("├─────────────────────┼────────┼────────┼─────────────────────────────────┤\n");
+    output
+        .push_str("┌─────────────────────┬────────┬────────┬─────────────────────────────────┐\n");
+    output
+        .push_str("│ Category            │ Score  │ Max    │ Status                          │\n");
+    output
+        .push_str("├─────────────────────┼────────┼────────┼─────────────────────────────────┤\n");
 
     for category in &score.categories {
         let status_text = match category.status {
@@ -1244,15 +1262,13 @@ pub fn render_score_text(score: &ProjectScore, verbose: bool) -> String {
 
         output.push_str(&format!(
             "│ {:<19} │ {:>3}/{:<2} │ {:>6} │ {:<31} │\n",
-            category.name,
-            category.score,
-            category.max,
-            category.max,
-            status_text
+            category.name, category.score, category.max, category.max, status_text
         ));
     }
 
-    output.push_str("└─────────────────────┴────────┴────────┴─────────────────────────────────┘\n\n");
+    output.push_str(
+        "└─────────────────────┴────────┴────────┴─────────────────────────────────┘\n\n",
+    );
 
     // Grade scale
     output.push_str("Grade Scale: A (90+), B (80-89), C (70-79), D (60-69), F (<60)\n\n");
@@ -1289,10 +1305,7 @@ pub fn render_score_text(score: &ProjectScore, verbose: bool) -> String {
                 };
                 output.push_str(&format!(
                     "  {} {} ({}/{})\n",
-                    status,
-                    criterion.name,
-                    criterion.points_earned,
-                    criterion.points_possible
+                    status, criterion.name, criterion.points_earned, criterion.points_possible
                 ));
                 if let Some(ref evidence) = criterion.evidence {
                     output.push_str(&format!("      Evidence: {}\n", evidence));
@@ -1337,7 +1350,10 @@ mod tests {
 
     #[test]
     fn test_category_status_from_ratio() {
-        assert_eq!(CategoryStatus::from_ratio(90, 100), CategoryStatus::Complete);
+        assert_eq!(
+            CategoryStatus::from_ratio(90, 100),
+            CategoryStatus::Complete
+        );
         assert_eq!(CategoryStatus::from_ratio(60, 100), CategoryStatus::Partial);
         assert_eq!(CategoryStatus::from_ratio(20, 100), CategoryStatus::Missing);
     }

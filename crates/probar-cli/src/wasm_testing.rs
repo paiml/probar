@@ -388,9 +388,21 @@ impl Default for BrowserMatrix {
         Self {
             browsers: Browser::desktop_browsers(),
             viewports: vec![
-                Viewport { width: 1920, height: 1080, device_pixel_ratio: 1.0 },
-                Viewport { width: 1280, height: 720, device_pixel_ratio: 1.0 },
-                Viewport { width: 375, height: 667, device_pixel_ratio: 2.0 },  // Mobile
+                Viewport {
+                    width: 1920,
+                    height: 1080,
+                    device_pixel_ratio: 1.0,
+                },
+                Viewport {
+                    width: 1280,
+                    height: 720,
+                    device_pixel_ratio: 1.0,
+                },
+                Viewport {
+                    width: 375,
+                    height: 667,
+                    device_pixel_ratio: 2.0,
+                }, // Mobile
             ],
             parallel: true,
         }
@@ -529,7 +541,11 @@ pub fn compare_performance(
     let mut results = Vec::new();
 
     for current_metric in current {
-        if let Some(baseline_metric) = baseline.metrics.iter().find(|m| m.name == current_metric.name) {
+        if let Some(baseline_metric) = baseline
+            .metrics
+            .iter()
+            .find(|m| m.name == current_metric.name)
+        {
             let change = if baseline_metric.value != 0.0 {
                 ((current_metric.value - baseline_metric.value) / baseline_metric.value) * 100.0
             } else {
@@ -566,7 +582,11 @@ pub fn render_performance_report(
 
     output.push_str("PERFORMANCE REGRESSION CHECK\n");
     output.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
-    output.push_str(&format!("Baseline: {} (commit {})\n\n", baseline.version, &baseline.commit[..8.min(baseline.commit.len())]));
+    output.push_str(&format!(
+        "Baseline: {} (commit {})\n\n",
+        baseline.version,
+        &baseline.commit[..8.min(baseline.commit.len())]
+    ));
 
     output.push_str("┌────────────────────┬──────────┬──────────┬──────────┬────────┐\n");
     output.push_str("│ Metric             │ Baseline │ Current  │ Delta    │ Status │\n");
@@ -596,10 +616,19 @@ pub fn render_performance_report(
 
     output.push_str("└────────────────────┴──────────┴──────────┴──────────┴────────┘\n");
 
-    let warnings = comparisons.iter().filter(|c| c.status == ComparisonStatus::Warn).count();
-    let failures = comparisons.iter().filter(|c| c.status == ComparisonStatus::Fail).count();
+    let warnings = comparisons
+        .iter()
+        .filter(|c| c.status == ComparisonStatus::Warn)
+        .count();
+    let failures = comparisons
+        .iter()
+        .filter(|c| c.status == ComparisonStatus::Fail)
+        .count();
 
-    output.push_str(&format!("\nResult: {} warnings, {} failures\n", warnings, failures));
+    output.push_str(&format!(
+        "\nResult: {} warnings, {} failures\n",
+        warnings, failures
+    ));
 
     output
 }

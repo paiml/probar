@@ -70,13 +70,13 @@ impl DebugCategory {
     #[must_use]
     pub const fn color(&self) -> &'static str {
         match self {
-            Self::Server => "\x1b[36m",   // Cyan
-            Self::Request => "\x1b[34m",  // Blue
-            Self::Resolve => "\x1b[35m",  // Magenta
-            Self::Response => "\x1b[32m", // Green
-            Self::Error => "\x1b[31m",    // Red
+            Self::Server => "\x1b[36m",    // Cyan
+            Self::Request => "\x1b[34m",   // Blue
+            Self::Resolve => "\x1b[35m",   // Magenta
+            Self::Response => "\x1b[32m",  // Green
+            Self::Error => "\x1b[31m",     // Red
             Self::WebSocket => "\x1b[33m", // Yellow
-            Self::Watcher => "\x1b[90m",  // Gray
+            Self::Watcher => "\x1b[90m",   // Gray
         }
     }
 }
@@ -311,7 +311,13 @@ impl DebugTracer {
     }
 
     /// Log a response
-    pub fn log_response(&self, status: u16, content_type: &str, content_length: usize, latency_ms: u64) {
+    pub fn log_response(
+        &self,
+        status: u16,
+        content_type: &str,
+        content_length: usize,
+        latency_ms: u64,
+    ) {
         if !self.enabled {
             return;
         }
@@ -336,12 +342,20 @@ impl DebugTracer {
     }
 
     /// Log a 404 error with suggestions
-    pub fn log_not_found(&self, request_path: &str, searched_paths: &[PathBuf], suggestions: &[String]) {
+    pub fn log_not_found(
+        &self,
+        request_path: &str,
+        searched_paths: &[PathBuf],
+        suggestions: &[String],
+    ) {
         if !self.enabled {
             return;
         }
 
-        let mut lines = vec![format!("GET {request_path}"), "Error: File not found".to_string()];
+        let mut lines = vec![
+            format!("GET {request_path}"),
+            "Error: File not found".to_string(),
+        ];
 
         lines.push("Searched paths:".to_string());
         for (i, path) in searched_paths.iter().enumerate() {
@@ -409,10 +423,7 @@ impl DebugTracer {
         if !self.enabled {
             return;
         }
-        self.log(
-            DebugCategory::Watcher,
-            &format!("{event_type}: {path}"),
-        );
+        self.log(DebugCategory::Watcher, &format!("{event_type}: {path}"));
     }
 }
 

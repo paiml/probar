@@ -30,8 +30,15 @@
 //! ```
 
 // Allow common test patterns in this showcase crate
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::float_cmp))]
-
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::float_cmp
+    )
+)]
 #![deny(missing_docs)]
 #![deny(missing_debug_implementations)]
 

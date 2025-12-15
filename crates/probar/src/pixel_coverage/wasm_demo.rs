@@ -248,8 +248,11 @@ impl PcgRng {
     #[must_use]
     pub fn hash_pixel(seed: u32, index: u32, frame: u32) -> u32 {
         let input = seed ^ index ^ frame.wrapping_mul(12345);
-        let state = input.wrapping_mul(PCG_MULTIPLIER).wrapping_add(PCG_INCREMENT);
-        let word = ((state >> ((state >> 28).wrapping_add(4))) ^ state).wrapping_mul(PCG_OUTPUT_MUL);
+        let state = input
+            .wrapping_mul(PCG_MULTIPLIER)
+            .wrapping_add(PCG_INCREMENT);
+        let word =
+            ((state >> ((state >> 28).wrapping_add(4))) ^ state).wrapping_mul(PCG_OUTPUT_MUL);
         (word >> 22) ^ word
     }
 
@@ -671,7 +674,11 @@ impl CoverageStats {
 ///
 /// Provides better coverage for small samples than normal approximation.
 #[must_use]
-pub fn wilson_confidence_interval(successes: usize, total: usize, confidence: f32) -> ConfidenceInterval {
+pub fn wilson_confidence_interval(
+    successes: usize,
+    total: usize,
+    confidence: f32,
+) -> ConfidenceInterval {
     if total == 0 {
         return ConfidenceInterval {
             lower: 0.0,
@@ -868,7 +875,10 @@ mod tests {
                 break;
             }
         }
-        assert!(any_different, "Different seeds should produce different sequences");
+        assert!(
+            any_different,
+            "Different seeds should produce different sequences"
+        );
     }
 
     #[test]
@@ -973,7 +983,10 @@ mod tests {
             buffer2.random_fill_pass(0.1);
         }
 
-        assert_eq!(buffer1.pixels, buffer2.pixels, "Same seed should produce same pattern");
+        assert_eq!(
+            buffer1.pixels, buffer2.pixels,
+            "Same seed should produce same pattern"
+        );
     }
 
     #[test]

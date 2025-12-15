@@ -8,7 +8,11 @@
 
 // Static regexes are always valid - compile-time constant patterns
 // collection_is_never_read: loop_start_labels is used for tracking/debug
-#![allow(clippy::unwrap_used, clippy::trivial_regex, clippy::collection_is_never_read)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::trivial_regex,
+    clippy::collection_is_never_read
+)]
 
 use regex::Regex;
 use std::collections::HashSet;
@@ -124,7 +128,10 @@ impl PtxAnalyzer {
             let trimmed = line.trim();
             if let Some(caps) = loop_label.captures(trimmed) {
                 let label = caps.get(1).unwrap().as_str();
-                if label.contains("_start") || label.ends_with("_loop") || label.starts_with("loop_") {
+                if label.contains("_start")
+                    || label.ends_with("_loop")
+                    || label.starts_with("loop_")
+                {
                     loop_start_labels.insert(label.to_string());
                 } else if label.contains("_end") {
                     loop_end_labels.insert(label.to_string());
@@ -142,7 +149,8 @@ impl PtxAnalyzer {
                     class: PtxBugClass::SharedMemU64Addressing,
                     line: line_num + 1,
                     instruction: trimmed.to_string(),
-                    message: "Shared memory accessed with 64-bit register. Use 32-bit addressing.".to_string(),
+                    message: "Shared memory accessed with 64-bit register. Use 32-bit addressing."
+                        .to_string(),
                 });
             }
 
@@ -165,7 +173,10 @@ impl PtxAnalyzer {
                             class: PtxBugClass::LoopBranchToEnd,
                             line: line_num + 1,
                             instruction: trimmed.to_string(),
-                            message: format!("Unconditional branch to loop end '{}'. Should branch to start?", target),
+                            message: format!(
+                                "Unconditional branch to loop end '{}'. Should branch to start?",
+                                target
+                            ),
                         });
                     }
                 }
@@ -183,7 +194,8 @@ impl PtxAnalyzer {
         }
 
         // Check for barrier sync presence when shared memory is used
-        let uses_shared = ptx.contains(".shared") || ptx.contains("st.shared") || ptx.contains("ld.shared");
+        let uses_shared =
+            ptx.contains(".shared") || ptx.contains("st.shared") || ptx.contains("ld.shared");
         let has_barrier = bar_sync.is_match(ptx);
         if self.strict && uses_shared && !has_barrier {
             bugs.push(PtxBug {
@@ -270,8 +282,14 @@ mod tests {
 
     #[test]
     fn test_bug_class_display() {
-        assert_eq!(format!("{}", PtxBugClass::SharedMemU64Addressing), "shared_mem_u64");
-        assert_eq!(format!("{}", PtxBugClass::LoopBranchToEnd), "loop_branch_to_end");
+        assert_eq!(
+            format!("{}", PtxBugClass::SharedMemU64Addressing),
+            "shared_mem_u64"
+        );
+        assert_eq!(
+            format!("{}", PtxBugClass::LoopBranchToEnd),
+            "loop_branch_to_end"
+        );
     }
 
     #[test]
@@ -302,10 +320,19 @@ mod tests {
 
     #[test]
     fn test_bug_class_display_all_variants() {
-        assert_eq!(format!("{}", PtxBugClass::MissingBarrierSync), "missing_barrier");
-        assert_eq!(format!("{}", PtxBugClass::NonInPlaceLoopAccumulator), "non_inplace_accum");
+        assert_eq!(
+            format!("{}", PtxBugClass::MissingBarrierSync),
+            "missing_barrier"
+        );
+        assert_eq!(
+            format!("{}", PtxBugClass::NonInPlaceLoopAccumulator),
+            "non_inplace_accum"
+        );
         assert_eq!(format!("{}", PtxBugClass::InvalidSyntax), "invalid_syntax");
-        assert_eq!(format!("{}", PtxBugClass::MissingEntryPoint), "missing_entry");
+        assert_eq!(
+            format!("{}", PtxBugClass::MissingEntryPoint),
+            "missing_entry"
+        );
     }
 
     #[test]

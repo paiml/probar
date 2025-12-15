@@ -725,7 +725,10 @@ mod tests {
 
         let result = WebValidator::lint_css(&css);
         assert!(!result.is_valid());
-        assert!(result.errors.iter().any(|e| e.contains("Empty CSS selector")));
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.contains("Empty CSS selector")));
     }
 
     #[test]
@@ -763,7 +766,9 @@ mod tests {
         };
 
         let issues = WebValidator::check_accessibility(&html);
-        assert!(issues.iter().any(|i| i.description.contains("Button") && i.description.contains("aria-label")));
+        assert!(issues
+            .iter()
+            .any(|i| i.description.contains("Button") && i.description.contains("aria-label")));
     }
 
     #[test]
@@ -781,7 +786,9 @@ mod tests {
         };
 
         let issues = WebValidator::check_accessibility(&html);
-        assert!(issues.iter().any(|i| i.description.contains("Input") && i.description.contains("aria-label")));
+        assert!(issues
+            .iter()
+            .any(|i| i.description.contains("Input") && i.description.contains("aria-label")));
     }
 
     #[test]
@@ -800,7 +807,9 @@ mod tests {
         };
 
         let issues = WebValidator::check_accessibility(&html);
-        assert!(issues.iter().any(|i| i.description.contains("Canvas") && i.description.contains("aria-label")));
+        assert!(issues
+            .iter()
+            .any(|i| i.description.contains("Canvas") && i.description.contains("aria-label")));
     }
 
     #[test]
@@ -808,12 +817,15 @@ mod tests {
         let html = GeneratedHtml {
             title: "Test".to_string(),
             body_content: String::new(),
-            content: "<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>".to_string(),
+            content: "<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>"
+                .to_string(),
             elements: vec![],
         };
 
         let issues = WebValidator::check_accessibility(&html);
-        assert!(issues.iter().any(|i| i.description.contains("lang") && i.wcag_ref == Some("WCAG 3.1.1".to_string())));
+        assert!(issues.iter().any(
+            |i| i.description.contains("lang") && i.wcag_ref == Some("WCAG 3.1.1".to_string())
+        ));
     }
 
     // =========================================================================
@@ -879,9 +891,22 @@ mod tests {
     #[test]
     fn h0_val_30_report_with_non_critical_accessibility() {
         let report = ValidationReport {
-            html: HtmlValidationResult { valid: true, errors: vec![], warnings: vec![] },
-            css: CssLintResult { valid: true, errors: vec![], warnings: vec![] },
-            js: JsLintResult { valid: true, errors: vec![], warnings: vec![], security_issues: vec![] },
+            html: HtmlValidationResult {
+                valid: true,
+                errors: vec![],
+                warnings: vec![],
+            },
+            css: CssLintResult {
+                valid: true,
+                errors: vec![],
+                warnings: vec![],
+            },
+            js: JsLintResult {
+                valid: true,
+                errors: vec![],
+                warnings: vec![],
+                security_issues: vec![],
+            },
             accessibility: vec![AccessibilityIssue {
                 severity: Severity::Medium,
                 description: "Medium issue".to_string(),

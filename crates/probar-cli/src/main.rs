@@ -607,8 +607,9 @@ fn run_serve_score(args: &probador::ScoreArgs, _default_dir: &std::path::Path) -
             print!("{output}");
         }
         ScoreOutputFormat::Json => {
-            let output = score::render_score_json(&project_score)
-                .map_err(|e| probador::CliError::report_generation(format!("JSON serialization error: {e}")))?;
+            let output = score::render_score_json(&project_score).map_err(|e| {
+                probador::CliError::report_generation(format!("JSON serialization error: {e}"))
+            })?;
             println!("{output}");
         }
     }
@@ -664,7 +665,10 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
         .collect();
 
     if !pages_with_wasm.is_empty() {
-        eprintln!("  Detected {} page(s) with WASM imports:", pages_with_wasm.len());
+        eprintln!(
+            "  Detected {} page(s) with WASM imports:",
+            pages_with_wasm.len()
+        );
         for page in &pages_with_wasm {
             eprintln!("    • {}", page.display());
         }
@@ -674,9 +678,13 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
     let validation_result = validator.validate();
 
     if !validation_result.is_ok() {
-        eprintln!("  ✗ FAIL: {} broken import(s) found\n", validation_result.errors.len());
+        eprintln!(
+            "  ✗ FAIL: {} broken import(s) found\n",
+            validation_result.errors.len()
+        );
         for error in &validation_result.errors {
-            eprintln!("    • {} (from {}:{})",
+            eprintln!(
+                "    • {} (from {}:{})",
                 error.import.import_path,
                 error.import.source_file.display(),
                 error.import.line_number
@@ -694,20 +702,28 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
         eprintln!("  RESULT: FAIL (Grade: F)");
         eprintln!("══════════════════════════════════════════════════════════════");
         eprintln!("\n  Fix the broken imports above and run again.\n");
-        return Err(probador::CliError::test_execution(
-            format!("Module resolution failed: {} broken import(s)", validation_result.errors.len()),
-        ));
+        return Err(probador::CliError::test_execution(format!(
+            "Module resolution failed: {} broken import(s)",
+            validation_result.errors.len()
+        )));
     }
-    eprintln!("  ✓ All {} import(s) resolve correctly\n", validation_result.total_imports);
+    eprintln!(
+        "  ✓ All {} import(s) resolve correctly\n",
+        validation_result.total_imports
+    );
 
     // Step 2: Start temporary server
     eprintln!("[2/4] Starting Validation Server");
     let port = if args.port == 0 {
         // Find an available port
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .map_err(|e| probador::CliError::test_execution(format!("Failed to find available port: {e}")))?;
-        listener.local_addr()
-            .map_err(|e| probador::CliError::test_execution(format!("Failed to get local address: {e}")))?
+        let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| {
+            probador::CliError::test_execution(format!("Failed to find available port: {e}"))
+        })?;
+        listener
+            .local_addr()
+            .map_err(|e| {
+                probador::CliError::test_execution(format!("Failed to get local address: {e}"))
+            })?
             .port()
     } else {
         args.port
@@ -742,14 +758,18 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
     } else {
         eprintln!("  RESULT: FAIL (Grade: F)");
         eprintln!("══════════════════════════════════════════════════════════════");
-        eprintln!("\n  Found {} issue(s) that prove the app is broken:\n", validation_errors.len());
+        eprintln!(
+            "\n  Found {} issue(s) that prove the app is broken:\n",
+            validation_errors.len()
+        );
         for (i, error) in validation_errors.iter().enumerate() {
             eprintln!("  {}. {}", i + 1, error);
         }
         eprintln!();
-        Err(probador::CliError::test_execution(
-            format!("Live validation failed: {} issue(s) found", validation_errors.len()),
-        ))
+        Err(probador::CliError::test_execution(format!(
+            "Live validation failed: {} issue(s) found",
+            validation_errors.len()
+        )))
     }
 }
 
@@ -846,10 +866,8 @@ async fn run_browser_validation_async(
                             }
 
                             // Navigate to page with timeout
-                            let nav_result = timeout(
-                                Duration::from_secs(30),
-                                page.goto(&url)
-                            ).await;
+                            let nav_result =
+                                timeout(Duration::from_secs(30), page.goto(&url)).await;
 
                             match nav_result {
                                 Ok(Ok(())) => {
@@ -858,15 +876,22 @@ async fn run_browser_validation_async(
 
                                     // Fetch console messages - FALSIFICATION: any error proves broken
                                     if let Ok(messages) = page.fetch_console_messages().await {
-                                        let error_messages: Vec<_> = messages.iter()
+                                        let error_messages: Vec<_> = messages
+                                            .iter()
                                             .filter(|m| m.level == BrowserConsoleLevel::Error)
                                             .collect();
 
                                         if !error_messages.is_empty() {
-                                            eprintln!("    ✗ {} console error(s) found - APP IS BROKEN", error_messages.len());
+                                            eprintln!(
+                                                "    ✗ {} console error(s) found - APP IS BROKEN",
+                                                error_messages.len()
+                                            );
                                             for msg in &error_messages {
                                                 eprintln!("      └─ {}", msg.text);
-                                                errors.push(format!("[{}] Console error: {}", url_path, msg.text));
+                                                errors.push(format!(
+                                                    "[{}] Console error: {}",
+                                                    url_path, msg.text
+                                                ));
                                             }
                                         } else {
                                             eprintln!("    ✓ No console errors");
@@ -877,8 +902,9 @@ async fn run_browser_validation_async(
                                     eprintln!("\n[4/4] WASM Initialization Check");
                                     let wasm_result = timeout(
                                         Duration::from_secs(15),
-                                        page.wait_for_wasm_ready()
-                                    ).await;
+                                        page.wait_for_wasm_ready(),
+                                    )
+                                    .await;
 
                                     match wasm_result {
                                         Ok(Ok(())) => {
@@ -889,7 +915,10 @@ async fn run_browser_validation_async(
                                                 // FALSIFICATION: WASM was required but failed
                                                 eprintln!("  ✗ WASM initialization FAILED - APP IS BROKEN");
                                                 eprintln!("    Error: {e}\n");
-                                                errors.push(format!("[{}] WASM required but failed: {}", url_path, e));
+                                                errors.push(format!(
+                                                    "[{}] WASM required but failed: {}",
+                                                    url_path, e
+                                                ));
                                             } else {
                                                 eprintln!("  ⚠ WASM initialization: {e}");
                                                 eprintln!("    (No WASM imports detected - may be expected)\n");
@@ -900,7 +929,10 @@ async fn run_browser_validation_async(
                                                 // FALSIFICATION: WASM was required but timed out
                                                 eprintln!("  ✗ WASM initialization TIMED OUT - APP IS BROKEN");
                                                 eprintln!("    Page imports WASM but it failed to initialize.\n");
-                                                errors.push(format!("[{}] WASM required but timed out after 15s", url_path));
+                                                errors.push(format!(
+                                                    "[{}] WASM required but timed out after 15s",
+                                                    url_path
+                                                ));
                                             } else {
                                                 eprintln!("  ⚠ WASM initialization timed out");
                                                 eprintln!("    (No WASM imports detected - may be expected)\n");
@@ -914,7 +946,9 @@ async fn run_browser_validation_async(
                                     errors.push(format!("[{}] Navigation failed: {}", url_path, e));
                                 }
                                 Err(_) => {
-                                    eprintln!("    ✗ Navigation timed out after 30s - APP IS BROKEN");
+                                    eprintln!(
+                                        "    ✗ Navigation timed out after 30s - APP IS BROKEN"
+                                    );
                                     errors.push(format!("[{}] Navigation timed out", url_path));
                                 }
                             }

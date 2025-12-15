@@ -1526,7 +1526,12 @@ pub fn expect(locator: Locator) -> Expect {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::default_trait_access)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::default_trait_access
+)]
 mod tests {
     use super::*;
 

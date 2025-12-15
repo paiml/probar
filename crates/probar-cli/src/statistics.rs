@@ -501,8 +501,7 @@ pub fn render_statistical_report(analysis: &StatisticalAnalysis) -> String {
     out.push_str("┌───────────────────────────────────────────────────────────────┐\n");
     out.push_str(&format!(
         "│ Target: {}ms (Satisfied), {}ms (Tolerating)               │\n",
-        analysis.apdex.satisfied_threshold_ms,
-        analysis.apdex.tolerating_threshold_ms
+        analysis.apdex.satisfied_threshold_ms, analysis.apdex.tolerating_threshold_ms
     ));
     out.push_str(&format!(
         "│                                                               │\n"
@@ -704,7 +703,9 @@ mod tests {
     #[test]
     fn test_render_statistical_report() {
         let mut analysis = StatisticalAnalysis::new("WASM Boot");
-        analysis.variance_tree.add_component(VarianceComponent::new("Network", 500.0));
+        analysis
+            .variance_tree
+            .add_component(VarianceComponent::new("Network", 500.0));
         analysis.variance_tree.recalculate_percentages();
         analysis.apdex.record(50);
         analysis.apdex.record(100);

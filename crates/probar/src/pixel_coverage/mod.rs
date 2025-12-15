@@ -41,9 +41,9 @@ pub use tracker::{
     PixelCoverageTracker, Point as PixelPoint, Region as PixelRegion,
 };
 pub use wasm_demo::{
-    ConfigError as WasmDemoConfigError, CoverageStats as WasmCoverageStats, DemoGapRegion,
-    DemoPalette, GapSeverity as DemoGapSeverity, GpuPixelBuffer, PcgRng, WasmDemoConfig,
-    WasmPixelDemo, wilson_confidence_interval,
+    wilson_confidence_interval, ConfigError as WasmDemoConfigError,
+    CoverageStats as WasmCoverageStats, DemoGapRegion, DemoPalette, GapSeverity as DemoGapSeverity,
+    GpuPixelBuffer, PcgRng, WasmDemoConfig, WasmPixelDemo,
 };
 
 /// Coverage threshold presets
@@ -59,7 +59,12 @@ pub mod thresholds {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp, clippy::assertions_on_constants)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::float_cmp,
+    clippy::assertions_on_constants
+)]
 mod tests {
     use super::tracker::{Point, Region};
     use super::*;

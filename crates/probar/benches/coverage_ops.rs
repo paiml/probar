@@ -8,7 +8,9 @@
 #![allow(clippy::unwrap_used)]
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use jugar_probar::pixel_coverage::{PixelCoverageTracker, PixelPoint as Point, PixelRegion as Region};
+use jugar_probar::pixel_coverage::{
+    PixelCoverageTracker, PixelPoint as Point, PixelRegion as Region,
+};
 use jugar_probar::ux_coverage::{ElementId, InteractionType, UxCoverageTracker};
 
 fn bench_pixel_tracker_creation(c: &mut Criterion) {
@@ -101,11 +103,7 @@ fn bench_pixel_region_recording(c: &mut Criterion) {
 fn bench_pixel_report_generation(c: &mut Criterion) {
     let mut group = c.benchmark_group("pixel_report_generation");
 
-    let grid_sizes = vec![
-        (10, 10, "10x10"),
-        (50, 50, "50x50"),
-        (100, 100, "100x100"),
-    ];
+    let grid_sizes = vec![(10, 10, "10x10"), (50, 50, "50x50"), (100, 100, "100x100")];
 
     for (cols, rows, name) in grid_sizes {
         let mut tracker = PixelCoverageTracker::new(800, 600, cols, rows);

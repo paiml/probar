@@ -213,9 +213,7 @@ fn build_tree_recursive(
     }
 
     // Read directory contents
-    let mut entries: Vec<_> = std::fs::read_dir(path)?
-        .filter_map(Result::ok)
-        .collect();
+    let mut entries: Vec<_> = std::fs::read_dir(path)?.filter_map(Result::ok).collect();
 
     // Sort: directories first, then alphabetically
     entries.sort_by(|a, b| {
@@ -465,8 +463,12 @@ mod tests {
     #[test]
     fn test_render_tree() {
         let mut root = FileNode::new_dir(PathBuf::from("project"));
-        root.children.push(FileNode::new_file(PathBuf::from("project/index.html"), 1024));
-        root.children.push(FileNode::new_file(PathBuf::from("project/app.js"), 2048));
+        root.children.push(FileNode::new_file(
+            PathBuf::from("project/index.html"),
+            1024,
+        ));
+        root.children
+            .push(FileNode::new_file(PathBuf::from("project/app.js"), 2048));
 
         let config = TreeConfig::default();
         let output = render_tree(&root, &config);
@@ -480,8 +482,10 @@ mod tests {
     #[test]
     fn test_file_node_total_size() {
         let mut root = FileNode::new_dir(PathBuf::from("root"));
-        root.children.push(FileNode::new_file(PathBuf::from("a.txt"), 100));
-        root.children.push(FileNode::new_file(PathBuf::from("b.txt"), 200));
+        root.children
+            .push(FileNode::new_file(PathBuf::from("a.txt"), 100));
+        root.children
+            .push(FileNode::new_file(PathBuf::from("b.txt"), 200));
 
         assert_eq!(root.total_size(), 300);
     }
@@ -490,9 +494,12 @@ mod tests {
     fn test_file_node_file_count() {
         let mut root = FileNode::new_dir(PathBuf::from("root"));
         let mut subdir = FileNode::new_dir(PathBuf::from("sub"));
-        subdir.children.push(FileNode::new_file(PathBuf::from("a.txt"), 100));
+        subdir
+            .children
+            .push(FileNode::new_file(PathBuf::from("a.txt"), 100));
         root.children.push(subdir);
-        root.children.push(FileNode::new_file(PathBuf::from("b.txt"), 100));
+        root.children
+            .push(FileNode::new_file(PathBuf::from("b.txt"), 100));
 
         assert_eq!(root.file_count(), 2);
     }

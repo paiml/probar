@@ -511,6 +511,7 @@ pub mod prelude {
     pub use super::file_ops::*;
     pub use super::fixture::*;
     pub use super::fuzzer::*;
+    pub use super::gpu_pixels::*;
     pub use super::har::*;
     pub use super::harness::*;
     pub use super::locator::*;
@@ -519,7 +520,6 @@ pub mod prelude {
     pub use super::perf::*;
     pub use super::performance::*;
     pub use super::pixel_coverage::*;
-    pub use super::gpu_pixels::*;
     pub use super::replay::*;
     pub use super::reporter::*;
     pub use super::result::*;

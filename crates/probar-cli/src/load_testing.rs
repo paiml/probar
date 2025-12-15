@@ -806,10 +806,7 @@ impl Default for LatencyHistogram {
 pub fn render_load_test_report(result: &LoadTestResult) -> String {
     let mut output = String::new();
 
-    output.push_str(&format!(
-        "LOAD TEST RESULTS: {}\n",
-        result.scenario_name
-    ));
+    output.push_str(&format!("LOAD TEST RESULTS: {}\n", result.scenario_name));
     output.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
 
     output.push_str(&format!(
@@ -1010,9 +1007,15 @@ mod tests {
     #[test]
     fn test_load_test_result_assertions() {
         let mut result = LoadTestResult::new("Test");
-        result.assertion_results.push(AssertionResult::passed("ep1", "status", "200"));
-        result.assertion_results.push(AssertionResult::passed("ep2", "status", "200"));
-        result.assertion_results.push(AssertionResult::failed("ep3", "latency", "100ms", "200ms"));
+        result
+            .assertion_results
+            .push(AssertionResult::passed("ep1", "status", "200"));
+        result
+            .assertion_results
+            .push(AssertionResult::passed("ep2", "status", "200"));
+        result
+            .assertion_results
+            .push(AssertionResult::failed("ep3", "latency", "100ms", "200ms"));
 
         assert_eq!(result.passed_assertions(), 2);
         assert_eq!(result.failed_assertions(), 1);
@@ -1067,7 +1070,12 @@ mod tests {
 
     #[test]
     fn test_load_test_error() {
-        let error = LoadTestError::new("endpoint", LoadTestErrorKind::Timeout, "Request timed out", 45);
+        let error = LoadTestError::new(
+            "endpoint",
+            LoadTestErrorKind::Timeout,
+            "Request timed out",
+            45,
+        );
         assert_eq!(error.endpoint, "endpoint");
         assert_eq!(error.kind, LoadTestErrorKind::Timeout);
         assert_eq!(error.time_secs, 45);
@@ -1103,7 +1111,9 @@ mod tests {
             avg_ms: 25,
         });
 
-        result.assertion_results.push(AssertionResult::passed("homepage", "status == 200", "200"));
+        result
+            .assertion_results
+            .push(AssertionResult::passed("homepage", "status == 200", "200"));
 
         let report = render_load_test_report(&result);
         assert!(report.contains("Test Scenario"));

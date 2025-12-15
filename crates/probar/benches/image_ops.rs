@@ -15,14 +15,26 @@ fn bench_color_contrast(c: &mut Criterion) {
     let mut group = c.benchmark_group("color_contrast");
 
     let color_pairs = vec![
-        (Color::new(0, 0, 0), Color::new(255, 255, 255), "black_white"),
+        (
+            Color::new(0, 0, 0),
+            Color::new(255, 255, 255),
+            "black_white",
+        ),
         (
             Color::new(33, 33, 33),
             Color::new(255, 255, 255),
             "dark_gray_white",
         ),
-        (Color::new(255, 0, 0), Color::new(255, 255, 255), "red_white"),
-        (Color::new(0, 128, 0), Color::new(255, 255, 255), "green_white"),
+        (
+            Color::new(255, 0, 0),
+            Color::new(255, 255, 255),
+            "red_white",
+        ),
+        (
+            Color::new(0, 128, 0),
+            Color::new(255, 255, 255),
+            "green_white",
+        ),
     ];
 
     for (fg, bg, name) in color_pairs {

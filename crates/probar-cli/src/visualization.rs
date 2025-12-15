@@ -78,7 +78,10 @@ pub struct DataPoint {
 impl DataPoint {
     /// Create a new data point
     pub fn new(timestamp_ms: u64, value: f64) -> Self {
-        Self { timestamp_ms, value }
+        Self {
+            timestamp_ms,
+            value,
+        }
     }
 }
 
@@ -208,7 +211,11 @@ impl StreamingHistogram {
 
     /// Get mean latency
     pub fn mean(&self) -> u64 {
-        if self.count == 0 { 0 } else { self.sum / self.count }
+        if self.count == 0 {
+            0
+        } else {
+            self.sum / self.count
+        }
     }
 
     /// Get count
@@ -218,7 +225,11 @@ impl StreamingHistogram {
 
     /// Get min
     pub fn min(&self) -> u64 {
-        if self.count == 0 { 0 } else { self.min }
+        if self.count == 0 {
+            0
+        } else {
+            self.min
+        }
     }
 
     /// Get max
@@ -505,13 +516,14 @@ pub fn render_dashboard(state: &DashboardState) -> String {
     ));
     out.push_str(&format!(
         "│  Users:      {:>4}  │  Error Rate: {:>5.2}%                              │\n",
-        state.metrics.active_users.current as u32,
-        state.metrics.error_rate.current
+        state.metrics.active_users.current as u32, state.metrics.error_rate.current
     ));
 
     // Endpoints table
     if !state.endpoints.is_empty() {
-        out.push_str("├─────────────────────────────────────────────────────────────────────────┤\n");
+        out.push_str(
+            "├─────────────────────────────────────────────────────────────────────────┤\n",
+        );
         out.push_str("│  Endpoint        │ Count   │ p50    │ p95    │ p99    │ Errors │\n");
         out.push_str("│──────────────────┼─────────┼────────┼────────┼────────┼────────│\n");
         for ep in &state.endpoints {
@@ -569,27 +581,57 @@ pub fn render_comparison(comp: &ReportComparison) -> String {
     out.push_str(&format!(
         "│ Throughput     │ {:>10} │ {:>10} │\n",
         format_change(comp.throughput_change),
-        if comp.throughput_change > 5.0 { "↑ Better" } else if comp.throughput_change < -5.0 { "↓ Worse" } else { "≈ Same" }
+        if comp.throughput_change > 5.0 {
+            "↑ Better"
+        } else if comp.throughput_change < -5.0 {
+            "↓ Worse"
+        } else {
+            "≈ Same"
+        }
     ));
     out.push_str(&format!(
         "│ p50 Latency    │ {:>10} │ {:>10} │\n",
         format_change(comp.p50_change),
-        if comp.p50_change < -5.0 { "↑ Better" } else if comp.p50_change > 5.0 { "↓ Worse" } else { "≈ Same" }
+        if comp.p50_change < -5.0 {
+            "↑ Better"
+        } else if comp.p50_change > 5.0 {
+            "↓ Worse"
+        } else {
+            "≈ Same"
+        }
     ));
     out.push_str(&format!(
         "│ p95 Latency    │ {:>10} │ {:>10} │\n",
         format_change(comp.p95_change),
-        if comp.p95_change < -5.0 { "↑ Better" } else if comp.p95_change > 5.0 { "↓ Worse" } else { "≈ Same" }
+        if comp.p95_change < -5.0 {
+            "↑ Better"
+        } else if comp.p95_change > 5.0 {
+            "↓ Worse"
+        } else {
+            "≈ Same"
+        }
     ));
     out.push_str(&format!(
         "│ p99 Latency    │ {:>10} │ {:>10} │\n",
         format_change(comp.p99_change),
-        if comp.p99_change < -5.0 { "↑ Better" } else if comp.p99_change > 5.0 { "↓ Worse" } else { "≈ Same" }
+        if comp.p99_change < -5.0 {
+            "↑ Better"
+        } else if comp.p99_change > 5.0 {
+            "↓ Worse"
+        } else {
+            "≈ Same"
+        }
     ));
     out.push_str(&format!(
         "│ Error Rate     │ {:>10} │ {:>10} │\n",
         format_change(comp.error_rate_change),
-        if comp.error_rate_change < -0.1 { "↑ Better" } else if comp.error_rate_change > 0.1 { "↓ Worse" } else { "≈ Same" }
+        if comp.error_rate_change < -0.1 {
+            "↑ Better"
+        } else if comp.error_rate_change > 0.1 {
+            "↓ Worse"
+        } else {
+            "≈ Same"
+        }
     ));
 
     out.push_str("└────────────────┴────────────┴────────────┘\n\n");
@@ -634,8 +676,14 @@ mod tests {
 
     #[test]
     fn test_export_format_from_extension() {
-        assert_eq!(ExportFormat::from_extension("msgpack"), Some(ExportFormat::MessagePack));
-        assert_eq!(ExportFormat::from_extension("JSON"), Some(ExportFormat::Json));
+        assert_eq!(
+            ExportFormat::from_extension("msgpack"),
+            Some(ExportFormat::MessagePack)
+        );
+        assert_eq!(
+            ExportFormat::from_extension("JSON"),
+            Some(ExportFormat::Json)
+        );
         assert_eq!(ExportFormat::from_extension("unknown"), None);
     }
 

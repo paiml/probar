@@ -439,7 +439,13 @@ impl TraceAnalysis {
         self.critical_path = spans
             .iter()
             .take(5)
-            .map(|s| format!("{} ({:.1}%)", s.name, s.duration_us as f64 / self.total_us as f64 * 100.0))
+            .map(|s| {
+                format!(
+                    "{} ({:.1}%)",
+                    s.name,
+                    s.duration_us as f64 / self.total_us as f64 * 100.0
+                )
+            })
             .collect();
     }
 
@@ -590,14 +596,22 @@ pub fn render_trace_report(analysis: &TraceAnalysis) -> String {
             analysis.critical_path.join(" → ")
         ));
     }
-    out.push_str("└──────────────────────────────────────────────────────────────────────────┘\n\n");
+    out.push_str(
+        "└──────────────────────────────────────────────────────────────────────────┘\n\n",
+    );
 
     // Syscall breakdown
     if !analysis.syscall_breakdown.is_empty() {
         out.push_str("SYSCALL BREAKDOWN\n");
-        out.push_str("┌─────────────────┬───────┬────────────┬──────────┬──────────┬────────────┐\n");
-        out.push_str("│ Syscall         │ Count │ Total Time │ Avg Time │ Max Time │ % of Total │\n");
-        out.push_str("├─────────────────┼───────┼────────────┼──────────┼──────────┼────────────┤\n");
+        out.push_str(
+            "┌─────────────────┬───────┬────────────┬──────────┬──────────┬────────────┐\n",
+        );
+        out.push_str(
+            "│ Syscall         │ Count │ Total Time │ Avg Time │ Max Time │ % of Total │\n",
+        );
+        out.push_str(
+            "├─────────────────┼───────┼────────────┼──────────┼──────────┼────────────┤\n",
+        );
 
         let mut stats: Vec<_> = analysis.syscall_breakdown.values().collect();
         stats.sort_by(|a, b| b.total_us.cmp(&a.total_us));
@@ -613,15 +627,23 @@ pub fn render_trace_report(analysis: &TraceAnalysis) -> String {
                 stat.percent
             ));
         }
-        out.push_str("└─────────────────┴───────┴────────────┴──────────┴──────────┴────────────┘\n\n");
+        out.push_str(
+            "└─────────────────┴───────┴────────────┴──────────┴──────────┴────────────┘\n\n",
+        );
     }
 
     // WASM events
     if !analysis.wasm_events.is_empty() {
         out.push_str("WASM-SPECIFIC EVENTS\n");
-        out.push_str("┌────────────────────┬──────────┬───────────────┬─────────────────────────┐\n");
-        out.push_str("│ Event              │ Duration │ Memory Impact │ Source Location         │\n");
-        out.push_str("├────────────────────┼──────────┼───────────────┼─────────────────────────┤\n");
+        out.push_str(
+            "┌────────────────────┬──────────┬───────────────┬─────────────────────────┐\n",
+        );
+        out.push_str(
+            "│ Event              │ Duration │ Memory Impact │ Source Location         │\n",
+        );
+        out.push_str(
+            "├────────────────────┼──────────┼───────────────┼─────────────────────────┤\n",
+        );
 
         for event in &analysis.wasm_events {
             let memory_str = if event.memory_impact >= 0 {
@@ -642,15 +664,23 @@ pub fn render_trace_report(analysis: &TraceAnalysis) -> String {
                 truncate(&source, 23)
             ));
         }
-        out.push_str("└────────────────────┴──────────┴───────────────┴─────────────────────────┘\n\n");
+        out.push_str(
+            "└────────────────────┴──────────┴───────────────┴─────────────────────────┘\n\n",
+        );
     }
 
     // Source hotspots
     if !analysis.source_hotspots.is_empty() {
         out.push_str("SOURCE CORRELATION (top hotspots)\n");
-        out.push_str("┌─────────────────────────┬─────────────────────┬───────┬───────┬───────────┐\n");
-        out.push_str("│ File:Line               │ Function            │ Time  │ Calls │ Suggestion│\n");
-        out.push_str("├─────────────────────────┼─────────────────────┼───────┼───────┼───────────┤\n");
+        out.push_str(
+            "┌─────────────────────────┬─────────────────────┬───────┬───────┬───────────┐\n",
+        );
+        out.push_str(
+            "│ File:Line               │ Function            │ Time  │ Calls │ Suggestion│\n",
+        );
+        out.push_str(
+            "├─────────────────────────┼─────────────────────┼───────┼───────┼───────────┤\n",
+        );
 
         for hotspot in analysis.source_hotspots.iter().take(5) {
             let file_line = format!("{}:{}", hotspot.file.display(), hotspot.line);
@@ -668,7 +698,9 @@ pub fn render_trace_report(analysis: &TraceAnalysis) -> String {
                 suggestion
             ));
         }
-        out.push_str("└─────────────────────────┴─────────────────────┴───────┴───────┴───────────┘\n");
+        out.push_str(
+            "└─────────────────────────┴─────────────────────┴───────┴───────┴───────────┘\n",
+        );
     }
 
     out
@@ -715,8 +747,8 @@ mod tests {
 
     #[test]
     fn test_trace_span() {
-        let span = TraceSpan::new("test", TraceCategory::Network, 1000, 500)
-            .with_metadata("key", "value");
+        let span =
+            TraceSpan::new("test", TraceCategory::Network, 1000, 500).with_metadata("key", "value");
 
         assert_eq!(span.end_us(), 1500);
         assert_eq!(span.duration_ms(), 0.5);
@@ -758,7 +790,9 @@ mod tests {
 
     #[test]
     fn test_optimization_suggestion() {
-        let suggestion = OptimizationSuggestion::UseSIMD { expected_speedup: 4.0 };
+        let suggestion = OptimizationSuggestion::UseSIMD {
+            expected_speedup: 4.0,
+        };
         assert_eq!(suggestion.hint(), "⚠ SIMD");
     }
 

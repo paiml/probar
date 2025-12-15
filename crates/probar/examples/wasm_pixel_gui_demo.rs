@@ -18,7 +18,7 @@
 //! - Nickolls et al. (2008): GPU parallel computing model
 
 use jugar_probar::pixel_coverage::{
-    ansi, GpuPixelBuffer, PcgRng, WasmDemoConfig, WasmPixelDemo, wilson_confidence_interval,
+    ansi, wilson_confidence_interval, GpuPixelBuffer, PcgRng, WasmDemoConfig, WasmPixelDemo,
 };
 use std::io::{self, Write};
 use std::time::Instant;
@@ -91,16 +91,36 @@ fn main() {
     // Show GPU status
     if demo.buffer.is_using_gpu() {
         if let Some(gpu_name) = GpuPixelBuffer::gpu_device_name() {
-            println!("  {}GPU: {} (ACCELERATED){}", ansi::PASS, gpu_name, ansi::RESET);
+            println!(
+                "  {}GPU: {} (ACCELERATED){}",
+                ansi::PASS,
+                gpu_name,
+                ansi::RESET
+            );
         } else {
-            println!("  {}GPU: Available (ACCELERATED){}", ansi::PASS, ansi::RESET);
+            println!(
+                "  {}GPU: Available (ACCELERATED){}",
+                ansi::PASS,
+                ansi::RESET
+            );
         }
     } else {
-        println!("  {}GPU: Not available (CPU fallback){}", ansi::WARN, ansi::RESET);
-        println!("  {}Hint: Compile with --features gpu for GPU acceleration{}", ansi::DIM, ansi::RESET);
+        println!(
+            "  {}GPU: Not available (CPU fallback){}",
+            ansi::WARN,
+            ansi::RESET
+        );
+        println!(
+            "  {}Hint: Compile with --features gpu for GPU acceleration{}",
+            ansi::DIM,
+            ansi::RESET
+        );
     }
 
-    println!("  Initial coverage: {:.2}%", demo.buffer.coverage_percentage() * 100.0);
+    println!(
+        "  Initial coverage: {:.2}%",
+        demo.buffer.coverage_percentage() * 100.0
+    );
     println!();
 
     // Phase 3: Random Fill Simulation
@@ -126,7 +146,11 @@ fn main() {
     println!("-----------------------------------");
     print_coverage_stats(&demo);
 
-    println!("\n{}✓ Demo completed successfully!{}", ansi::PASS, ansi::RESET);
+    println!(
+        "\n{}✓ Demo completed successfully!{}",
+        ansi::PASS,
+        ansi::RESET
+    );
 }
 
 fn verify_pcg_rng() {
@@ -142,7 +166,11 @@ fn verify_pcg_rng() {
     println!("    RNG2: {:?}", vals2);
     println!(
         "    {}Deterministic: {}{}",
-        if vals1 == vals2 { ansi::PASS } else { ansi::FAIL },
+        if vals1 == vals2 {
+            ansi::PASS
+        } else {
+            ansi::FAIL
+        },
         vals1 == vals2,
         ansi::RESET
     );
@@ -150,13 +178,21 @@ fn verify_pcg_rng() {
     // Test pixel hash
     let hash1 = PcgRng::hash_pixel(42, 1000, 5);
     let hash2 = PcgRng::hash_pixel(42, 1000, 5);
-    println!("  Pixel hash determinism: {} == {} = {}", hash1, hash2, hash1 == hash2);
+    println!(
+        "  Pixel hash determinism: {} == {} = {}",
+        hash1,
+        hash2,
+        hash1 == hash2
+    );
 
     // Test distribution
     let mut rng = PcgRng::new(12345);
     let samples: Vec<f32> = (0..1000).map(|_| rng.next_f32()).collect();
     let mean: f32 = samples.iter().sum::<f32>() / samples.len() as f32;
-    println!("  Distribution mean (1000 samples): {:.4} (expected ~0.5)", mean);
+    println!(
+        "  Distribution mean (1000 samples): {:.4} (expected ~0.5)",
+        mean
+    );
 }
 
 fn run_fill_simulation(demo: &mut WasmPixelDemo) {
@@ -196,7 +232,9 @@ fn run_fill_simulation(demo: &mut WasmPixelDemo) {
     );
     println!(
         "  Throughput: {:.1}M pixels/s",
-        (demo.buffer.total_pixels() as f64 * demo.frame_count() as f64) / elapsed.as_secs_f64() / 1_000_000.0
+        (demo.buffer.total_pixels() as f64 * demo.frame_count() as f64)
+            / elapsed.as_secs_f64()
+            / 1_000_000.0
     );
 }
 
@@ -263,7 +301,10 @@ fn render_terminal_heatmap(buffer: &GpuPixelBuffer) {
 
     let downsampled = buffer.downsample(term_width, term_height);
 
-    println!("  {}x{} -> {}x{} downsampled:", buffer.width, buffer.height, term_width, term_height);
+    println!(
+        "  {}x{} -> {}x{} downsampled:",
+        buffer.width, buffer.height, term_width, term_height
+    );
     println!();
 
     // Render using Unicode blocks
@@ -323,11 +364,11 @@ fn render_terminal_heatmap(buffer: &GpuPixelBuffer) {
 fn value_to_viridis(value: f32) -> (u8, u8, u8) {
     // Simplified viridis palette
     let colors = [
-        (68, 1, 84),     // 0.0 - dark purple
-        (59, 82, 139),   // 0.25 - blue
-        (33, 145, 140),  // 0.5 - teal
-        (93, 200, 99),   // 0.75 - green
-        (253, 231, 37),  // 1.0 - yellow
+        (68, 1, 84),    // 0.0 - dark purple
+        (59, 82, 139),  // 0.25 - blue
+        (33, 145, 140), // 0.5 - teal
+        (93, 200, 99),  // 0.75 - green
+        (253, 231, 37), // 1.0 - yellow
     ];
 
     let t = value.clamp(0.0, 1.0);
@@ -348,7 +389,12 @@ fn value_to_viridis(value: f32) -> (u8, u8, u8) {
 fn print_coverage_stats(demo: &WasmPixelDemo) {
     let stats = demo.stats();
 
-    println!("  Coverage: {:.2}% ({}/{} pixels)", stats.percentage * 100.0, stats.covered, stats.total);
+    println!(
+        "  Coverage: {:.2}% ({}/{} pixels)",
+        stats.percentage * 100.0,
+        stats.covered,
+        stats.total
+    );
     println!(
         "  Wilson 95% CI: [{:.2}%, {:.2}%]",
         stats.wilson_ci.lower * 100.0,

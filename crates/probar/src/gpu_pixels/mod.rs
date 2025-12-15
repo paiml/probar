@@ -26,15 +26,11 @@ mod ptx_analysis;
 mod regression;
 
 pub use kernel_pixels::{
-    GpuPixelResult, GpuPixelTest, GpuPixelTestSuite, KernelPixelConfig,
-    standard_pixel_tests,
+    standard_pixel_tests, GpuPixelResult, GpuPixelTest, GpuPixelTestSuite, KernelPixelConfig,
 };
-pub use ptx_analysis::{
-    PtxAnalyzer, PtxBug, PtxBugClass, PtxValidationResult,
-};
+pub use ptx_analysis::{PtxAnalyzer, PtxBug, PtxBugClass, PtxValidationResult};
 pub use regression::{
-    GpuRegressionSuite, RegressionConfig, RegressionResult,
-    run_regression_suite,
+    run_regression_suite, GpuRegressionSuite, RegressionConfig, RegressionResult,
 };
 
 /// Quick validation of PTX for common GPU kernel bugs
@@ -121,7 +117,10 @@ mod tests {
 "#;
         let result = validate_ptx(ptx);
         assert!(!result.is_valid());
-        assert!(result.bugs.iter().any(|b| matches!(b.class, PtxBugClass::SharedMemU64Addressing)));
+        assert!(result
+            .bugs
+            .iter()
+            .any(|b| matches!(b.class, PtxBugClass::SharedMemU64Addressing)));
     }
 
     #[test]
@@ -142,6 +141,9 @@ mod tests {
 "#;
         let result = validate_ptx(ptx);
         // Should not have shared memory addressing bug
-        assert!(!result.bugs.iter().any(|b| matches!(b.class, PtxBugClass::SharedMemU64Addressing)));
+        assert!(!result
+            .bugs
+            .iter()
+            .any(|b| matches!(b.class, PtxBugClass::SharedMemU64Addressing)));
     }
 }

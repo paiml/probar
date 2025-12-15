@@ -82,7 +82,11 @@ pub struct LintResult {
 
 impl LintResult {
     /// Create a new lint error
-    pub fn error(file: impl Into<PathBuf>, code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn error(
+        file: impl Into<PathBuf>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             file: file.into(),
             line: None,
@@ -95,7 +99,11 @@ impl LintResult {
     }
 
     /// Create a new lint warning
-    pub fn warning(file: impl Into<PathBuf>, code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn warning(
+        file: impl Into<PathBuf>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             file: file.into(),
             line: None,
@@ -108,7 +116,11 @@ impl LintResult {
     }
 
     /// Create a new lint info
-    pub fn info(file: impl Into<PathBuf>, code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn info(
+        file: impl Into<PathBuf>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             file: file.into(),
             line: None,
@@ -279,7 +291,10 @@ impl ContentLinter {
 
     fn is_lintable(&self, path: &Path) -> bool {
         let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        matches!(extension, "html" | "htm" | "css" | "js" | "mjs" | "wasm" | "json")
+        matches!(
+            extension,
+            "html" | "htm" | "css" | "js" | "mjs" | "wasm" | "json"
+        )
     }
 
     fn lint_html_file(&self, path: &Path) -> Vec<LintResult> {
@@ -288,17 +303,25 @@ impl ContentLinter {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) => {
-                results.push(LintResult::error(path, "HTML000", format!("Cannot read file: {e}")));
+                results.push(LintResult::error(
+                    path,
+                    "HTML000",
+                    format!("Cannot read file: {e}"),
+                ));
                 return results;
             }
         };
 
         // Check for DOCTYPE
-        if !content.trim_start().to_lowercase().starts_with("<!doctype html") {
+        if !content
+            .trim_start()
+            .to_lowercase()
+            .starts_with("<!doctype html")
+        {
             results.push(
                 LintResult::warning(path, "HTML001", "Missing <!DOCTYPE html> declaration")
                     .at_line(1)
-                    .with_suggestion("Add <!DOCTYPE html> at the start of the file")
+                    .with_suggestion("Add <!DOCTYPE html> at the start of the file"),
             );
         }
 
@@ -308,19 +331,32 @@ impl ContentLinter {
             results.push(LintResult::error(path, "HTML002", "Missing <html> element"));
         }
         if !content_lower.contains("<head") {
-            results.push(LintResult::warning(path, "HTML003", "Missing <head> element"));
+            results.push(LintResult::warning(
+                path,
+                "HTML003",
+                "Missing <head> element",
+            ));
         }
         if !content_lower.contains("<body") {
-            results.push(LintResult::warning(path, "HTML004", "Missing <body> element"));
+            results.push(LintResult::warning(
+                path,
+                "HTML004",
+                "Missing <body> element",
+            ));
         }
 
         // Check for unclosed tags (simple heuristic)
         let open_divs = content_lower.matches("<div").count();
         let close_divs = content_lower.matches("</div>").count();
         if open_divs != close_divs {
-            results.push(
-                LintResult::warning(path, "HTML005", format!("Mismatched <div> tags: {} open, {} close", open_divs, close_divs))
-            );
+            results.push(LintResult::warning(
+                path,
+                "HTML005",
+                format!(
+                    "Mismatched <div> tags: {} open, {} close",
+                    open_divs, close_divs
+                ),
+            ));
         }
 
         // Check for images without alt
@@ -330,7 +366,7 @@ impl ContentLinter {
                 results.push(
                     LintResult::warning(path, "HTML006", "<img> tag missing alt attribute")
                         .at_line((line_num + 1) as u32)
-                        .with_suggestion("Add alt attribute for accessibility")
+                        .with_suggestion("Add alt attribute for accessibility"),
                 );
             }
         }
@@ -344,7 +380,11 @@ impl ContentLinter {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) => {
-                results.push(LintResult::error(path, "CSS000", format!("Cannot read file: {e}")));
+                results.push(LintResult::error(
+                    path,
+                    "CSS000",
+                    format!("Cannot read file: {e}"),
+                ));
                 return results;
             }
         };
@@ -353,9 +393,14 @@ impl ContentLinter {
         let open_braces = content.matches('{').count();
         let close_braces = content.matches('}').count();
         if open_braces != close_braces {
-            results.push(
-                LintResult::error(path, "CSS001", format!("Mismatched braces: {} open, {} close", open_braces, close_braces))
-            );
+            results.push(LintResult::error(
+                path,
+                "CSS001",
+                format!(
+                    "Mismatched braces: {} open, {} close",
+                    open_braces, close_braces
+                ),
+            ));
         }
 
         // Check for vendor prefixes without standard property
@@ -369,7 +414,7 @@ impl ContentLinter {
                 results.push(
                     LintResult::info(path, "CSS002", format!("Vendor prefix {} used", prop))
                         .at_line((line_num + 1) as u32)
-                        .with_suggestion(format!("Also include standard property: {}", standard))
+                        .with_suggestion(format!("Also include standard property: {}", standard)),
                 );
             }
 
@@ -377,7 +422,7 @@ impl ContentLinter {
             if trimmed == "{}" {
                 results.push(
                     LintResult::warning(path, "CSS003", "Empty CSS rule")
-                        .at_line((line_num + 1) as u32)
+                        .at_line((line_num + 1) as u32),
                 );
             }
         }
@@ -391,7 +436,11 @@ impl ContentLinter {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) => {
-                results.push(LintResult::error(path, "JS000", format!("Cannot read file: {e}")));
+                results.push(LintResult::error(
+                    path,
+                    "JS000",
+                    format!("Cannot read file: {e}"),
+                ));
                 return results;
             }
         };
@@ -400,17 +449,27 @@ impl ContentLinter {
         let open_braces = content.matches('{').count();
         let close_braces = content.matches('}').count();
         if open_braces != close_braces {
-            results.push(
-                LintResult::error(path, "JS001", format!("Mismatched braces: {} open, {} close", open_braces, close_braces))
-            );
+            results.push(LintResult::error(
+                path,
+                "JS001",
+                format!(
+                    "Mismatched braces: {} open, {} close",
+                    open_braces, close_braces
+                ),
+            ));
         }
 
         let open_parens = content.matches('(').count();
         let close_parens = content.matches(')').count();
         if open_parens != close_parens {
-            results.push(
-                LintResult::error(path, "JS002", format!("Mismatched parentheses: {} open, {} close", open_parens, close_parens))
-            );
+            results.push(LintResult::error(
+                path,
+                "JS002",
+                format!(
+                    "Mismatched parentheses: {} open, {} close",
+                    open_parens, close_parens
+                ),
+            ));
         }
 
         // Check for common issues
@@ -420,7 +479,7 @@ impl ContentLinter {
                 results.push(
                     LintResult::info(path, "JS003", "console.log found")
                         .at_line((line_num + 1) as u32)
-                        .with_suggestion("Remove console.log before production")
+                        .with_suggestion("Remove console.log before production"),
                 );
             }
 
@@ -429,7 +488,7 @@ impl ContentLinter {
                 results.push(
                     LintResult::warning(path, "JS004", "debugger statement found")
                         .at_line((line_num + 1) as u32)
-                        .with_suggestion("Remove debugger statements before production")
+                        .with_suggestion("Remove debugger statements before production"),
                 );
             }
         }
@@ -443,14 +502,22 @@ impl ContentLinter {
         let content = match std::fs::read(path) {
             Ok(c) => c,
             Err(e) => {
-                results.push(LintResult::error(path, "WASM000", format!("Cannot read file: {e}")));
+                results.push(LintResult::error(
+                    path,
+                    "WASM000",
+                    format!("Cannot read file: {e}"),
+                ));
                 return results;
             }
         };
 
         // Check WASM magic number
         if content.len() < 8 {
-            results.push(LintResult::error(path, "WASM001", "File too small to be valid WASM"));
+            results.push(LintResult::error(
+                path,
+                "WASM001",
+                "File too small to be valid WASM",
+            ));
             return results;
         }
 
@@ -458,16 +525,18 @@ impl ContentLinter {
         if content[0..4] != [0x00, 0x61, 0x73, 0x6D] {
             results.push(
                 LintResult::error(path, "WASM002", "Invalid WASM magic number")
-                    .with_suggestion("File does not appear to be a valid WebAssembly module")
+                    .with_suggestion("File does not appear to be a valid WebAssembly module"),
             );
         }
 
         // Check version (should be 0x01 0x00 0x00 0x00 for version 1)
         if content[4..8] != [0x01, 0x00, 0x00, 0x00] {
             let version = u32::from_le_bytes([content[4], content[5], content[6], content[7]]);
-            results.push(
-                LintResult::warning(path, "WASM003", format!("Unexpected WASM version: {}", version))
-            );
+            results.push(LintResult::warning(
+                path,
+                "WASM003",
+                format!("Unexpected WASM version: {}", version),
+            ));
         }
 
         results
@@ -479,7 +548,11 @@ impl ContentLinter {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) => {
-                results.push(LintResult::error(path, "JSON000", format!("Cannot read file: {e}")));
+                results.push(LintResult::error(
+                    path,
+                    "JSON000",
+                    format!("Cannot read file: {e}"),
+                ));
                 return results;
             }
         };
@@ -491,7 +564,7 @@ impl ContentLinter {
             results.push(
                 LintResult::error(path, "JSON001", format!("Invalid JSON: {}", e))
                     .at_line(line as u32)
-                    .at_column(column as u32)
+                    .at_column(column as u32),
             );
         }
 
@@ -510,7 +583,8 @@ pub fn render_lint_report(report: &LintReport) -> String {
         output.push_str("✓ All files passed linting\n");
     } else {
         // Group by file
-        let mut by_file: std::collections::HashMap<&Path, Vec<&LintResult>> = std::collections::HashMap::new();
+        let mut by_file: std::collections::HashMap<&Path, Vec<&LintResult>> =
+            std::collections::HashMap::new();
         for result in &report.results {
             by_file.entry(&result.file).or_default().push(result);
         }
@@ -629,7 +703,11 @@ mod tests {
     fn test_lint_html_valid() {
         let temp = TempDir::new().unwrap();
         let html_path = temp.path().join("test.html");
-        std::fs::write(&html_path, "<!DOCTYPE html><html><head></head><body></body></html>").unwrap();
+        std::fs::write(
+            &html_path,
+            "<!DOCTYPE html><html><head></head><body></body></html>",
+        )
+        .unwrap();
 
         let linter = ContentLinter::new(temp.path());
         let results = linter.lint_file(&html_path);
@@ -641,7 +719,11 @@ mod tests {
     fn test_lint_html_missing_alt() {
         let temp = TempDir::new().unwrap();
         let html_path = temp.path().join("test.html");
-        std::fs::write(&html_path, "<!DOCTYPE html><html><head></head><body><img src=\"test.png\"></body></html>").unwrap();
+        std::fs::write(
+            &html_path,
+            "<!DOCTYPE html><html><head></head><body><img src=\"test.png\"></body></html>",
+        )
+        .unwrap();
 
         let linter = ContentLinter::new(temp.path());
         let results = linter.lint_file(&html_path);

@@ -90,10 +90,7 @@ machine:
     );
 
     for i in 0..states {
-        yaml.push_str(&format!(
-            "    state_{}:\n      id: \"state_{}\"\n",
-            i, i
-        ));
+        yaml.push_str(&format!("    state_{}:\n      id: \"state_{}\"\n", i, i));
         if i == states - 1 {
             yaml.push_str("      final_state: true\n");
         }
@@ -155,17 +152,13 @@ fn bench_state_machine_validation(c: &mut Criterion) {
     ];
 
     for (name, playbook) in playbooks {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(name),
-            &playbook,
-            |bench, pb| {
-                bench.iter(|| {
-                    let validator = StateMachineValidator::new(black_box(pb));
-                    let result = validator.validate();
-                    black_box(result);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(name), &playbook, |bench, pb| {
+            bench.iter(|| {
+                let validator = StateMachineValidator::new(black_box(pb));
+                let result = validator.validate();
+                black_box(result);
+            });
+        });
     }
 
     group.finish();
@@ -188,16 +181,12 @@ fn bench_dot_generation(c: &mut Criterion) {
     ];
 
     for (name, playbook) in playbooks {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(name),
-            &playbook,
-            |bench, pb| {
-                bench.iter(|| {
-                    let dot = to_dot(black_box(pb));
-                    black_box(dot);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(name), &playbook, |bench, pb| {
+            bench.iter(|| {
+                let dot = to_dot(black_box(pb));
+                black_box(dot);
+            });
+        });
     }
 
     group.finish();
@@ -216,16 +205,12 @@ fn bench_svg_generation(c: &mut Criterion) {
     ];
 
     for (name, playbook) in playbooks {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(name),
-            &playbook,
-            |bench, pb| {
-                bench.iter(|| {
-                    let svg = to_svg(black_box(pb));
-                    black_box(svg);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(name), &playbook, |bench, pb| {
+            bench.iter(|| {
+                let svg = to_svg(black_box(pb));
+                black_box(svg);
+            });
+        });
     }
 
     group.finish();
@@ -244,17 +229,13 @@ fn bench_mutation_generation(c: &mut Criterion) {
     ];
 
     for (name, playbook) in playbooks {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(name),
-            &playbook,
-            |bench, pb| {
-                bench.iter(|| {
-                    let generator = MutationGenerator::new(black_box(pb));
-                    let mutants = generator.generate_all();
-                    black_box(mutants);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(name), &playbook, |bench, pb| {
+            bench.iter(|| {
+                let generator = MutationGenerator::new(black_box(pb));
+                let mutants = generator.generate_all();
+                black_box(mutants);
+            });
+        });
     }
 
     group.finish();

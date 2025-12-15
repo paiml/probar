@@ -41,6 +41,15 @@ pub use dev_server::{
     ImportValidationError, ModuleValidationResult, ModuleValidator,
 };
 pub use error::{CliError, CliResult};
+pub use lint::{
+    render_lint_json, render_lint_report, ContentLinter, LintReport, LintResult, LintSeverity,
+};
+pub use load_testing::{
+    render_load_test_json, render_load_test_report, AssertionResult as LoadAssertionResult,
+    EndpointStats, HttpMethod, LatencyHistogram, LoadTestAssertion, LoadTestConfig, LoadTestError,
+    LoadTestErrorKind, LoadTestOutputFormat, LoadTestRequest, LoadTestResult, LoadTestScenario,
+    LoadTestStage, ResourceUsage, UserConfig,
+};
 pub use output::{OutputFormat, ProgressReporter};
 pub use runner::TestRunner;
 pub use score::{
@@ -48,41 +57,34 @@ pub use score::{
     ScoreCalculator,
 };
 pub use tree::{build_tree, display_tree, render_tree, FileNode, TreeConfig};
-pub use lint::{ContentLinter, LintReport, LintResult, LintSeverity, render_lint_report, render_lint_json};
 pub use wasm_testing::{
-    Browser, BrowserMatrix, BrowserTestResult, ComparisonStatus, KeyModifiers, MemoryGrowthEvent,
-    MemoryProfile, MemorySnapshot, PerformanceBaseline, PerformanceComparison, PerformanceMetric,
-    RecordedEvent, Recording, RecordingMetadata, Viewport, compare_performance,
-    render_performance_report,
-};
-pub use load_testing::{
-    AssertionResult as LoadAssertionResult, EndpointStats, HttpMethod, LatencyHistogram,
-    LoadTestAssertion, LoadTestConfig, LoadTestError, LoadTestErrorKind, LoadTestOutputFormat,
-    LoadTestRequest, LoadTestResult, LoadTestScenario, LoadTestStage, ResourceUsage, UserConfig,
-    render_load_test_json, render_load_test_report,
+    compare_performance, render_performance_report, Browser, BrowserMatrix, BrowserTestResult,
+    ComparisonStatus, KeyModifiers, MemoryGrowthEvent, MemoryProfile, MemorySnapshot,
+    PerformanceBaseline, PerformanceComparison, PerformanceMetric, RecordedEvent, Recording,
+    RecordingMetadata, Viewport,
 };
 // PROBAR-SPEC-006 Section H: Enhanced Visualization
 pub use visualization::{
-    ComparisonVerdict, DashboardState, DataPoint, EndpointMetrics, ExportFormat, MetricsStream,
-    ReportComparison, ReportViewerConfig, StageInfo, StreamingHistogram, TimeSeries,
-    render_comparison, render_dashboard,
+    render_comparison, render_dashboard, ComparisonVerdict, DashboardState, DataPoint,
+    EndpointMetrics, ExportFormat, MetricsStream, ReportComparison, ReportViewerConfig, StageInfo,
+    StreamingHistogram, TimeSeries,
 };
 // PROBAR-SPEC-006 Section I: Statistical Analysis
 pub use statistics::{
-    ApdexCalculator, ApdexRating, KneeDetector, LatencySample, QuantileRegression,
-    StatisticalAnalysis, TailAttribution, VarianceComponent, VarianceTree,
-    render_statistical_json, render_statistical_report,
+    render_statistical_json, render_statistical_report, ApdexCalculator, ApdexRating, KneeDetector,
+    LatencySample, QuantileRegression, StatisticalAnalysis, TailAttribution, VarianceComponent,
+    VarianceTree,
 };
 // PROBAR-SPEC-006 Section J: Deep Tracing
 pub use tracing::{
-    Flamegraph, FlamegraphNode, OptimizationSuggestion, SourceHotspot, SourceLocation,
-    SyscallStats, TraceAnalysis, TraceCategory, TraceConfig, TraceSpan, WasmEvent, WasmEventType,
-    render_trace_json, render_trace_report,
+    render_trace_json, render_trace_report, Flamegraph, FlamegraphNode, OptimizationSuggestion,
+    SourceHotspot, SourceLocation, SyscallStats, TraceAnalysis, TraceCategory, TraceConfig,
+    TraceSpan, WasmEvent, WasmEventType,
 };
 // PROBAR-SPEC-006 Section K: Simulation Playback
 pub use simulation::{
-    ChaosObservation, ChaosResult, Distribution, FailureInjection, ImpactLevel, InjectionType,
-    LatencyDistribution, MonteCarloResult, ObservationSeverity, ParameterVariation, RiskLevel,
-    SensitivityFactor, SimulationConfig, SimulationMode, SimulationOutput, SlaProbability,
-    render_chaos_report, render_monte_carlo_json, render_monte_carlo_report,
+    render_chaos_report, render_monte_carlo_json, render_monte_carlo_report, ChaosObservation,
+    ChaosResult, Distribution, FailureInjection, ImpactLevel, InjectionType, LatencyDistribution,
+    MonteCarloResult, ObservationSeverity, ParameterVariation, RiskLevel, SensitivityFactor,
+    SimulationConfig, SimulationMode, SimulationOutput, SlaProbability,
 };

@@ -336,7 +336,11 @@ mod tests {
     fn test_suite_has_failure() {
         let mut suite = GpuPixelTestSuite::new("test_kernel");
         suite.add_result(GpuPixelResult::pass("test1", Duration::from_millis(1)));
-        suite.add_result(GpuPixelResult::fail("test2", "error", Duration::from_millis(2)));
+        suite.add_result(GpuPixelResult::fail(
+            "test2",
+            "error",
+            Duration::from_millis(2),
+        ));
         assert!(!suite.all_passed());
         assert_eq!(suite.passed_count(), 1);
         assert_eq!(suite.failed_count(), 1);

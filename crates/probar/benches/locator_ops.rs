@@ -25,12 +25,16 @@ fn bench_selector_parsing(c: &mut Criterion) {
     ];
 
     for (name, selector) in selectors {
-        group.bench_with_input(BenchmarkId::from_parameter(name), &selector, |bench, sel| {
-            bench.iter(|| {
-                let parsed = Selector::css(black_box(*sel));
-                black_box(parsed);
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::from_parameter(name),
+            &selector,
+            |bench, sel| {
+                bench.iter(|| {
+                    let parsed = Selector::css(black_box(*sel));
+                    black_box(parsed);
+                });
+            },
+        );
     }
 
     group.finish();
@@ -107,7 +111,10 @@ fn bench_locator_filtering(c: &mut Criterion) {
     let filters = vec![
         ("has_text_short", "OK"),
         ("has_text_medium", "Submit Form"),
-        ("has_text_long", "Click here to submit the form and continue"),
+        (
+            "has_text_long",
+            "Click here to submit the form and continue",
+        ),
     ];
 
     for (name, filter_text) in filters {
@@ -155,7 +162,10 @@ fn bench_selector_to_query(c: &mut Criterion) {
 
     let selectors = vec![
         ("simple", Selector::css("#btn")),
-        ("complex", Selector::css("div.container > button.btn-primary")),
+        (
+            "complex",
+            Selector::css("div.container > button.btn-primary"),
+        ),
         ("text", Selector::text("Submit")),
         ("role", Selector::role("button")),
         ("test_id", Selector::test_id("submit-btn")),
