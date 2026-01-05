@@ -52,6 +52,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::broadcast;
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
 
 /// Hot reload message sent to connected clients (JSON serializable)
@@ -373,6 +374,9 @@ impl DevServer {
             app
         };
 
+        // Add gzip compression for better WASM transfer speeds
+        let app = app.layer(CompressionLayer::new().gzip(true));
+
         let addr = SocketAddr::from(([0, 0, 0, 0], self.config.port));
 
         println!("╔══════════════════════════════════════════════════════════════╗");
@@ -409,6 +413,7 @@ impl DevServer {
                 "disabled"
             }
         );
+        println!("║  Gzip:      {:<48}║", "enabled (auto-compression)");
         println!("╠══════════════════════════════════════════════════════════════╣");
         println!("║  Press Ctrl+C to stop                                        ║");
         println!("╚══════════════════════════════════════════════════════════════╝");
@@ -558,9 +563,15 @@ async fn serve_index(directory: Arc<PathBuf>) -> Response {
 /// Serve static file based on URI
 ///
 /// Handles directory requests by serving index.html if it exists.
+/// Properly handles both `/dir/` and `/dir` paths.
 async fn serve_static(directory: Arc<PathBuf>, uri: axum::http::Uri) -> Response {
-    let path = uri.path().trim_start_matches('/');
-    let file_path = directory.join(path);
+    // Trim both leading and trailing slashes to normalize path
+    let path = uri.path().trim_start_matches('/').trim_end_matches('/');
+    let file_path = if path.is_empty() {
+        directory.as_ref().clone()
+    } else {
+        directory.join(path)
+    };
 
     // If path is a directory, try to serve index.html
     if file_path.is_dir() {
@@ -568,6 +579,12 @@ async fn serve_static(directory: Arc<PathBuf>, uri: axum::http::Uri) -> Response
         if index_path.exists() {
             return serve_file(&index_path).await;
         }
+        // Return 404 for directories without index.html
+        return (
+            StatusCode::NOT_FOUND,
+            format!("No index.html found in directory: {}", file_path.display()),
+        )
+            .into_response();
     }
 
     serve_file(&file_path).await
