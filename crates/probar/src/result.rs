@@ -77,6 +77,15 @@ pub enum ProbarError {
         message: String,
     },
 
+    /// Element not found error
+    #[error("Element not found: {selector} - {message}")]
+    ElementNotFound {
+        /// CSS selector
+        selector: String,
+        /// Error message
+        message: String,
+    },
+
     /// Assertion failed
     #[error("Assertion failed: {message}")]
     AssertionFailed {

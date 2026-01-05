@@ -643,6 +643,93 @@ mod cdp {
         }
 
         // ====================================================================
+        // CDP Access Methods (Issue #18)
+        // ====================================================================
+
+        /// Get access to the underlying CDP page for advanced operations
+        ///
+        /// This allows using CDP-specific methods from capabilities, validators,
+        /// and emulation modules that require direct chromiumoxide::Page access.
+        ///
+        /// # Returns
+        ///
+        /// Returns `Some` with the locked CDP page if a real browser is connected,
+        /// or `None` if this is a mock page.
+        ///
+        /// # Example
+        ///
+        /// ```ignore
+        /// use probar::{Browser, BrowserConfig};
+        /// use probar::capabilities::WasmThreadCapabilities;
+        ///
+        /// let browser = Browser::launch(BrowserConfig::default()).await?;
+        /// let page = browser.new_page().await?;
+        ///
+        /// if let Some(cdp) = page.cdp_page().await {
+        ///     let caps = WasmThreadCapabilities::detect(&*cdp).await?;
+        /// }
+        /// ```
+        pub async fn cdp_page(&self) -> Option<tokio::sync::MutexGuard<'_, CdpPage>> {
+            if let Some(ref inner) = self.inner {
+                Some(inner.lock().await)
+            } else {
+                None
+            }
+        }
+
+        /// Click an element by CSS selector
+        ///
+        /// # Errors
+        ///
+        /// Returns error if element not found or click fails
+        pub async fn click(&self, selector: &str) -> ProbarResult<()> {
+            if let Some(ref inner) = self.inner {
+                let page = inner.lock().await;
+                // Find element and click it
+                let element = page.find_element(selector).await.map_err(|e| {
+                    ProbarError::ElementNotFound {
+                        selector: selector.to_string(),
+                        message: e.to_string(),
+                    }
+                })?;
+                element
+                    .click()
+                    .await
+                    .map_err(|e| ProbarError::ElementNotFound {
+                        selector: selector.to_string(),
+                        message: format!("Click failed: {e}"),
+                    })?;
+                Ok(())
+            } else {
+                // Mock mode - no-op
+                Ok(())
+            }
+        }
+
+        /// Evaluate JavaScript expression and return the result
+        ///
+        /// # Errors
+        ///
+        /// Returns error if evaluation fails
+        pub async fn evaluate(
+            &self,
+            expression: &str,
+        ) -> ProbarResult<chromiumoxide::js::EvaluationResult> {
+            if let Some(ref inner) = self.inner {
+                let page = inner.lock().await;
+                page.evaluate(expression)
+                    .await
+                    .map_err(|e| ProbarError::WasmError {
+                        message: format!("Evaluate failed: {e}"),
+                    })
+            } else {
+                Err(ProbarError::WasmError {
+                    message: "Cannot evaluate on mock page".to_string(),
+                })
+            }
+        }
+
+        // ====================================================================
         // Console Capture Methods (Issue #8)
         // ====================================================================
 
