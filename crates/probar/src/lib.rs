@@ -19,8 +19,8 @@
 
 #![warn(missing_docs)]
 // Lints are configured in workspace Cargo.toml [workspace.lints.clippy]
-// Allow large stack arrays in tests (e.g., test data generation)
-#![cfg_attr(test, allow(clippy::large_stack_arrays))]
+// Allow large stack arrays/frames in tests (e.g., test data generation)
+#![cfg_attr(test, allow(clippy::large_stack_arrays, clippy::large_stack_frames))]
 
 #[allow(
     clippy::suboptimal_flops,
@@ -322,6 +322,33 @@ pub mod shard;
 )]
 pub mod clock;
 
+/// WASM Thread Capabilities Detection (Advanced Testing Concepts)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod capabilities;
+
+/// WASM Strict Mode Enforcement (Advanced Testing Concepts)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod strict;
+
+/// Streaming UX Validators (Advanced Testing Concepts)
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod validators;
+
 /// Dialog Handling for E2E Testing (Feature G.8)
 #[allow(
     clippy::missing_errors_doc,
@@ -382,6 +409,10 @@ pub use bridge::{
     StateBridge, VisualDiff,
 };
 pub use browser::{Browser, BrowserConfig, BrowserConsoleLevel, BrowserConsoleMessage, Page};
+pub use capabilities::{
+    CapabilityError, CapabilityStatus, RequiredHeaders, WasmThreadCapabilities, WorkerEmulator,
+    WorkerMessage, WorkerState,
+};
 pub use cdp_coverage::{
     CoverageConfig, CoverageRange, CoverageReport, CoveredFunction, FunctionCoverage, JsCoverage,
     LineCoverage, ScriptCoverage, SourceMapEntry, WasmCoverage, WasmSourceMap,
@@ -467,6 +498,10 @@ pub use simulation::{
     SimulationConfig, SimulationRecording,
 };
 pub use snapshot::{Snapshot, SnapshotConfig, SnapshotDiff};
+pub use strict::{
+    ChecklistError, ConsoleCapture, ConsoleSeverity, ConsoleValidationError, E2ETestChecklist,
+    WasmStrictMode,
+};
 pub use tracing_support::{
     ConsoleLevel, ConsoleMessage, EventCategory, EventLevel, ExecutionTracer, NetworkEvent,
     SpanStatus, TraceArchive, TraceMetadata, TracedEvent, TracedSpan, TracingConfig,
@@ -479,6 +514,11 @@ pub use tui::{
 pub use ux_coverage::{
     calculator_coverage, game_coverage, ElementCoverage, ElementId, InteractionType, StateId,
     TrackedInteraction, UxCoverageBuilder, UxCoverageReport, UxCoverageTracker,
+};
+pub use validators::{
+    CompressionAlgorithm, PartialResult, ScreenshotContent, StateTransition, StreamingMetric,
+    StreamingMetricRecord, StreamingState, StreamingUxValidator, StreamingValidationError,
+    StreamingValidationResult, TestExecutionStats, VuMeterConfig, VuMeterError, VuMeterSample,
 };
 pub use visual_regression::{
     perceptual_diff, ImageDiffResult, VisualRegressionConfig, VisualRegressionTester,
@@ -503,6 +543,7 @@ pub mod prelude {
     pub use super::assertion::*;
     pub use super::bridge::*;
     pub use super::browser::*;
+    pub use super::capabilities::*;
     pub use super::clock::*;
     pub use super::context::*;
     pub use super::dialog::*;
@@ -528,10 +569,17 @@ pub mod prelude {
     pub use super::shard::*;
     pub use super::simulation::*;
     pub use super::snapshot::*;
+    // Note: strict::ConsoleMessage conflicts with tracing_support::ConsoleMessage
+    // Use explicit imports instead of glob
+    pub use super::strict::{
+        ChecklistError, ConsoleCapture, ConsoleSeverity, ConsoleValidationError, E2ETestChecklist,
+        WasmStrictMode,
+    };
     pub use super::tracing_support::*;
     #[cfg(feature = "tui")]
     pub use super::tui::*;
     pub use super::ux_coverage::*;
+    pub use super::validators::*;
     pub use super::visual_regression::*;
     pub use super::wait::{
         wait_timeout, wait_until, FnCondition, LoadState, NavigationOptions, PageEvent,

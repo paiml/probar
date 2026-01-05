@@ -28,10 +28,12 @@ pub mod visualization;
 pub mod wasm_testing;
 
 pub use commands::{
-    BuildArgs, Cli, Commands, ConfigArgs, CoverageArgs, DiagramFormat, InitArgs, PaletteArg,
-    PlaybookArgs, PlaybookOutputFormat, RecordArgs, RecordFormat, ReportArgs, ReportFormat,
-    ScoreArgs, ScoreOutputFormat, ServeArgs, ServeSubcommand, TestArgs, TreeArgs, VizArgs,
-    WasmTarget, WatchArgs,
+    BuildArgs, Cli, Commands, ComplyArgs, ComplyCheckArgs, ComplyDiffArgs, ComplyEnforceArgs,
+    ComplyMigrateArgs, ComplyOutputFormat, ComplyReportArgs, ComplyReportFormat, ComplySubcommand,
+    ConfigArgs, CoverageArgs, DiagramFormat, InitArgs, PaletteArg, PlaybookArgs,
+    PlaybookOutputFormat, RecordArgs, RecordFormat, ReportArgs, ReportFormat, ScoreArgs,
+    ScoreOutputFormat, ServeArgs, ServeSubcommand, TestArgs, TreeArgs, VizArgs, WasmTarget,
+    WatchArgs,
 };
 pub use config::{CliConfig, ColorChoice, Verbosity};
 pub use debug::{create_tracer, DebugCategory, DebugTracer, DebugVerbosity, ResolutionRule};

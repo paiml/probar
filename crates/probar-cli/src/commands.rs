@@ -58,6 +58,21 @@ pub enum Commands {
 
     /// Run state machine playbooks
     Playbook(PlaybookArgs),
+
+    /// Run WASM compliance checks (C001-C010)
+    ///
+    /// Validates WASM application against Probar's compliance checklist:
+    /// - C001: Code execution verified (not just mocked HTML)
+    /// - C002: Console errors cause test failure
+    /// - C003: Custom elements tested
+    /// - C004: Both threading/non-threading modes tested
+    /// - C005: Low memory scenario tested
+    /// - C006: COOP/COEP headers present
+    /// - C007: Replay hash matches
+    /// - C008: Proper cache handling
+    /// - C009: WASM under size limit
+    /// - C010: No panic paths in WASM
+    Comply(ComplyArgs),
 }
 
 /// Arguments for the test command
@@ -560,6 +575,185 @@ pub enum PlaybookOutputFormat {
     /// JSON output
     Json,
     /// `JUnit` XML
+    Junit,
+}
+
+/// Arguments for the comply command
+#[derive(Parser, Debug)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct ComplyArgs {
+    /// Comply subcommand (check, migrate, diff, enforce, report)
+    #[command(subcommand)]
+    pub subcommand: Option<ComplySubcommand>,
+
+    /// Directory to check (default: current directory)
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Specific checks to run (e.g., C001,C002)
+    #[arg(long, value_delimiter = ',')]
+    pub checks: Option<Vec<String>>,
+
+    /// Fail on first non-compliance
+    #[arg(long)]
+    pub fail_fast: bool,
+
+    /// Output format
+    #[arg(long, default_value = "text")]
+    pub format: ComplyOutputFormat,
+
+    /// Maximum WASM binary size in bytes (for C009)
+    #[arg(long, default_value = "5242880")]
+    pub max_wasm_size: usize,
+
+    /// Enable strict mode (all checks must pass)
+    #[arg(long)]
+    pub strict: bool,
+
+    /// Generate compliance report file
+    #[arg(long)]
+    pub report: Option<PathBuf>,
+
+    /// Show detailed check results
+    #[arg(long)]
+    pub detailed: bool,
+}
+
+/// Comply subcommands (per PROBAR-SPEC-011 Section 3.1)
+#[derive(Subcommand, Debug, Clone)]
+pub enum ComplySubcommand {
+    /// Check WASM testing compliance
+    Check(ComplyCheckArgs),
+
+    /// Migrate to latest probador standards
+    Migrate(ComplyMigrateArgs),
+
+    /// Show changelog between versions
+    Diff(ComplyDiffArgs),
+
+    /// Install WASM quality hooks
+    Enforce(ComplyEnforceArgs),
+
+    /// Generate compliance report
+    Report(ComplyReportArgs),
+}
+
+/// Arguments for comply check subcommand
+#[derive(Parser, Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct ComplyCheckArgs {
+    /// Directory to check (default: current directory)
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Exit with error if non-compliant
+    #[arg(long)]
+    pub strict: bool,
+
+    /// Output format
+    #[arg(long, default_value = "text")]
+    pub format: ComplyOutputFormat,
+
+    /// Specific checks to run (e.g., C001,C002)
+    #[arg(long, value_delimiter = ',')]
+    pub checks: Option<Vec<String>>,
+
+    /// Show detailed check results
+    #[arg(long)]
+    pub detailed: bool,
+}
+
+/// Arguments for comply migrate subcommand
+#[derive(Parser, Debug, Clone)]
+pub struct ComplyMigrateArgs {
+    /// Directory to migrate (default: current directory)
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Target version to migrate to
+    #[arg(long)]
+    pub version: Option<String>,
+
+    /// Preview changes without applying
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Force migration even with uncommitted changes
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// Arguments for comply diff subcommand
+#[derive(Parser, Debug, Clone)]
+pub struct ComplyDiffArgs {
+    /// From version
+    #[arg(long)]
+    pub from: Option<String>,
+
+    /// To version
+    #[arg(long)]
+    pub to: Option<String>,
+
+    /// Show only breaking changes
+    #[arg(long)]
+    pub breaking_only: bool,
+}
+
+/// Arguments for comply enforce subcommand
+#[derive(Parser, Debug, Clone)]
+pub struct ComplyEnforceArgs {
+    /// Directory to enforce (default: current directory)
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Skip confirmation
+    #[arg(long)]
+    pub yes: bool,
+
+    /// Remove hooks instead of installing
+    #[arg(long)]
+    pub disable: bool,
+}
+
+/// Arguments for comply report subcommand
+#[derive(Parser, Debug, Clone)]
+pub struct ComplyReportArgs {
+    /// Directory to report on (default: current directory)
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Output format
+    #[arg(long, default_value = "text")]
+    pub format: ComplyReportFormat,
+
+    /// Output file (default: stdout)
+    #[arg(long)]
+    pub output: Option<PathBuf>,
+}
+
+/// Output format for comply report
+#[derive(ValueEnum, Clone, Debug, Default)]
+pub enum ComplyReportFormat {
+    /// Human-readable text
+    #[default]
+    Text,
+    /// JSON output
+    Json,
+    /// Markdown
+    Markdown,
+    /// HTML
+    Html,
+}
+
+/// Output format for comply command
+#[derive(ValueEnum, Clone, Debug, Default)]
+pub enum ComplyOutputFormat {
+    /// Human-readable text
+    #[default]
+    Text,
+    /// JSON output for CI integration
+    Json,
+    /// `JUnit` XML for CI systems
     Junit,
 }
 

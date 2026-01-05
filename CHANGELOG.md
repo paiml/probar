@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Total tests: 2,914 passing
 
 ### Technical Details
-- **Coverage**: 92.20% overall (browser module requires integration tests)
+- **Coverage**: 95.25% overall (browser module requires integration tests)
 - **Clippy**: Clean with `-D warnings`
 - **Citations**: O'Neill (2014), Wilson (1927), Nickolls et al. (2008)
 

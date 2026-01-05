@@ -567,6 +567,7 @@ impl Default for Flamegraph {
 // =============================================================================
 
 /// Render trace analysis as TUI
+#[allow(clippy::too_many_lines)]
 pub fn render_trace_report(analysis: &TraceAnalysis) -> String {
     let mut out = String::new();
 

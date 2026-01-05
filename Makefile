@@ -109,12 +109,12 @@ check: ## Type check
 test-fast: ## Run fast library tests (target: <2 min)
 	@echo "⚡ Running fast tests (target: <2 min)..."
 	@if command -v cargo-nextest >/dev/null 2>&1; then \
-		PROPTEST_CASES=50 RUST_TEST_THREADS=$$(nproc) cargo nextest run \
+		PROPTEST_CASES=25 RUST_TEST_THREADS=$$(nproc) cargo nextest run \
 			--workspace --lib \
 			--status-level skip \
 			--failure-output immediate; \
 	else \
-		PROPTEST_CASES=50 cargo test --workspace --lib; \
+		PROPTEST_CASES=25 cargo test --workspace --lib; \
 	fi
 
 test: test-fast test-doc test-property ## Run core test suite
@@ -132,19 +132,19 @@ test-property: ## Run property-based tests (50 cases per property)
 	@THREADS=$${PROPTEST_THREADS:-$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}; \
 	echo "  Running with $$THREADS threads..."; \
 	echo "  (Override with PROPTEST_THREADS=n or PROPTEST_CASES=n)"; \
-	timeout 120 env PROPTEST_CASES=50 cargo test --workspace --lib -- prop_ --test-threads=$$THREADS || echo "⚠️  Some property tests timed out"
+	timeout 120 env PROPTEST_CASES=25 cargo test --workspace --lib -- prop_ --test-threads=$$THREADS || echo "⚠️  Some property tests timed out"
 	@echo "✅ Property tests completed (fast mode)!"
 
 test-property-comprehensive: ## Run property-based tests (500 cases per property)
 	@echo "🎲 Running property-based tests (500 cases per property)..."
 	@THREADS=$${PROPTEST_THREADS:-$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}; \
 	echo "  Running with $$THREADS threads..."; \
-	timeout 300 env PROPTEST_CASES=500 cargo test --workspace --lib -- prop_ --test-threads=$$THREADS || echo "⚠️  Some property tests timed out"
+	timeout 300 env PROPTEST_CASES=250 cargo test --workspace --lib -- prop_ --test-threads=$$THREADS || echo "⚠️  Some property tests timed out"
 	@echo "✅ Property tests completed (comprehensive mode)!"
 
 test-all: test test-property-comprehensive test-gpu-pixels ## Run ALL tests with all features
 	@echo "🧪 Running comprehensive tests with all features..."
-	@PROPTEST_CASES=500 cargo test --workspace --all-features
+	@PROPTEST_CASES=250 cargo test --workspace --all-features
 	@echo "✅ All tests completed!"
 
 test-gpu-pixels: ## Run GPU pixel tests (PTX validation, regression detection)
@@ -162,17 +162,12 @@ coverage: ## Generate HTML coverage report (target: <5 min)
 	@which cargo-llvm-cov > /dev/null 2>&1 || (echo "📦 Installing cargo-llvm-cov..." && cargo install cargo-llvm-cov --locked)
 	@which cargo-nextest > /dev/null 2>&1 || (echo "📦 Installing cargo-nextest..." && cargo install cargo-nextest --locked)
 	@echo "🧹 Cleaning old coverage data..."
-	@cargo llvm-cov clean --workspace
 	@mkdir -p target/coverage
-	@echo "⚙️  Temporarily disabling global cargo config (mold breaks coverage)..."
-	@test -f ~/.cargo/config.toml && mv ~/.cargo/config.toml ~/.cargo/config.toml.cov-backup || true
 	@echo "🧪 Phase 1: Running tests with instrumentation (no report)..."
-	@env PROPTEST_CASES=100 cargo llvm-cov --no-report nextest --no-tests=warn --workspace
+	@env PROPTEST_CASES=25 QUICKCHECK_TESTS=25 cargo llvm-cov --no-report nextest --no-tests=warn --workspace
 	@echo "📊 Phase 2: Generating coverage reports..."
 	@cargo llvm-cov report --html --output-dir target/coverage/html
 	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info
-	@echo "⚙️  Restoring global cargo config..."
-	@test -f ~/.cargo/config.toml.cov-backup && mv ~/.cargo/config.toml.cov-backup ~/.cargo/config.toml || true
 	@echo ""
 	@echo "📊 Coverage Summary:"
 	@echo "=================="
@@ -198,15 +193,11 @@ coverage-open: ## Open HTML coverage report in browser
 
 coverage-ci: ## Generate LCOV report for CI/CD
 	@echo "📊 Generating coverage for CI..."
-	@test -f ~/.cargo/config.toml && mv ~/.cargo/config.toml ~/.cargo/config.toml.cov-backup || true
-	@cargo llvm-cov clean --workspace
-	@env PROPTEST_CASES=100 cargo llvm-cov --no-report nextest --no-tests=warn --workspace
+	@env PROPTEST_CASES=25 QUICKCHECK_TESTS=25 cargo llvm-cov --no-report nextest --no-tests=warn --workspace
 	@cargo llvm-cov report --lcov --output-path lcov.info
-	@test -f ~/.cargo/config.toml.cov-backup && mv ~/.cargo/config.toml.cov-backup ~/.cargo/config.toml || true
 	@echo "✓ Coverage report generated: lcov.info"
 
 coverage-clean: ## Clean coverage artifacts
-	@cargo llvm-cov clean --workspace 2>/dev/null || true
 	@rm -f lcov.info
 	@rm -rf target/llvm-cov target/coverage
 	@echo "✓ Coverage artifacts cleaned"

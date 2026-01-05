@@ -715,7 +715,7 @@ mod tests {
     #[test]
     fn h0_val_20_css_empty_selector() {
         let css = GeneratedCss {
-            content: "".to_string(),
+            content: String::new(),
             rules: vec![super::super::CssRule {
                 selector: "   ".to_string(), // Empty/whitespace selector
                 declarations: vec![("color".to_string(), "red".to_string())],

@@ -1088,6 +1088,7 @@ pub mod visual_regression {
     use std::hash::{Hash, Hasher};
 
     /// Reference checksum for deterministic PNG output
+    #[allow(dead_code)]
     #[derive(Debug, Clone)]
     pub struct ReferenceChecksum {
         /// Hash of the PNG bytes
@@ -1112,6 +1113,7 @@ pub mod visual_regression {
         /// Number of differing pixels
         pub diff_count: usize,
         /// Total pixels compared
+        #[allow(dead_code)]
         pub total_pixels: usize,
     }
 

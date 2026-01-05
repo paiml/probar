@@ -41,7 +41,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-jugar-probar = "0.3"
+jugar-probar = "0.4"
 ```
 
 ```rust

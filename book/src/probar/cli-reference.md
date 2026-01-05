@@ -488,6 +488,92 @@ probador playbook tests/*.yaml \
 | M4 | Target swap |
 | M5 | Guard negation |
 
+### probador comply
+
+Check WASM testing compliance with 10-point validation checklist.
+
+```bash
+# Basic compliance check
+probador comply .
+
+# Detailed output with explanations
+probador comply --detailed .
+
+# Strict mode (exit non-zero if any check fails)
+probador comply --strict .
+
+# JSON output for CI integration
+probador comply --format json .
+
+# Specify custom WASM size limit
+probador comply --max-wasm-size 10000000 .
+
+# Run specific checks only
+probador comply --checks C001,C002,C005 .
+
+# Fail fast on first failure
+probador comply --fail-fast .
+
+# Generate JUnit XML report
+probador comply --format junit --report compliance.xml .
+
+# Full example
+probador comply --detailed --strict --format text .
+```
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<path>` | Project directory | `.` |
+| `--checks <list>` | Run specific checks (comma-separated) | all |
+| `--fail-fast` | Stop on first failure | false |
+| `-f, --format <fmt>` | Output format (text/json/junit) | text |
+| `--max-wasm-size <bytes>` | WASM binary size limit | 5242880 (5MB) |
+| `--strict` | Require WasmStrictMode checks | false |
+| `--report <path>` | Output report file | - |
+| `--detailed` | Show detailed explanations | false |
+
+**Compliance Checks:**
+
+| Check | Description |
+|-------|-------------|
+| C001 | Code execution verified (not just DOM presence) |
+| C002 | Console errors fail tests |
+| C003 | Custom elements registration tested |
+| C004 | Threading modes tested (both paths) |
+| C005 | Low memory conditions tested |
+| C006 | COOP/COEP headers configured |
+| C007 | Deterministic replay hash validation |
+| C008 | Service worker cache handling |
+| C009 | WASM binary size limit |
+| C010 | No panic paths (unwrap/expect) |
+
+**Example Output:**
+
+```
+══════════════════════════════════════════════════════════════
+  PROBAR COMPLY - WASM Compliance Checker
+══════════════════════════════════════════════════════════════
+
+Running 10 compliance check(s) on .
+
+  [✓] C001: Code execution verified
+  [✓] C002: Console errors fail tests
+  [✓] C003: Custom elements tested
+  [✓] C004: Threading modes tested
+  [✓] C005: Low memory tested
+  [✗] C006: COOP/COEP headers (not configured)
+  [✓] C007: Replay hash matches
+  [✓] C008: Cache handling
+  [✓] C009: WASM size limit
+  [✓] C010: No panic paths
+
+══════════════════════════════════════════════════════════════
+  Result: 9/10 checks passed
+══════════════════════════════════════════════════════════════
+```
+
 ## Global Options
 
 These options work with all commands:

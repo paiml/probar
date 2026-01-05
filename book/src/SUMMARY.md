@@ -73,6 +73,10 @@
 
 - [Fuzzing](./probar/fuzzing.md)
 - [Accessibility Testing](./probar/accessibility.md)
+- [Streaming UX Validation](./probar/streaming-validation.md)
+- [Audio Emulation](./probar/audio-emulation.md)
+- [WASM Threading](./probar/wasm-threading.md)
+- [Compliance Checking](./probar/compliance.md)
 
 # Reference
 
