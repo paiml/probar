@@ -1,6 +1,6 @@
 [package]
 name = "jugar-probar"
-version = "0.4.1"
+version = "0.4.2"
 edition.workspace = true
 rust-version.workspace = true
 description = "Probar: Rust-native testing framework for WASM games"

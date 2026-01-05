@@ -2207,7 +2207,7 @@ dependencies = [
 
 [[package]]
 name = "jugar-probar"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "async-trait",
  "base64",
@@ -2960,7 +2960,7 @@ checksum = "e8cf8e6a8aa66ce33f63993ffc4ea4271eb5b0530a9002db8455ea6050c77bfa"
 
 [[package]]
 name = "probador"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "assert_cmd",
  "atty",
