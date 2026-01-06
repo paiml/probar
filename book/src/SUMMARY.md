@@ -76,6 +76,9 @@
 - [Streaming UX Validation](./probar/streaming-validation.md)
 - [Audio Emulation](./probar/audio-emulation.md)
 - [WASM Threading](./probar/wasm-threading.md)
+- [Docker Cross-Browser Testing](./probar/docker-testing.md)
+- [Zero-JS Validation](./probar/zero-js-validation.md)
+- [Worker Harness Testing](./probar/worker-harness.md)
 - [Compliance Checking](./probar/compliance.md)
 
 # Reference

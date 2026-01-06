@@ -97,6 +97,9 @@ probar-js-gen = { version = "0.1.0", path = "crates/probar-js-gen" }
 blake3 = "1"
 chrono = { version = "0.4", features = ["serde"] }
 
+# Docker SDK for container management
+bollard = "0.18"
+
 [workspace.lints.rust]
 # Safety and correctness
 unsafe_code = "warn"

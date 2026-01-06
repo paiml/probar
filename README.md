@@ -132,6 +132,9 @@ expect(&score).to_have_text("100").await?;
 | **Accessibility Auditing** | WCAG compliance checking |
 | **Deterministic Replay** | Record and replay sessions with seed control |
 | **Monte Carlo Fuzzing** | Random input generation with invariant checking |
+| **Zero-JS Validation** | Enforce WASM-first architecture (no user JS) |
+| **Worker Harness** | Web Worker lifecycle, ring buffers, shared memory |
+| **Docker Testing** | Cross-browser testing via Docker containers |
 
 ## Quick Start
 
@@ -172,6 +175,8 @@ fn test_calculator_gui() {
 | `browser` | CDP browser automation | chromiumoxide, tokio |
 | `runtime` | WASM runtime testing | wasmtime |
 | `derive` | Type-safe derive macros | probar-derive |
+| `docker` | Docker cross-browser testing | bollard, tokio |
+| `gpu` | GPU compute support | trueno |
 
 ## Usage
 
@@ -271,6 +276,10 @@ Probar is built on pragmatic testing principles:
 | `pong_simulation` | Game simulation testing |
 | `accessibility_demo` | WCAG compliance |
 | `watch_mode` | Hot-reload testing |
+| `zero_js_demo` | WASM-first validation |
+| `worker_harness_demo` | Web Worker testing |
+| `docker_demo` | Docker cross-browser (requires `docker` feature) |
+| `streaming_ux_demo` | Real-time streaming validation |
 
 Run any example:
 ```bash

@@ -1,6 +1,6 @@
 [package]
 name = "jugar-probar"
-version = "0.4.2"
+version = "0.5.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Probar: Rust-native testing framework for WASM games"
@@ -22,6 +22,8 @@ derive = ["jugar-probar-derive"]
 tui = ["ratatui", "crossterm"]
 # GPU compute support via trueno (RTX 4090 etc.)
 gpu = ["trueno"]
+# Docker-based cross-browser WASM testing (PROBAR-SPEC-014)
+docker = ["bollard", "tokio", "futures", "async-trait"]
 
 [dependencies]
 thiserror = { workspace = true }
@@ -51,6 +53,9 @@ jugar-probar-derive = { version = "0.1.0", optional = true }
 
 # Optional GPU compute via trueno
 trueno = { workspace = true, optional = true }
+
+# Optional Docker SDK for container-based testing
+bollard = { workspace = true, optional = true }
 
 # Native-only dependencies (not available on WASM)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -110,6 +115,19 @@ path = "examples/coverage_demo.rs"
 [[example]]
 name = "pong_simulation"
 path = "examples/pong_simulation.rs"
+
+[[example]]
+name = "docker_demo"
+path = "examples/docker_demo.rs"
+required-features = ["docker"]
+
+[[example]]
+name = "zero_js_demo"
+path = "examples/zero_js_demo.rs"
+
+[[example]]
+name = "worker_harness_demo"
+path = "examples/worker_harness_demo.rs"
 
 [lints]
 workspace = true

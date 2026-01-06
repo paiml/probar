@@ -349,6 +349,43 @@ pub mod strict;
 )]
 pub mod validators;
 
+/// Zero-JavaScript Validation for WASM-First Applications (PROBAR-SPEC-012).
+///
+/// Validates that WASM applications contain NO user-generated JavaScript, CSS, or HTML.
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown,
+    clippy::too_long_first_doc_paragraph
+)]
+pub mod zero_js;
+
+/// WASM Worker Test Harness (PROBAR-SPEC-013).
+///
+/// Comprehensive testing framework for Web Workers in WASM applications.
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown,
+    clippy::too_long_first_doc_paragraph
+)]
+pub mod worker_harness;
+
+/// Docker-based Cross-Browser WASM Testing (PROBAR-SPEC-014).
+///
+/// Enables cross-browser testing via Docker containers with COOP/COEP support.
+#[cfg(feature = "docker")]
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown,
+    clippy::too_long_first_doc_paragraph
+)]
+pub mod docker;
+
 /// Dialog Handling for E2E Testing (Feature G.8)
 #[allow(
     clippy::missing_errors_doc,
@@ -581,6 +618,16 @@ pub mod prelude {
     pub use super::ux_coverage::*;
     pub use super::validators::*;
     pub use super::visual_regression::*;
+    pub use super::worker_harness::*;
+    pub use super::zero_js::*;
+    // Docker module types are exported with Docker prefix to avoid conflicts
+    #[cfg(feature = "docker")]
+    pub use super::docker::{
+        check_shared_array_buffer_support, validate_coop_coep_headers, Browser as DockerBrowser,
+        ContainerConfig, ContainerState, CoopCoepConfig, DockerConfig, DockerError, DockerResult,
+        DockerTestRunner, DockerTestRunnerBuilder, ParallelRunner, ParallelRunnerBuilder,
+        TestResult as DockerTestResult, TestResults as DockerTestResults,
+    };
     pub use super::wait::{
         wait_timeout, wait_until, FnCondition, LoadState, NavigationOptions, PageEvent,
         WaitCondition, WaitOptions, WaitResult, Waiter, DEFAULT_WAIT_TIMEOUT_MS,

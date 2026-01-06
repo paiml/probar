@@ -478,6 +478,7 @@ impl ScreenshotContent {
 ///
 /// # Example
 /// ```
+/// use std::time::Duration;
 /// use jugar_probar::validators::{StreamingUxValidator, StreamingMetric};
 ///
 /// let mut validator = StreamingUxValidator::new()
