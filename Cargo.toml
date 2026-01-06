@@ -4,6 +4,7 @@ members = [
     "crates/probar",
     "crates/probar-derive",
     "crates/probar-cli",
+    "crates/probar-js-gen",
     "crates/showcase-calculator",
 ]
 
@@ -90,6 +91,11 @@ uuid = { version = "1.11", features = ["v4", "serde", "js"] }
 probar = { version = "0.1.0", path = "crates/probar" }
 probar-derive = { version = "0.1.0", path = "crates/probar-derive" }
 probar-cli = { version = "0.1.0", path = "crates/probar-cli" }
+probar-js-gen = { version = "0.1.0", path = "crates/probar-js-gen" }
+
+# Hashing
+blake3 = "1"
+chrono = { version = "0.4", features = ["serde"] }
 
 [workspace.lints.rust]
 # Safety and correctness
