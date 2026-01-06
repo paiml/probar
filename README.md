@@ -10,17 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/paiml/probar/actions/workflows/ci.yml">
-    <img src="https://github.com/paiml/probar/actions/workflows/ci.yml/badge.svg" alt="CI">
-  </a>
   <a href="https://crates.io/crates/jugar-probar">
     <img src="https://img.shields.io/crates/v/jugar-probar.svg" alt="Crates.io">
-  </a>
-  <a href="https://docs.rs/jugar-probar">
-    <img src="https://img.shields.io/docs.rs/jugar-probar" alt="Documentation">
-  </a>
-  <a href="https://paiml.github.io/probar/">
-    <img src="https://img.shields.io/badge/book-mdbook-blue" alt="Book">
   </a>
 </p>
 
