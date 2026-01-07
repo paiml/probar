@@ -24,6 +24,8 @@ tui = ["ratatui", "crossterm"]
 gpu = ["trueno"]
 # Docker-based cross-browser WASM testing (PROBAR-SPEC-014)
 docker = ["bollard", "tokio", "futures", "async-trait"]
+# Property-based testing strategies (PROBAR-SPEC-WASM-001)
+proptest = ["dep:proptest"]
 
 [dependencies]
 thiserror = { workspace = true }
@@ -56,6 +58,9 @@ trueno = { workspace = true, optional = true }
 
 # Optional Docker SDK for container-based testing
 bollard = { workspace = true, optional = true }
+
+# Optional property-based testing (PROBAR-SPEC-WASM-001)
+proptest = { workspace = true, optional = true }
 
 # Native-only dependencies (not available on WASM)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

@@ -88,6 +88,39 @@ mod simulation;
 mod snapshot;
 mod visual_regression;
 
+/// State Synchronization Linting (PROBAR-SPEC-WASM-001)
+///
+/// Static analysis for detecting WASM closure state sync anti-patterns.
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod lint;
+
+/// Mock Runtime for WASM Callback Testing (PROBAR-SPEC-WASM-001)
+///
+/// Test WASM callback patterns without browser APIs.
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod mock;
+
+/// Compliance Checking for WASM Threading (PROBAR-SPEC-WASM-001)
+///
+/// Verify projects follow WASM threading best practices.
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod comply;
+
 /// Page Object Model Support (Feature 19)
 #[allow(
     clippy::missing_errors_doc,
@@ -620,6 +653,10 @@ pub mod prelude {
     pub use super::visual_regression::*;
     pub use super::worker_harness::*;
     pub use super::zero_js::*;
+    // WASM Threading Testing (PROBAR-SPEC-WASM-001)
+    pub use super::comply::*;
+    pub use super::lint::*;
+    pub use super::mock::*;
     // Docker module types are exported with Docker prefix to avoid conflicts
     #[cfg(feature = "docker")]
     pub use super::docker::{
