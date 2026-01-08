@@ -6964,13 +6964,13 @@ impl WhisperTuiApp {
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 13a | CollectorBrick trait definition | ⏳ Pending |
-| 13b | AnalyzerBrick trait definition | ⏳ Pending |
-| 13c | PanelBrick trait definition | ⏳ Pending |
-| 13d | RingBuffer time-series | ⏳ Pending |
-| 13e | Panel state machine | ⏳ Pending |
-| 13f | Feature-gated collectors | ⏳ Pending |
-| 13g | CIELAB color theme | ⏳ Pending |
+| 13a | CollectorBrick trait definition | ✅ Complete |
+| 13b | AnalyzerBrick trait definition | ✅ Complete |
+| 13c | PanelBrick trait definition | ✅ Complete |
+| 13d | RingBuffer time-series | ✅ Complete |
+| 13e | Panel state machine | ✅ Complete |
+| 13f | Feature-gated collectors | ✅ Complete |
+| 13g | CIELAB color theme | ✅ Complete |
 | 13h | whisper.apr TUI integration | ⏳ Pending |
 
 ### Falsification Criteria

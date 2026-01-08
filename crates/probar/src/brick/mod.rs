@@ -60,6 +60,7 @@ pub mod deterministic;
 pub mod distributed;
 pub mod event;
 pub mod pipeline;
+pub mod tui;
 pub mod widget;
 pub mod worker;
 
@@ -82,6 +83,10 @@ pub use pipeline::{
     AuditEntry, BrickPipeline, BrickStage, Checkpoint, PipelineAuditCollector, PipelineContext,
     PipelineData, PipelineError, PipelineMetadata, PipelineResult, PrivacyTier, StageTrace,
     ValidationLevel, ValidationMessage, ValidationResult,
+};
+pub use tui::{
+    AnalyzerBrick, CielabColor, CollectorBrick, CollectorError, PanelBrick, PanelId, PanelState,
+    RingBuffer,
 };
 pub use widget::{
     commands_to_gpu_instances, Canvas, Constraints, CornerRadius, DrawCommand, Event, GpuInstance,
