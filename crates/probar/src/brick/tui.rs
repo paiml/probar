@@ -560,7 +560,11 @@ impl CielabColor {
     /// Note: This is a simplified conversion. For accurate results,
     /// use a proper color management library.
     #[must_use]
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::many_single_char_names // x,y,z,r,g,b are standard color space variables
+    )]
     pub fn to_rgb(&self) -> (u8, u8, u8) {
         // Convert L*a*b* to XYZ (D65 illuminant)
         let fy = (self.l + 16.0) / 116.0;

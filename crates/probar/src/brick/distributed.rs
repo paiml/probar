@@ -1383,10 +1383,7 @@ mod tests {
 
         let output = result.expect("execution should succeed");
         assert_eq!(output.data.len(), 3);
-        assert!(
-            output.metrics.execution_time > Duration::ZERO
-                || output.metrics.execution_time == Duration::ZERO
-        );
+        assert!(output.metrics.execution_time >= Duration::ZERO);
     }
 
     #[test]

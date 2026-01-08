@@ -248,6 +248,7 @@ impl FetchClient {
 
     /// Fetch bytes from a URL (native fallback - returns error)
     #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::unused_async)] // Must be async for API compatibility with WASM target
     pub async fn fetch_bytes(&self, _url: &str) -> Result<Vec<u8>, WebSysError> {
         Err(WebSysError::NotInBrowser)
     }

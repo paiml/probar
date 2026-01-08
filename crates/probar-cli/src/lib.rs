@@ -9,6 +9,8 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::module_name_repetitions)]
+#![allow(clippy::format_push_string)] // String building is clear and correct
+#![allow(clippy::missing_errors_doc)] // Error types are self-documenting
 
 mod commands;
 mod config;

@@ -1052,7 +1052,7 @@ mod tests {
         let metrics = widget.render_timed(&mut canvas);
 
         assert!(metrics.valid);
-        assert!(metrics.total_time > Duration::ZERO || metrics.total_time == Duration::ZERO);
+        assert!(metrics.total_time >= Duration::ZERO);
         assert_eq!(metrics.command_count, 2);
     }
 

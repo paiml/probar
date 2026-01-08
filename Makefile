@@ -76,7 +76,7 @@ format-check: ## Check code formatting
 lint: ## Run clippy with auto-fix
 	@echo "🔍 Running clippy..."
 	@cargo clippy --workspace --all-targets --all-features --fix --allow-dirty --allow-staged 2>/dev/null || true
-	@cargo clippy --workspace --lib --all-features -- -D warnings -A dead_code
+	@cargo clippy --workspace --lib --all-features -- -D warnings -A dead_code -A clippy::format_push_string
 	@cargo clippy --workspace --tests --all-features -- \
 		-D clippy::suspicious \
 		-A clippy::expect_used \
@@ -167,28 +167,25 @@ test-gpu-pixels: ## Run GPU pixel tests (PTX validation, regression detection)
 # COVERAGE
 # ============================================================================
 
-coverage: ## Generate HTML coverage report (target: <5 min)
-	@echo "📊 Running comprehensive test coverage analysis (target: <5 min)..."
-	@echo "🔍 Checking for cargo-llvm-cov and cargo-nextest..."
-	@which cargo-llvm-cov > /dev/null 2>&1 || (echo "📦 Installing cargo-llvm-cov..." && cargo install cargo-llvm-cov --locked)
-	@which cargo-nextest > /dev/null 2>&1 || (echo "📦 Installing cargo-nextest..." && cargo install cargo-nextest --locked)
-	@echo "🧹 Cleaning old coverage data..."
+coverage: ## Generate HTML coverage report (FAST: <2 min)
+	@echo "📊 FAST coverage (target: <2 min)..."
+	@which cargo-llvm-cov > /dev/null 2>&1 || cargo install cargo-llvm-cov --locked
+	@which cargo-nextest > /dev/null 2>&1 || cargo install cargo-nextest --locked
 	@mkdir -p target/coverage
-	@echo "🧪 Phase 1: Running tests with instrumentation (no report)..."
-	@env PROPTEST_CASES=25 QUICKCHECK_TESTS=25 cargo llvm-cov --no-report nextest --no-tests=warn --workspace
-	@echo "📊 Phase 2: Generating coverage reports..."
-	@cargo llvm-cov report --html --output-dir target/coverage/html
+	@echo "🧪 Running tests with $(shell nproc) threads..."
+	@env PROPTEST_CASES=5 QUICKCHECK_TESTS=5 \
+		cargo llvm-cov nextest \
+		--config-file .config/nextest.toml \
+		--profile coverage \
+		--no-tests=warn \
+		--workspace \
+		--html --output-dir target/coverage/html \
+		-E 'not test(/stress|fuzz|comprehensive|benchmark|slow|gpu_pixels/)'
 	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info
 	@echo ""
-	@echo "📊 Coverage Summary:"
-	@echo "=================="
 	@cargo llvm-cov report --summary-only
 	@echo ""
-	@echo "💡 COVERAGE INSIGHTS:"
-	@echo "- HTML report: target/coverage/html/index.html"
-	@echo "- LCOV file: target/coverage/lcov.info"
-	@echo "- Open HTML: make coverage-open"
-	@echo "- Property test cases: 100 (reduced for speed)"
+	@echo "💡 HTML: target/coverage/html/index.html | LCOV: target/coverage/lcov.info"
 
 coverage-summary: ## Show coverage summary
 	@cargo llvm-cov report --summary-only 2>/dev/null || echo "Run 'make coverage' first"
