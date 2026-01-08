@@ -5620,13 +5620,13 @@ H2 (ComputeBrick) is **FALSIFIED** if ANY of:
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 8a | ComputeBrick type definition | ⏳ Pending |
-| 8b | Basic WGSL generation | ⏳ Pending |
-| 8c | Tile load/store patterns | ⏳ Pending |
-| 8d | Cooperative matrix strategy | ⏳ Pending |
-| 8e | WorkerBrick ↔ ComputeBrick interop | ⏳ Pending |
-| 8f | Whisper mel filterbank | ⏳ Pending |
-| 8g | Whisper attention layers | ⏳ Pending |
+| 8a | ComputeBrick type definition | ✅ Complete |
+| 8b | Basic WGSL generation | ✅ Complete |
+| 8c | Tile load/store patterns | ✅ Complete |
+| 8d | Cooperative matrix strategy | ✅ Complete |
+| 8e | WorkerBrick ↔ ComputeBrick interop | ✅ Complete |
+| 8f | Whisper mel filterbank | ✅ Complete |
+| 8g | Whisper attention layers | ✅ Complete |
 
 ### Open Questions
 
@@ -5862,11 +5862,11 @@ let output = whisper_pipeline.run(audio_input).await?;
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 9a | BrickStage trait definition | ⏳ Pending |
-| 9b | BrickPipeline orchestrator | ⏳ Pending |
-| 9c | Privacy tier enforcement | ⏳ Pending |
-| 9d | Checkpointing integration | ⏳ Pending |
-| 9e | Audit trail collection | ⏳ Pending |
+| 9a | BrickStage trait definition | ✅ Complete |
+| 9b | BrickPipeline orchestrator | ✅ Complete |
+| 9c | Privacy tier enforcement | ✅ Complete |
+| 9d | Checkpointing integration | ✅ Complete |
+| 9e | Audit trail collection | ✅ Complete |
 
 ---
 
@@ -6165,11 +6165,11 @@ impl<B: Brick> GuardedBrick<B> {
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 11a | DeterministicBrick trait | ⏳ Pending |
-| 11b | Persistent data structures | ⏳ Pending |
-| 11c | Time-travel debugging | ⏳ Pending |
-| 11d | Jidoka guards | ⏳ Pending |
-| 11e | Deterministic RNG/clock | ⏳ Pending |
+| 11a | DeterministicBrick trait | ✅ Complete |
+| 11b | Persistent data structures | ✅ Complete |
+| 11c | Time-travel debugging | ✅ Complete |
+| 11d | Jidoka guards | ✅ Complete |
+| 11e | Deterministic RNG/clock | ✅ Complete |
 
 ---
 
