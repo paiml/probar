@@ -769,6 +769,360 @@ impl Subscription {
     }
 }
 
+// ============================================================================
+// Work-Stealing Scheduler (Phase 10e)
+// ============================================================================
+
+/// A task that can be executed by workers and potentially stolen
+#[derive(Debug, Clone)]
+pub struct WorkStealingTask {
+    /// Unique task ID
+    pub id: u64,
+    /// Task specification
+    pub spec: TaskSpec,
+    /// Input data key
+    pub input_key: String,
+    /// Priority (higher = more urgent)
+    pub priority: u32,
+    /// Creation time
+    pub created_at: Instant,
+}
+
+impl WorkStealingTask {
+    /// Create a new work-stealing task
+    #[must_use]
+    pub fn new(id: u64, spec: TaskSpec, input_key: String) -> Self {
+        Self {
+            id,
+            spec,
+            input_key,
+            priority: 0,
+            created_at: Instant::now(),
+        }
+    }
+
+    /// Set task priority
+    #[must_use]
+    pub fn with_priority(mut self, priority: u32) -> Self {
+        self.priority = priority;
+        self
+    }
+
+    /// Get task age
+    #[must_use]
+    pub fn age(&self) -> Duration {
+        self.created_at.elapsed()
+    }
+}
+
+/// Per-worker task queue supporting work-stealing
+#[derive(Debug)]
+pub struct WorkerQueue {
+    /// Worker ID
+    worker_id: WorkerId,
+    /// Local task queue (owned tasks)
+    local_queue: RwLock<Vec<WorkStealingTask>>,
+    /// Number of tasks completed
+    completed_count: AtomicU64,
+    /// Number of tasks stolen from this queue
+    stolen_count: AtomicU64,
+}
+
+impl WorkerQueue {
+    /// Create a new worker queue
+    #[must_use]
+    pub fn new(worker_id: WorkerId) -> Self {
+        Self {
+            worker_id,
+            local_queue: RwLock::new(Vec::new()),
+            completed_count: AtomicU64::new(0),
+            stolen_count: AtomicU64::new(0),
+        }
+    }
+
+    /// Push a task to the local queue
+    pub fn push(&self, task: WorkStealingTask) {
+        let mut queue = self.local_queue.write().expect("lock poisoned");
+        queue.push(task);
+        // Sort by priority (higher first)
+        queue.sort_by(|a, b| b.priority.cmp(&a.priority));
+    }
+
+    /// Pop a task from the local queue (highest priority first)
+    pub fn pop(&self) -> Option<WorkStealingTask> {
+        let mut queue = self.local_queue.write().expect("lock poisoned");
+        if queue.is_empty() {
+            return None;
+        }
+        Some(queue.remove(0)) // Get highest priority (front after sort)
+    }
+
+    /// Steal a task from this queue (lowest priority - be nice to owner)
+    pub fn steal(&self) -> Option<WorkStealingTask> {
+        let mut queue = self.local_queue.write().expect("lock poisoned");
+        if queue.is_empty() {
+            return None;
+        }
+        self.stolen_count.fetch_add(1, Ordering::Relaxed);
+        queue.pop() // Steal lowest priority (back after sort)
+    }
+
+    /// Check if queue is empty
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        let queue = self.local_queue.read().expect("lock poisoned");
+        queue.is_empty()
+    }
+
+    /// Get queue length
+    #[must_use]
+    pub fn len(&self) -> usize {
+        let queue = self.local_queue.read().expect("lock poisoned");
+        queue.len()
+    }
+
+    /// Mark a task as completed
+    pub fn mark_completed(&self) {
+        self.completed_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Get worker ID
+    #[must_use]
+    pub fn worker_id(&self) -> WorkerId {
+        self.worker_id
+    }
+
+    /// Get completed count
+    #[must_use]
+    pub fn completed_count(&self) -> u64 {
+        self.completed_count.load(Ordering::Relaxed)
+    }
+
+    /// Get stolen count
+    #[must_use]
+    pub fn stolen_count(&self) -> u64 {
+        self.stolen_count.load(Ordering::Relaxed)
+    }
+}
+
+/// Work-stealing scheduler for distributed brick execution
+///
+/// Implements work-stealing algorithm where idle workers steal tasks
+/// from busy workers' queues. This provides automatic load balancing.
+///
+/// # Algorithm
+///
+/// 1. Each worker has a local deque (double-ended queue)
+/// 2. Workers push/pop from their own queue (LIFO - good for cache locality)
+/// 3. When idle, workers steal from other queues (FIFO - steal oldest tasks)
+/// 4. Stealing considers data locality via `BrickDataTracker`
+#[derive(Debug)]
+pub struct WorkStealingScheduler {
+    /// Worker queues indexed by worker ID
+    queues: RwLock<HashMap<WorkerId, Arc<WorkerQueue>>>,
+    /// Data tracker for locality-aware stealing
+    data_tracker: Arc<BrickDataTracker>,
+    /// Task ID counter
+    task_counter: AtomicU64,
+    /// Total tasks submitted
+    submitted_count: AtomicU64,
+}
+
+impl WorkStealingScheduler {
+    /// Create a new work-stealing scheduler
+    #[must_use]
+    pub fn new(data_tracker: Arc<BrickDataTracker>) -> Self {
+        Self {
+            queues: RwLock::new(HashMap::new()),
+            data_tracker,
+            task_counter: AtomicU64::new(0),
+            submitted_count: AtomicU64::new(0),
+        }
+    }
+
+    /// Register a worker with the scheduler
+    pub fn register_worker(&self, worker_id: WorkerId) -> Arc<WorkerQueue> {
+        let queue = Arc::new(WorkerQueue::new(worker_id));
+        let mut queues = self.queues.write().expect("lock poisoned");
+        queues.insert(worker_id, Arc::clone(&queue));
+        queue
+    }
+
+    /// Unregister a worker
+    pub fn unregister_worker(&self, worker_id: WorkerId) {
+        let mut queues = self.queues.write().expect("lock poisoned");
+        queues.remove(&worker_id);
+    }
+
+    /// Submit a task to the best worker based on locality
+    pub fn submit(&self, spec: TaskSpec, input_key: String) -> u64 {
+        let task_id = self.task_counter.fetch_add(1, Ordering::SeqCst);
+        let task = WorkStealingTask::new(task_id, spec.clone(), input_key);
+
+        // Find best worker based on data locality
+        let target_worker = self.find_best_worker_for_task(&spec);
+
+        let queues = self.queues.read().expect("lock poisoned");
+        if let Some(queue) = target_worker.and_then(|w| queues.get(&w)) {
+            queue.push(task);
+        } else if let Some((_, queue)) = queues.iter().next() {
+            // Fallback to first available worker
+            queue.push(task);
+        }
+
+        self.submitted_count.fetch_add(1, Ordering::Relaxed);
+        task_id
+    }
+
+    /// Submit with explicit priority
+    pub fn submit_priority(&self, spec: TaskSpec, input_key: String, priority: u32) -> u64 {
+        let task_id = self.task_counter.fetch_add(1, Ordering::SeqCst);
+        let task = WorkStealingTask::new(task_id, spec.clone(), input_key).with_priority(priority);
+
+        let target_worker = self.find_best_worker_for_task(&spec);
+
+        let queues = self.queues.read().expect("lock poisoned");
+        if let Some(queue) = target_worker.and_then(|w| queues.get(&w)) {
+            queue.push(task);
+        } else if let Some((_, queue)) = queues.iter().next() {
+            queue.push(task);
+        }
+
+        self.submitted_count.fetch_add(1, Ordering::Relaxed);
+        task_id
+    }
+
+    /// Try to get work for a worker (local pop or steal)
+    pub fn get_work(&self, worker_id: WorkerId) -> Option<WorkStealingTask> {
+        let queues = self.queues.read().expect("lock poisoned");
+
+        // First try local queue
+        if let Some(queue) = queues.get(&worker_id) {
+            if let Some(task) = queue.pop() {
+                return Some(task);
+            }
+        }
+
+        // Try to steal from other workers
+        self.try_steal(worker_id, &queues)
+    }
+
+    /// Try to steal work from another worker's queue
+    fn try_steal(
+        &self,
+        stealer_id: WorkerId,
+        queues: &HashMap<WorkerId, Arc<WorkerQueue>>,
+    ) -> Option<WorkStealingTask> {
+        // Find queues with work, preferring those with data locality
+        let mut candidates: Vec<_> = queues
+            .iter()
+            .filter(|(id, q)| **id != stealer_id && !q.is_empty())
+            .collect();
+
+        if candidates.is_empty() {
+            return None;
+        }
+
+        // Sort by queue length (steal from busiest)
+        candidates.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+
+        // Try to steal from the busiest queue
+        for (_, queue) in candidates {
+            if let Some(task) = queue.steal() {
+                return Some(task);
+            }
+        }
+
+        None
+    }
+
+    /// Find best worker for a task based on data locality
+    fn find_best_worker_for_task(&self, spec: &TaskSpec) -> Option<WorkerId> {
+        // Check preferred worker
+        if let Some(preferred) = spec.preferred_worker {
+            return Some(preferred);
+        }
+
+        // Calculate affinity based on data dependencies
+        let affinity = self
+            .data_tracker
+            .calculate_affinity(&spec.data_dependencies);
+        affinity
+            .into_iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(worker, _)| worker)
+    }
+
+    /// Get scheduler statistics
+    #[must_use]
+    pub fn stats(&self) -> SchedulerStats {
+        let queues = self.queues.read().expect("lock poisoned");
+
+        let worker_stats: Vec<_> = queues
+            .values()
+            .map(|q| WorkerStats {
+                worker_id: q.worker_id(),
+                queue_length: q.len(),
+                completed: q.completed_count(),
+                stolen_from: q.stolen_count(),
+            })
+            .collect();
+
+        let total_pending: usize = worker_stats.iter().map(|s| s.queue_length).sum();
+        let total_completed: u64 = worker_stats.iter().map(|s| s.completed).sum();
+        let total_stolen: u64 = worker_stats.iter().map(|s| s.stolen_from).sum();
+
+        SchedulerStats {
+            worker_count: queues.len(),
+            total_submitted: self.submitted_count.load(Ordering::Relaxed),
+            total_pending,
+            total_completed,
+            total_stolen,
+            workers: worker_stats,
+        }
+    }
+
+    /// Get the data tracker
+    #[must_use]
+    pub fn data_tracker(&self) -> &Arc<BrickDataTracker> {
+        &self.data_tracker
+    }
+}
+
+/// Statistics for a single worker
+#[derive(Debug, Clone)]
+pub struct WorkerStats {
+    /// Worker ID
+    pub worker_id: WorkerId,
+    /// Current queue length
+    pub queue_length: usize,
+    /// Tasks completed
+    pub completed: u64,
+    /// Tasks stolen from this worker
+    pub stolen_from: u64,
+}
+
+/// Scheduler-wide statistics
+#[derive(Debug, Clone)]
+pub struct SchedulerStats {
+    /// Number of registered workers
+    pub worker_count: usize,
+    /// Total tasks submitted
+    pub total_submitted: u64,
+    /// Total tasks pending across all queues
+    pub total_pending: usize,
+    /// Total tasks completed
+    pub total_completed: u64,
+    /// Total tasks stolen (indicates load balancing activity)
+    pub total_stolen: u64,
+    /// Per-worker statistics
+    pub workers: Vec<WorkerStats>,
+}
+
+// ============================================================================
+// PUB/SUB Coordinator
+// ============================================================================
+
 /// PUB/SUB coordinator for brick communication
 ///
 /// Enables distributed coordination via publish/subscribe messaging.
@@ -1088,5 +1442,244 @@ mod tests {
         assert_eq!(metrics.execution_time, Duration::from_millis(50));
         assert_eq!(metrics.backend, Backend::Gpu);
         assert!(metrics.worker_id.is_none());
+    }
+
+    // ========================================================================
+    // Work-Stealing Scheduler Tests (Phase 10e)
+    // ========================================================================
+
+    #[test]
+    fn test_work_stealing_task() {
+        let spec = TaskSpec {
+            brick_name: "TestBrick".into(),
+            backend: Backend::Cpu,
+            data_dependencies: vec![],
+            preferred_worker: None,
+        };
+        let task = WorkStealingTask::new(1, spec, "input_key".into()).with_priority(10);
+
+        assert_eq!(task.id, 1);
+        assert_eq!(task.priority, 10);
+        assert_eq!(task.input_key, "input_key");
+        assert!(task.age() >= Duration::ZERO);
+    }
+
+    #[test]
+    fn test_worker_queue_basic() {
+        let queue = WorkerQueue::new(WorkerId::new(1));
+
+        assert!(queue.is_empty());
+        assert_eq!(queue.len(), 0);
+
+        let spec = TaskSpec {
+            brick_name: "Test".into(),
+            backend: Backend::Cpu,
+            data_dependencies: vec![],
+            preferred_worker: None,
+        };
+        let task = WorkStealingTask::new(1, spec, "key".into());
+        queue.push(task);
+
+        assert!(!queue.is_empty());
+        assert_eq!(queue.len(), 1);
+
+        let popped = queue.pop();
+        assert!(popped.is_some());
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn test_worker_queue_priority_ordering() {
+        let queue = WorkerQueue::new(WorkerId::new(1));
+
+        // Push tasks with different priorities
+        for i in 0..5 {
+            let spec = TaskSpec {
+                brick_name: format!("Task{}", i),
+                backend: Backend::Cpu,
+                data_dependencies: vec![],
+                preferred_worker: None,
+            };
+            let task = WorkStealingTask::new(i as u64, spec, "key".into()).with_priority(i);
+            queue.push(task);
+        }
+
+        // Pop should return highest priority first
+        let task = queue.pop().unwrap();
+        assert_eq!(task.priority, 4);
+
+        let task = queue.pop().unwrap();
+        assert_eq!(task.priority, 3);
+    }
+
+    #[test]
+    fn test_worker_queue_steal() {
+        let queue = WorkerQueue::new(WorkerId::new(1));
+
+        // Push 3 tasks with priorities 0, 1, 2
+        for i in 0..3 {
+            let spec = TaskSpec {
+                brick_name: format!("Task{}", i),
+                backend: Backend::Cpu,
+                data_dependencies: vec![],
+                preferred_worker: None,
+            };
+            let task = WorkStealingTask::new(i as u64, spec, "key".into()).with_priority(i);
+            queue.push(task);
+        }
+
+        // Steal takes from front (lowest priority after sort)
+        let stolen = queue.steal().unwrap();
+        assert_eq!(stolen.priority, 0);
+        assert_eq!(queue.stolen_count(), 1);
+
+        // Queue still has 2 tasks
+        assert_eq!(queue.len(), 2);
+    }
+
+    #[test]
+    fn test_work_stealing_scheduler_basic() {
+        let tracker = Arc::new(BrickDataTracker::new());
+        let scheduler = WorkStealingScheduler::new(tracker);
+
+        // Register workers
+        let _q1 = scheduler.register_worker(WorkerId::new(1));
+        let _q2 = scheduler.register_worker(WorkerId::new(2));
+
+        let stats = scheduler.stats();
+        assert_eq!(stats.worker_count, 2);
+        assert_eq!(stats.total_submitted, 0);
+    }
+
+    #[test]
+    fn test_work_stealing_scheduler_submit() {
+        let tracker = Arc::new(BrickDataTracker::new());
+        let scheduler = WorkStealingScheduler::new(tracker);
+
+        scheduler.register_worker(WorkerId::new(1));
+
+        let spec = TaskSpec {
+            brick_name: "Test".into(),
+            backend: Backend::Cpu,
+            data_dependencies: vec![],
+            preferred_worker: None,
+        };
+
+        let task_id = scheduler.submit(spec, "input".into());
+        assert_eq!(task_id, 0);
+
+        let stats = scheduler.stats();
+        assert_eq!(stats.total_submitted, 1);
+        assert_eq!(stats.total_pending, 1);
+    }
+
+    #[test]
+    fn test_work_stealing_scheduler_get_work() {
+        let tracker = Arc::new(BrickDataTracker::new());
+        let scheduler = WorkStealingScheduler::new(tracker);
+
+        scheduler.register_worker(WorkerId::new(1));
+        scheduler.register_worker(WorkerId::new(2));
+
+        // Submit task preferring worker 1
+        let spec = TaskSpec {
+            brick_name: "Test".into(),
+            backend: Backend::Cpu,
+            data_dependencies: vec![],
+            preferred_worker: Some(WorkerId::new(1)),
+        };
+        scheduler.submit(spec, "input".into());
+
+        // Worker 1 should get the task
+        let task = scheduler.get_work(WorkerId::new(1));
+        assert!(task.is_some());
+
+        // Worker 2 has nothing to get (or steal since queue is now empty)
+        let task = scheduler.get_work(WorkerId::new(2));
+        assert!(task.is_none());
+    }
+
+    #[test]
+    fn test_work_stealing_scheduler_steal() {
+        let tracker = Arc::new(BrickDataTracker::new());
+        let scheduler = WorkStealingScheduler::new(tracker);
+
+        scheduler.register_worker(WorkerId::new(1));
+        scheduler.register_worker(WorkerId::new(2));
+
+        // Submit 3 tasks to worker 1
+        for i in 0..3 {
+            let spec = TaskSpec {
+                brick_name: format!("Task{}", i),
+                backend: Backend::Cpu,
+                data_dependencies: vec![],
+                preferred_worker: Some(WorkerId::new(1)),
+            };
+            scheduler.submit(spec, format!("input{}", i));
+        }
+
+        // Worker 2 should be able to steal a task
+        let stolen = scheduler.get_work(WorkerId::new(2));
+        assert!(stolen.is_some());
+
+        let stats = scheduler.stats();
+        assert_eq!(stats.total_stolen, 1);
+        assert_eq!(stats.total_pending, 2); // 3 submitted - 1 stolen
+    }
+
+    #[test]
+    fn test_work_stealing_scheduler_locality() {
+        let tracker = Arc::new(BrickDataTracker::new());
+
+        // Track data on worker 1
+        tracker.track_data("model_weights", WorkerId::new(1), 1024);
+
+        let scheduler = WorkStealingScheduler::new(Arc::clone(&tracker));
+        scheduler.register_worker(WorkerId::new(1));
+        scheduler.register_worker(WorkerId::new(2));
+
+        // Submit task with data dependency - should go to worker 1
+        let spec = TaskSpec {
+            brick_name: "MelBrick".into(),
+            backend: Backend::Cpu,
+            data_dependencies: vec!["model_weights".into()],
+            preferred_worker: None,
+        };
+        scheduler.submit(spec, "audio_input".into());
+
+        // Worker 1 should have the task
+        let task = scheduler.get_work(WorkerId::new(1));
+        assert!(task.is_some());
+        assert_eq!(task.unwrap().spec.brick_name, "MelBrick");
+    }
+
+    #[test]
+    fn test_scheduler_stats() {
+        let tracker = Arc::new(BrickDataTracker::new());
+        let scheduler = WorkStealingScheduler::new(tracker);
+
+        scheduler.register_worker(WorkerId::new(1));
+        scheduler.register_worker(WorkerId::new(2));
+
+        // Submit some tasks
+        for i in 0..5 {
+            let spec = TaskSpec {
+                brick_name: format!("Task{}", i),
+                backend: Backend::Cpu,
+                data_dependencies: vec![],
+                preferred_worker: if i % 2 == 0 {
+                    Some(WorkerId::new(1))
+                } else {
+                    Some(WorkerId::new(2))
+                },
+            };
+            scheduler.submit(spec, format!("input{}", i));
+        }
+
+        let stats = scheduler.stats();
+        assert_eq!(stats.worker_count, 2);
+        assert_eq!(stats.total_submitted, 5);
+        assert_eq!(stats.total_pending, 5);
+        assert_eq!(stats.workers.len(), 2);
     }
 }

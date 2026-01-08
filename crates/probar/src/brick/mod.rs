@@ -75,8 +75,9 @@ pub use deterministic::{
 };
 pub use distributed::{
     Backend, BackendSelector, BrickCoordinator, BrickDataTracker, BrickInput, BrickMessage,
-    BrickOutput, DistributedBrick, ExecutionMetrics, MultiBrickExecutor, Subscription, TaskSpec,
-    WorkerId,
+    BrickOutput, DataLocation, DistributedBrick, ExecutionMetrics, MultiBrickExecutor,
+    SchedulerStats, Subscription, TaskSpec, WorkStealingScheduler, WorkStealingTask, WorkerId,
+    WorkerQueue, WorkerStats,
 };
 pub use event::{EventBinding, EventBrick, EventHandler, EventType};
 pub use pipeline::{

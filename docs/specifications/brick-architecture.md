@@ -6004,7 +6004,7 @@ impl BrickCoordinator {
 | 10b | Data locality tracking | ✅ Complete |
 | 10c | Multi-backend executor | ✅ Complete |
 | 10d | PUB/SUB coordination | ✅ Complete |
-| 10e | Work-stealing scheduler | ⏳ Pending (requires repartir) |
+| 10e | Work-stealing scheduler | ✅ Complete |
 
 ---
 
