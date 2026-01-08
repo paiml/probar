@@ -6971,7 +6971,7 @@ impl WhisperTuiApp {
 | 13e | Panel state machine | ✅ Complete |
 | 13f | Feature-gated collectors | ✅ Complete |
 | 13g | CIELAB color theme | ✅ Complete |
-| 13h | whisper.apr TUI integration | ⏳ Pending |
+| 13h | whisper.apr TUI integration | ✅ Complete |
 
 ### Falsification Criteria
 
