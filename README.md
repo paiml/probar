@@ -171,6 +171,162 @@ fn test_calculator_gui() {
 | `gpu` | GPU compute support | trueno |
 | `brick` | Brick Architecture for widget testing | — |
 
+## Brick Architecture
+
+Brick Architecture is a revolutionary approach where **tests ARE the interface**. Instead of writing widgets first and then tests, you define widgets by their test assertions.
+
+### Core Concepts
+
+```rust
+use jugar_probar::brick::{Brick, BrickAssertion, BrickBudget, BrickVerification};
+use std::time::Duration;
+
+struct StatusButton {
+    label: String,
+    is_enabled: bool,
+}
+
+impl Brick for StatusButton {
+    fn brick_name(&self) -> &'static str { "StatusButton" }
+
+    fn assertions(&self) -> &[BrickAssertion] {
+        &[
+            BrickAssertion::TextVisible,
+            BrickAssertion::ContrastRatio(4.5),  // WCAG 2.1 AA
+            BrickAssertion::MaxLatencyMs(16),    // 60fps budget
+        ]
+    }
+
+    fn budget(&self) -> BrickBudget {
+        BrickBudget::uniform(16)  // 16ms total for 60fps
+    }
+
+    fn verify(&self) -> BrickVerification {
+        let mut passed = Vec::new();
+        let mut failed = Vec::new();
+
+        if self.is_enabled && !self.label.is_empty() {
+            passed.push(BrickAssertion::TextVisible);
+        } else {
+            failed.push((BrickAssertion::TextVisible, "Not visible".into()));
+        }
+
+        BrickVerification { passed, failed, verification_time: Duration::from_micros(50) }
+    }
+
+    fn to_html(&self) -> String {
+        format!(r#"<button class="status-btn">{}</button>"#, self.label)
+    }
+
+    fn to_css(&self) -> String {
+        ".status-btn { background: #000; color: #fff; }".into()
+    }
+}
+```
+
+### BrickHouse: Budgeted Composition
+
+Compose multiple bricks with a total performance budget using Jidoka (stop-the-line) principles:
+
+```rust
+use jugar_probar::brick_house::{BrickHouse, BrickHouseBuilder};
+
+let house = BrickHouseBuilder::new("whisper-app")
+    .budget_ms(1000)  // 1 second total budget
+    .brick(status_brick, 50)       // 50ms for status
+    .brick(waveform_brick, 100)    // 100ms for waveform
+    .brick(transcription_brick, 600)  // 600ms for transcription
+    .build()?;
+
+// Render with budget enforcement
+let html = house.render()?;
+let report = house.last_report().unwrap();
+println!("Budget utilization: {}%", report.utilization());
+```
+
+### web_sys_gen: Zero Hand-Written web_sys
+
+The `web_sys_gen` module provides generated abstractions that replace hand-written `web_sys` calls:
+
+```rust
+use jugar_probar::brick::web_sys_gen::{PerformanceTiming, CustomEventDispatcher, EventDetail};
+
+// Instead of: web_sys::window().unwrap().performance().unwrap().now()
+let start = PerformanceTiming::now();
+
+// Measure operations with automatic timing
+let (result, duration_ms) = PerformanceTiming::measure(|| {
+    expensive_computation()
+});
+
+// Dispatch custom events without boilerplate
+let dispatcher = CustomEventDispatcher::new("transcription-complete");
+dispatcher.dispatch_with_detail(EventDetail::json(&transcript_data))?;
+```
+
+### Run the Brick Example
+
+```bash
+cargo run --example brick_demo -p jugar-probar
+```
+
+## Visual Regression Testing
+
+Probar provides pure Rust visual regression testing with perceptual diffing for catching unintended UI changes.
+
+### Basic Comparison
+
+```rust
+use jugar_probar::{VisualRegressionTester, VisualRegressionConfig};
+
+let tester = VisualRegressionTester::new(
+    VisualRegressionConfig::default()
+        .with_threshold(0.01)       // 1% of pixels can differ
+        .with_color_threshold(10)   // Allow minor color variations
+);
+
+// Compare screenshot against baseline
+let result = tester.compare_against_baseline("login-page", &screenshot)?;
+
+if !result.matches {
+    println!("Visual regression detected!");
+    println!("  Diff pixels: {}", result.diff_pixel_count);
+    println!("  Diff percentage: {:.2}%", result.diff_percentage);
+}
+```
+
+### Masking Dynamic Areas
+
+```rust
+use jugar_probar::{ScreenshotComparison, MaskRegion};
+
+let comparison = ScreenshotComparison::new()
+    .with_threshold(0.01)
+    .with_mask(MaskRegion::new(10, 10, 200, 50))  // Exclude header
+    .with_mask(MaskRegion::new(0, 500, 300, 100)); // Exclude footer
+```
+
+### Perceptual Diff
+
+Human-vision-weighted comparison for more accurate results:
+
+```rust
+use jugar_probar::perceptual_diff;
+use image::Rgba;
+
+let pixel_a = Rgba([255, 0, 0, 255]);
+let pixel_b = Rgba([200, 50, 50, 255]);
+
+// Uses weighted RGB (Green most sensitive to human eye)
+let diff = perceptual_diff(pixel_a, pixel_b);
+```
+
+### Run the Visual Regression Example
+
+```bash
+cargo run --example visual_regression_demo -p jugar-probar
+```
+
 ## Usage
 
 ### Running Tests
@@ -273,6 +429,9 @@ Probar is built on pragmatic testing principles:
 | `worker_harness_demo` | Web Worker testing |
 | `docker_demo` | Docker cross-browser (requires `docker` feature) |
 | `streaming_ux_demo` | Real-time streaming validation |
+| `brick_demo` | Brick Architecture with BrickHouse |
+| `web_sys_gen_demo` | web_sys_gen timing and events |
+| `visual_regression_demo` | Visual regression testing |
 
 Run any example:
 ```bash
