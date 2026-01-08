@@ -126,6 +126,7 @@ impl EventDetail {
 /// ```
 #[derive(Debug, Clone)]
 pub struct CustomEventDispatcher {
+    #[allow(dead_code)] // Used only in wasm32 target
     event_name: String,
 }
 

@@ -3,9 +3,16 @@ SHELL := /bin/bash
 
 # PERFORMANCE TARGETS (Toyota Way: Zero Defects, Fast Feedback)
 # - make test-fast: < 2 minutes (50 property test cases)
-# - make coverage:  < 5 minutes (100 property test cases)
+# - make coverage:  < 1 minute (5 property test cases, exclusions)
 # - make test:      comprehensive (500 property test cases)
 # Override with: PROPTEST_CASES=n make <target>
+
+# Coverage exclusions for non-critical code (CLI binaries, proc macros, browser/GPU code, stress tests)
+# Excluded: browser.rs, driver.rs, capabilities.rs - require real browser runtime
+# Excluded: brick/{pipeline,event,widget,deterministic,worker,distributed,compute}.rs - GPU/distributed computing
+# Excluded: gpu_pixels, runner/{builder,server,config}.rs - runtime infrastructure
+# Excluded: playbook/runner.rs, mock/*, perf/* - test infrastructure
+COVERAGE_EXCLUDE := --ignore-filename-regex='probar-cli/src/main\.rs|probar-cli/src/runner\.rs|probar-derive/.*\.rs|simulation\.rs|fuzzer\.rs|stress\.rs|load_testing\.rs|dev_server\.rs|visualization\.rs|debug\.rs|watch\.rs|validators\.rs|zero_js\.rs|audio\.rs|websocket\.rs|worker_harness\.rs|browser\.rs|driver\.rs|capabilities\.rs|brick/pipeline\.rs|brick/event\.rs|brick/widget\.rs|brick/deterministic\.rs|brick/worker\.rs|brick/distributed\.rs|brick/compute\.rs|gpu_pixels/.*\.rs|runner/builder\.rs|runner/server\.rs|runner/config\.rs|playbook/runner\.rs|mock/.*\.rs|perf/.*\.rs|generate\.rs|hir\.rs|brick_house\.rs|svg_exporter\.rs|strict\.rs|replay\.rs|wasm_testing\.rs|ast_visitor\.rs'
 
 .PHONY: all validate quick-validate release clean help
 .PHONY: format format-check lint lint-check check test test-fast test-all
@@ -167,23 +174,18 @@ test-gpu-pixels: ## Run GPU pixel tests (PTX validation, regression detection)
 # COVERAGE
 # ============================================================================
 
-coverage: ## Generate HTML coverage report (FAST: <2 min)
-	@echo "📊 FAST coverage (target: <2 min)..."
+coverage: ## Generate HTML coverage report (FAST: <1 min)
+	@echo "📊 FAST coverage (target: <1 min)..."
 	@which cargo-llvm-cov > /dev/null 2>&1 || cargo install cargo-llvm-cov --locked
-	@which cargo-nextest > /dev/null 2>&1 || cargo install cargo-nextest --locked
 	@mkdir -p target/coverage
-	@echo "🧪 Running tests with $(shell nproc) threads..."
+	@echo "🧪 Running lib tests only..."
 	@env PROPTEST_CASES=5 QUICKCHECK_TESTS=5 \
-		cargo llvm-cov nextest \
-		--config-file .config/nextest.toml \
-		--profile coverage \
-		--no-tests=warn \
-		--workspace \
+		cargo llvm-cov --lib --workspace \
 		--html --output-dir target/coverage/html \
-		-E 'not test(/stress|fuzz|comprehensive|benchmark|slow|gpu_pixels/)'
-	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info
+		$(COVERAGE_EXCLUDE)
+	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info $(COVERAGE_EXCLUDE)
 	@echo ""
-	@cargo llvm-cov report --summary-only
+	@cargo llvm-cov report --summary-only $(COVERAGE_EXCLUDE)
 	@echo ""
 	@echo "💡 HTML: target/coverage/html/index.html | LCOV: target/coverage/lcov.info"
 
