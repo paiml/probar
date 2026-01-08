@@ -587,9 +587,9 @@ pub trait Widget: Brick + Send + Sync {
 | presentar-core: SimpleBrick helper | ✅ Complete | e7895ce |
 | presentar-core: BrickWidgetExt trait | ✅ Complete | e7895ce |
 | whisper.apr: Add presentar-core dep | ✅ Complete | f4d12e6 |
-| whisper.apr: StatusBrick widget | 🔄 In Progress | - |
-| whisper.apr: WaveformBrick widget | ⏳ Pending | - |
-| whisper.apr: TranscriptionBrick widget | ⏳ Pending | - |
+| whisper.apr: StatusBrick widget | ✅ Complete | - |
+| whisper.apr: WaveformBrick widget | ✅ Complete | - |
+| whisper.apr: TranscriptionBrick widget | ✅ Complete | - |
 | whisper.apr: Remove web-sys DOM | ⏳ Pending | - |
 | Validate Zero-JS compliance | ⏳ Pending | - |
 
