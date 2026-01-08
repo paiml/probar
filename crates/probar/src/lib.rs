@@ -22,6 +22,29 @@
 // Allow large stack arrays/frames in tests (e.g., test data generation)
 #![cfg_attr(test, allow(clippy::large_stack_arrays, clippy::large_stack_frames))]
 
+/// Brick Architecture: Tests ARE the Interface (PROBAR-SPEC-009)
+///
+/// Core abstraction where UI components are defined by test assertions.
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod brick;
+
+/// BrickHouse: Budgeted Composition of Bricks (PROBAR-SPEC-009)
+///
+/// Compose multiple bricks with a total performance budget.
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown,
+    clippy::expect_used
+)]
+pub mod brick_house;
+
 #[allow(
     clippy::suboptimal_flops,
     clippy::cast_precision_loss,
@@ -602,6 +625,12 @@ pub use watch::{
     FileChange, FileChangeKind, FileWatcher, FnWatchHandler, WatchBuilder, WatchConfig,
     WatchHandler, WatchStats,
 };
+// Brick Architecture (PROBAR-SPEC-009)
+pub use brick::{
+    Brick, BrickAssertion, BrickBudget, BrickError, BrickPhase, BrickResult, BrickVerification,
+    BudgetViolation,
+};
+pub use brick_house::{BrickHouse, BrickHouseBuilder, BrickTiming, BudgetReport, JidokaAlert};
 pub use websocket::{
     MessageDirection, MessageType, MockWebSocketResponse, WebSocketConnection, WebSocketMessage,
     WebSocketMock, WebSocketMonitor, WebSocketMonitorBuilder, WebSocketState,
@@ -611,6 +640,9 @@ pub use websocket::{
 pub mod prelude {
     pub use super::accessibility::*;
     pub use super::assertion::*;
+    // Brick Architecture (PROBAR-SPEC-009)
+    pub use super::brick::*;
+    pub use super::brick_house::*;
     pub use super::bridge::*;
     pub use super::browser::*;
     pub use super::capabilities::*;

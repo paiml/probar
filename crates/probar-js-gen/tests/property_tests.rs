@@ -6,6 +6,8 @@
 //! - Claessen & Hughes (2000) "QuickCheck: A Lightweight Tool for Random Testing"
 //! - McKeeman (1998) "Differential Testing for Software"
 
+#![allow(clippy::unwrap_used)]
+
 use probar_js_gen::prelude::*;
 use proptest::prelude::*;
 

@@ -332,6 +332,7 @@ mod tests {
     // Simple mock worker for testing the harness itself
     struct SimpleWorker {
         state: String,
+        #[allow(dead_code)]
         runtime: MockWasmRuntime,
     }
 
@@ -418,5 +419,173 @@ mod tests {
         let steps = WasmCallbackTestHarness::<SimpleWorker>::happy_path_steps();
         assert!(!steps.is_empty());
         assert!(matches!(steps[0].message, MockMessage::Ready));
+    }
+
+    #[test]
+    fn test_state_assertion_custom() {
+        let assertion = StateAssertion::Custom("custom check".to_string());
+        // Custom assertions always return true (need external evaluation)
+        assert!(assertion.check("anything"));
+        assert_eq!(assertion.describe(), "custom check");
+    }
+
+    #[test]
+    fn test_state_assertion_one_of_describe() {
+        let assertion = StateAssertion::OneOf(vec!["ready".to_string(), "loading".to_string()]);
+        let desc = assertion.describe();
+        assert!(desc.contains("ready"));
+        assert!(desc.contains("loading"));
+    }
+
+    // Stateful mock worker that actually updates state
+    struct StatefulWorker {
+        state: std::rc::Rc<std::cell::RefCell<String>>,
+        #[allow(dead_code)]
+        runtime: MockWasmRuntime,
+    }
+
+    impl MockableWorker for StatefulWorker {
+        fn with_mock_runtime(mut runtime: MockWasmRuntime) -> Self {
+            let state_ptr = std::rc::Rc::new(std::cell::RefCell::new("uninitialized".to_string()));
+            let state_clone = std::rc::Rc::clone(&state_ptr);
+
+            runtime.on_message(move |msg| {
+                let new_state = match msg {
+                    MockMessage::Ready => "loading",
+                    MockMessage::ModelLoaded { .. } => "ready",
+                    MockMessage::Start { .. } => "recording",
+                    MockMessage::Stop => "ready",
+                    MockMessage::Error { .. } => "error",
+                    MockMessage::Shutdown => "shutdown",
+                    _ => return,
+                };
+                *state_clone.borrow_mut() = new_state.to_string();
+            });
+
+            Self {
+                state: state_ptr,
+                runtime,
+            }
+        }
+
+        fn get_state(&self) -> String {
+            self.state.borrow().clone()
+        }
+
+        fn debug_internal_state(&self) -> String {
+            self.state.borrow().clone()
+        }
+    }
+
+    #[test]
+    fn test_harness_new() {
+        let harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        assert_eq!(harness.steps_executed(), 0);
+        assert!(!harness.has_errors());
+        assert!(harness.errors().is_empty());
+    }
+
+    #[test]
+    fn test_harness_worker_ready() {
+        let mut harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        harness.worker_ready();
+        assert_eq!(harness.steps_executed(), 1);
+        assert_eq!(harness.worker.get_state(), "loading");
+    }
+
+    #[test]
+    fn test_harness_model_loaded() {
+        let mut harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        harness.worker_ready();
+        harness.model_loaded(39.0, 1500.0);
+        assert_eq!(harness.steps_executed(), 2);
+        assert_eq!(harness.worker.get_state(), "ready");
+    }
+
+    #[test]
+    fn test_harness_worker_error() {
+        let mut harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        harness.worker_ready();
+        harness.worker_error("test error");
+        assert_eq!(harness.worker.get_state(), "error");
+    }
+
+    #[test]
+    fn test_harness_send_message() {
+        let mut harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        harness.send_message(MockMessage::Shutdown);
+        assert_eq!(harness.worker.get_state(), "shutdown");
+    }
+
+    #[test]
+    fn test_harness_assert_state() {
+        let mut harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        harness.worker_ready();
+        harness.assert_state("loading");
+    }
+
+    #[test]
+    fn test_harness_assert_predicate() {
+        let mut harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        harness.worker_ready();
+        harness.assert(&StateAssertion::Equals("loading".to_string()));
+        harness.assert(&StateAssertion::Contains("load".to_string()));
+    }
+
+    #[test]
+    fn test_harness_assert_state_synced() {
+        let mut harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        harness.worker_ready();
+        harness.assert_state_synced(); // Should not panic
+    }
+
+    #[test]
+    fn test_harness_execute_steps_success() {
+        let mut harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        let steps = vec![
+            TestStep::new(MockMessage::Ready, "loading"),
+            TestStep::new(MockMessage::model_loaded(39.0, 1500.0), "ready"),
+        ];
+        let result = harness.execute_steps(&steps);
+        assert!(result.is_ok());
+        assert_eq!(harness.steps_executed(), 2);
+    }
+
+    #[test]
+    fn test_harness_execute_steps_failure() {
+        let mut harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        let steps = vec![TestStep::new(MockMessage::Ready, "wrong_state")];
+        let result = harness.execute_steps(&steps);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_harness_execute_steps_failure_with_description() {
+        let mut harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        let steps =
+            vec![TestStep::new(MockMessage::Ready, "wrong_state").with_description("Worker ready")];
+        let result = harness.execute_steps(&steps);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Worker ready"));
+    }
+
+    #[test]
+    fn test_harness_execute_steps_all() {
+        let mut harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        let steps = vec![
+            TestStep::new(MockMessage::Ready, "wrong1"),
+            TestStep::new(MockMessage::model_loaded(39.0, 1500.0), "wrong2"),
+        ];
+        let errors = harness.execute_steps_all(&steps);
+        assert_eq!(errors.len(), 2);
+    }
+
+    #[test]
+    fn test_harness_execute_steps_all_with_description() {
+        let mut harness = WasmCallbackTestHarness::<StatefulWorker>::new();
+        let steps = vec![TestStep::new(MockMessage::Ready, "wrong").with_description("Test step")];
+        let errors = harness.execute_steps_all(&steps);
+        assert!(!errors.is_empty());
+        assert!(errors[0].contains("Test step"));
     }
 }

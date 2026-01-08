@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0-rc.1"
 edition = "2021"
 rust-version = "1.75.0"
 license = "MIT OR Apache-2.0"
@@ -93,11 +93,11 @@ regex = "1.11"
 # UUID for unique identifiers
 uuid = { version = "1.11", features = ["v4", "serde", "js"] }
 
-# Local crates
-probar = { version = "0.1.0", path = "crates/probar" }
-probar-derive = { version = "0.1.0", path = "crates/probar-derive" }
-probar-cli = { version = "0.1.0", path = "crates/probar-cli" }
-probar-js-gen = { version = "0.1.0", path = "crates/probar-js-gen" }
+# Local crates - exact versions for verified release
+probar = { version = "=1.0.0-rc.1", path = "crates/probar" }
+probar-derive = { version = "=1.0.0-rc.1", path = "crates/probar-derive" }
+probar-cli = { version = "=1.0.0-rc.1", path = "crates/probar-cli" }
+probar-js-gen = { version = "=1.0.0-rc.1", path = "crates/probar-js-gen" }
 
 # Hashing
 blake3 = "1"

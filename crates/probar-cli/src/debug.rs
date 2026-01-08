@@ -612,7 +612,7 @@ mod tests {
         let tracer = DebugTracer::new(true);
         let elapsed = tracer.elapsed_str();
         // Should be in format "SS:MMM"
-        assert!(elapsed.contains(":"));
+        assert!(elapsed.contains(':'));
         assert!(elapsed.len() >= 5); // At least "00:000"
     }
 
@@ -620,7 +620,7 @@ mod tests {
     fn test_debug_category_debug_impl() {
         // Test Debug trait implementation
         let cat = DebugCategory::Server;
-        let debug_str = format!("{:?}", cat);
+        let debug_str = format!("{cat:?}");
         assert!(debug_str.contains("Server"));
     }
 
@@ -634,7 +634,7 @@ mod tests {
     #[test]
     fn test_resolution_rule_debug_impl() {
         let rule = ResolutionRule::StaticFile;
-        let debug_str = format!("{:?}", rule);
+        let debug_str = format!("{rule:?}");
         assert!(debug_str.contains("StaticFile"));
     }
 }

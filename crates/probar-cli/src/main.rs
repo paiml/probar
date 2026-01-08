@@ -3069,8 +3069,8 @@ mod tests {
             assert!(json.contains("summary"));
             assert!(json.contains("tests"));
             // Should be valid JSON-ish (contains braces)
-            assert!(json.contains("{"));
-            assert!(json.contains("}"));
+            assert!(json.contains('{'));
+            assert!(json.contains('}'));
         }
 
         #[test]

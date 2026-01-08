@@ -5,6 +5,59 @@ All notable changes to Probar will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-rc.1] - 2026-01-08
+
+### Major Architecture Shift: Brick Architecture (PROBAR-SPEC-009)
+
+This release marks the transition to the **Brick Architecture** - a spec-driven development paradigm where tests ARE the interface. The entire UI is defined by falsifiable assertions and performance budgets.
+
+### Added
+
+#### Feature: Brick Architecture (Spec-Driven Development)
+- **180-Point Popperian Falsification Framework**: Complete scientific method for UI testing
+- **Zero Hand-Written HTML**: All UI generated from Rust Brick definitions via `gen_index`
+- **Cross-Language Contract Tests**: Validate JS postMessage types match Rust WorkerResult variants
+- **Wildcard Enum Match Prevention**: `clippy::wildcard_enum_match_arm = "deny"` prevents silent failures
+- **Pre-Complete Browser Test Gate**: `.pmat-hooks.toml` requires browser tests before work completion
+
+#### Feature: WCAG 2.1 Contrast & Accessibility Enforcement
+- **CIEDE2000 Color Difference**: Lab color space perceptual validation
+- **4.5:1 Contrast Ratio**: Automatic enforcement for text elements
+- **ARIA Attribute Validation**: Role, label, and live region verification
+- **Focus Indicator Testing**: Keyboard navigation accessibility
+
+#### Feature: Dapper-style Distributed Tracing
+- **Structured Logging**: `tracing` crate integration with field-based spans
+- **RTF Performance Metrics**: Real-Time Factor calculation (inference_time / audio_duration)
+- **Performance Span Tracking**: `total_inference_ms`, `processing_start_ms` fields
+- **Browser DevTools Integration**: tracing_wasm for Chrome console structured output
+
+#### Feature: Runtime Health Score (probar.toml)
+- **15-Point Quality Gate**: module_resolution (5) + app_bootstrap (5) + critical_path (5)
+- **Jidoka Automation**: Stop-the-line when runtime health fails
+- **Browser Test Requirement**: `browser_required = true` prevents "100/100 with broken app"
+
+### Fixed
+
+#### The 11 Historical Defects (Reference: Appendix B of PROBAR-SPEC-009)
+1. **BH-001**: Wildcard match silently ignored new WorkerResult variants
+2. **BH-002**: Cross-language type mismatch (JS "ready" vs Rust "Ready")
+3. **BH-003**: Console.log statements obscured structured diagnostics
+4. **BH-004**: Static HTML diverged from Brick specifications
+5. **BH-005**: Missing runtime health validation (passed tests, broken app)
+6. **BH-006**: Double-spawn race condition in worker initialization
+7. **BH-007**: RTF calculated as 0.0 due to missing timing instrumentation
+8. **BH-008**: Pre-complete hook allowed skipping browser tests
+9. **BH-009**: Contract tests didn't verify case sensitivity
+10. **BH-010**: Performance spans not accumulated across chunks
+11. **BH-011**: Health score configuration not enforced
+
+### Technical Details
+- **Total Tests**: 335 passing (Brick Architecture validated)
+- **Falsification Score**: 180/180 (All hypotheses falsifiable)
+- **Coverage**: 95%+ with mutation testing
+- **Performance**: 16ms frame budget compliance
+
 ## [0.4.1] - 2026-01-05
 
 ### Fixed
@@ -174,6 +227,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rust Version**: 1.75.0+
 - **License**: MIT OR Apache-2.0
 
+[1.0.0-rc.1]: https://github.com/paiml/probar/releases/tag/v1.0.0-rc.1
+[0.4.1]: https://github.com/paiml/probar/releases/tag/v0.4.1
+[0.4.0]: https://github.com/paiml/probar/releases/tag/v0.4.0
 [0.3.0]: https://github.com/paiml/probar/releases/tag/v0.3.0
 [0.2.0]: https://github.com/paiml/probar/releases/tag/v0.2.0
 [0.1.0]: https://github.com/paiml/probar/releases/tag/v0.1.0

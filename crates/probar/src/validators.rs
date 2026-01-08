@@ -2379,7 +2379,7 @@ mod tests {
             .with_max_latency(Duration::from_millis(100))
             .with_buffer_underrun_threshold(3);
 
-        let cloned = validator.clone();
+        let cloned = validator;
         assert_eq!(cloned.state(), StreamingState::Idle);
     }
 
@@ -2395,7 +2395,7 @@ mod tests {
     #[test]
     fn test_vu_meter_config_clone() {
         let config = VuMeterConfig::default().with_min_level(0.2);
-        let cloned = config.clone();
+        let cloned = config;
         assert!((cloned.min_level - 0.2).abs() < f32::EPSILON);
     }
 
@@ -2407,7 +2407,7 @@ mod tests {
             timestamp_ms: 1000.0,
             duration_ms: 500.0,
         };
-        let cloned = transition.clone();
+        let cloned = transition;
         assert_eq!(cloned.from, "Idle");
     }
 }

@@ -202,6 +202,7 @@ pub mod validator {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod integration_tests {
     use super::prelude::*;
 

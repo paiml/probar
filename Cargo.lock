@@ -2371,7 +2371,7 @@ dependencies = [
 
 [[package]]
 name = "jugar-probar"
-version = "0.5.1"
+version = "1.0.0-rc.1"
 dependencies = [
  "async-trait",
  "base64",
@@ -2412,13 +2412,12 @@ dependencies = [
 
 [[package]]
 name = "jugar-probar-derive"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed4fb5d7c8f2fb9db975068ada9292f98b945120c536fe850222f6f4ef602ea4"
+version = "1.0.0-rc.1"
 dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+ "trybuild",
 ]
 
 [[package]]
@@ -3150,7 +3149,7 @@ dependencies = [
 
 [[package]]
 name = "probador"
-version = "0.5.1"
+version = "1.0.0-rc.1"
 dependencies = [
  "assert_cmd",
  "atty",
@@ -3177,18 +3176,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "probar-derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "trybuild",
-]
-
-[[package]]
 name = "probar-js-gen"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "blake3",
  "chrono",
@@ -3916,7 +3905,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "showcase-calculator"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "console_error_panic_hook",
  "crossterm",

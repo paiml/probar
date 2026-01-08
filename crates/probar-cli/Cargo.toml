@@ -1,6 +1,6 @@
 [package]
 name = "probador"
-version = "0.5.1"
+version = "1.0.0-rc.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "CLI for Probar: Rust-native testing framework for WASM games"
@@ -20,8 +20,8 @@ name = "probador"
 path = "src/main.rs"
 
 [dependencies]
-# Core library
-jugar-probar = { version = "0.5.1", path = "../probar" }
+# Core library - exact version for verified release
+jugar-probar = { version = "=1.0.0-rc.1", path = "../probar" }
 
 # CLI framework
 clap = { workspace = true }

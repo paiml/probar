@@ -892,7 +892,7 @@ mod tests {
         let loc = SourceLocation::new(PathBuf::from("src/lib.rs"), 10);
         let display = loc.display();
         assert!(display.contains("src/lib.rs:10"));
-        assert!(!display.contains("("));
+        assert!(!display.contains('('));
     }
 
     #[test]
