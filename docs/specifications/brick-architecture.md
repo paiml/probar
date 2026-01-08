@@ -6346,7 +6346,7 @@ impl Widget for TranscriptionWidget {
 | 12b | Verify-measure-layout-paint lifecycle | ✅ Complete |
 | 12c | DrawCommand GPU batching | ✅ Complete |
 | 12d | Canvas2D fallback | ✅ Complete |
-| 12e | Whisper widget bricks | ⏳ Pending |
+| 12e | Whisper widget bricks | ✅ Complete |
 
 ---
 
