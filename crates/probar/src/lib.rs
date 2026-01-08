@@ -614,7 +614,8 @@ pub use validators::{
     StreamingValidationResult, TestExecutionStats, VuMeterConfig, VuMeterError, VuMeterSample,
 };
 pub use visual_regression::{
-    perceptual_diff, ImageDiffResult, VisualRegressionConfig, VisualRegressionTester,
+    perceptual_diff, ImageDiffResult, MaskRegion, ScreenshotComparison, VisualRegressionConfig,
+    VisualRegressionTester,
 };
 pub use wait::{
     wait_timeout, wait_until, FnCondition, LoadState, NavigationOptions, PageEvent, WaitCondition,
