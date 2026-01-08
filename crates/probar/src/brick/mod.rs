@@ -61,6 +61,7 @@ pub mod distributed;
 pub mod event;
 pub mod pipeline;
 pub mod tui;
+pub mod web_sys_gen;
 pub mod widget;
 pub mod worker;
 
@@ -88,6 +89,10 @@ pub use pipeline::{
 pub use tui::{
     AnalyzerBrick, CielabColor, CollectorBrick, CollectorError, PanelBrick, PanelId, PanelState,
     RingBuffer,
+};
+pub use web_sys_gen::{
+    get_base_url, BlobUrl, CustomEventDispatcher, EventDetail, FetchClient, GeneratedWebSys,
+    GenerationMetadata, PerformanceTiming, WebSysError, GENERATION_METADATA,
 };
 pub use widget::{
     commands_to_gpu_instances, Canvas, Constraints, CornerRadius, DrawCommand, Event, GpuInstance,

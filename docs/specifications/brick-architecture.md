@@ -590,8 +590,8 @@ pub trait Widget: Brick + Send + Sync {
 | whisper.apr: StatusBrick widget | ✅ Complete | - |
 | whisper.apr: WaveformBrick widget | ✅ Complete | - |
 | whisper.apr: TranscriptionBrick widget | ✅ Complete | - |
-| whisper.apr: Remove web-sys DOM | ⏳ Pending | - |
-| Validate Zero-JS compliance | ⏳ Pending | - |
+| whisper.apr: Remove web-sys DOM | ✅ Complete | PROBAR-WEBSYS-001 |
+| Validate Zero-JS compliance | ✅ Complete | PROBAR-WEBSYS-001 |
 
 ### Architecture After Unification
 
@@ -5377,9 +5377,9 @@ H1 (Zero-Artifact) is **FALSIFIED** if ANY of:
 | EventBrick type | ✅ Complete | PROBAR-EVENT-001 |
 | AudioBrick type | ✅ Complete | PROBAR-AUDIO-001 |
 | JS codegen engine | ✅ Complete | PROBAR-JSGEN-001 |
-| web_sys codegen | ⏳ Pending | PROBAR-WEBSYS-001 |
+| web_sys codegen | ✅ Complete | PROBAR-WEBSYS-001 |
 | `probar build` command | ✅ Complete | PROBAR-BUILD-001 |
-| whisper.apr migration | ⏳ Pending | WAPR-ZERO-ARTIFACT-001 |
+| whisper.apr migration | ✅ Complete | WAPR-ZERO-ARTIFACT-001 |
 
 #### Implementation Details (Jan 08, 2026)
 
