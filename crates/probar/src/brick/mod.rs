@@ -57,8 +57,10 @@
 pub mod audio;
 pub mod compute;
 pub mod deterministic;
+pub mod distributed;
 pub mod event;
 pub mod pipeline;
+pub mod widget;
 pub mod worker;
 
 // Re-export submodule types
@@ -70,11 +72,22 @@ pub use deterministic::{
     BrickHistory, BrickState, DeterministicBrick, DeterministicClock, DeterministicRng,
     ExecutionTrace, GuardSeverity, GuardViolation, GuardedBrick, InvariantGuard, StateValue,
 };
+pub use distributed::{
+    Backend, BackendSelector, BrickCoordinator, BrickDataTracker, BrickInput, BrickMessage,
+    BrickOutput, DistributedBrick, ExecutionMetrics, MultiBrickExecutor, Subscription, TaskSpec,
+    WorkerId,
+};
 pub use event::{EventBinding, EventBrick, EventHandler, EventType};
 pub use pipeline::{
     AuditEntry, BrickPipeline, BrickStage, Checkpoint, PipelineAuditCollector, PipelineContext,
     PipelineData, PipelineError, PipelineMetadata, PipelineResult, PrivacyTier, StageTrace,
     ValidationLevel, ValidationMessage, ValidationResult,
+};
+pub use widget::{
+    commands_to_gpu_instances, Canvas, Constraints, CornerRadius, DrawCommand, Event, GpuInstance,
+    LayoutResult, LineCap, LineJoin, Modifiers, RecordingCanvas, Rect, RenderMetrics, Size,
+    StrokeStyle, TextStyle, Transform2D, Widget, WidgetColor, WidgetExt, WidgetMouseButton,
+    WidgetPoint,
 };
 pub use worker::{
     BrickWorkerMessage, BrickWorkerMessageDirection, FieldType, MessageField, WorkerBrick,

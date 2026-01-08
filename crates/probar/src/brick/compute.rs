@@ -499,7 +499,7 @@ impl ComputeBrick {
                 }
                 TileOp::Mma { a, b, c } => {
                     wgsl.push_str(&format!("    // Matrix multiply: {} = {} @ {}\n", c, a, b));
-                    wgsl.push_str(&format!("    // TODO: Implement cooperative matrix\n"));
+                    wgsl.push_str("    // TODO: Implement cooperative matrix\n");
                 }
                 TileOp::Reduce {
                     kind,

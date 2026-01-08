@@ -27,6 +27,9 @@
 //! let output = whisper_pipeline.run(input).await?;
 //! ```
 
+// Allow missing docs for enum variant fields - context is clear from variant name
+#![allow(missing_docs)]
+
 use super::{Brick, BrickError};
 use std::collections::HashMap;
 use std::fmt::Debug;

@@ -301,6 +301,16 @@ pub struct InvariantGuard {
     pub severity: GuardSeverity,
 }
 
+impl std::fmt::Debug for InvariantGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InvariantGuard")
+            .field("name", &self.name)
+            .field("check", &"<fn>")
+            .field("severity", &self.severity)
+            .finish()
+    }
+}
+
 impl InvariantGuard {
     /// Create a new invariant guard
     #[must_use]
@@ -323,6 +333,7 @@ impl InvariantGuard {
 }
 
 /// Wrapper that adds invariant checking to a brick
+#[derive(Debug)]
 pub struct GuardedBrick<B: Brick> {
     /// Inner brick
     inner: B,

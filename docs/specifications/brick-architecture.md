@@ -63,9 +63,9 @@
 | 8 | ComputeBrick (mel) | ✅ `bricks/compute.rs` |
 | 8 | ComputeBrick (attention) | ✅ `bricks/compute.rs` |
 | 9 | BrickPipeline | ✅ `probar/brick/pipeline.rs` |
-| 10 | DistributedBrick | ⏳ Pending |
+| 10 | DistributedBrick | ✅ `probar/brick/distributed.rs` |
 | 11 | DeterministicBrick | ✅ `probar/brick/deterministic.rs` |
-| 12 | Widget integration | ⏳ Pending |
+| 12 | Widget integration | ✅ `probar/brick/widget.rs` |
 | 13 | TUI Bricks | ✅ `bricks/tui_bricks.rs` |
 
 ### Validation
@@ -6000,11 +6000,11 @@ impl BrickCoordinator {
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 10a | DistributedBrick wrapper | ⏳ Pending |
-| 10b | Data locality tracking | ⏳ Pending |
-| 10c | Multi-backend executor | ⏳ Pending |
-| 10d | PUB/SUB coordination | ⏳ Pending |
-| 10e | Work-stealing scheduler | ⏳ Pending |
+| 10a | DistributedBrick wrapper | ✅ Complete |
+| 10b | Data locality tracking | ✅ Complete |
+| 10c | Multi-backend executor | ✅ Complete |
+| 10d | PUB/SUB coordination | ✅ Complete |
+| 10e | Work-stealing scheduler | ⏳ Pending (requires repartir) |
 
 ---
 

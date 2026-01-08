@@ -369,9 +369,7 @@ class RingBuffer {{
 
         js.push_str("async function initAudio(workletUrl) {\n");
         js.push_str("    const audioContext = new AudioContext();\n");
-        js.push_str(&format!(
-            "    await audioContext.audioWorklet.addModule(workletUrl);\n\n"
-        ));
+        js.push_str("    await audioContext.audioWorklet.addModule(workletUrl);\n\n");
 
         // Create ring buffer if needed
         if let Some(ref rb) = self.ring_buffer {
