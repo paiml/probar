@@ -32,7 +32,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-jugar-probar = "0.4"
+jugar-probar = "1.0"
 ```
 
 ```rust
@@ -126,6 +126,7 @@ expect(&score).to_have_text("100").await?;
 | **Zero-JS Validation** | Enforce WASM-first architecture (no user JS) |
 | **Worker Harness** | Web Worker lifecycle, ring buffers, shared memory |
 | **Docker Testing** | Cross-browser testing via Docker containers |
+| **Brick Architecture** | Widget-level testing with assertions, budgets, and verification |
 
 ## Quick Start
 
@@ -168,6 +169,7 @@ fn test_calculator_gui() {
 | `derive` | Type-safe derive macros | probar-derive |
 | `docker` | Docker cross-browser testing | bollard, tokio |
 | `gpu` | GPU compute support | trueno |
+| `brick` | Brick Architecture for widget testing | — |
 
 ## Usage
 

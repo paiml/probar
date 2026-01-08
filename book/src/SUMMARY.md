@@ -72,6 +72,7 @@
 
 # Advanced Topics
 
+- [Brick Architecture](./probar/brick-architecture.md)
 - [Fuzzing](./probar/fuzzing.md)
 - [Accessibility Testing](./probar/accessibility.md)
 - [Streaming UX Validation](./probar/streaming-validation.md)
