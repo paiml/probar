@@ -1,0 +1,697 @@
+//! DeterministicBrick: Pure functional brick execution (PROBAR-SPEC-009-P11)
+//!
+//! Provides deterministic execution with:
+//! - Pure functional design: (State, Input) → (State, Output)
+//! - Persistent data structures for O(1) snapshots
+//! - Time-travel debugging
+//! - Jidoka guards for invariant checking
+//!
+//! # Design Philosophy
+//!
+//! DeterministicBrick applies WOS (WebAssembly Operating System) patterns
+//! to ensure reproducible brick execution.
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use probar::brick::deterministic::{DeterministicBrick, BrickHistory};
+//!
+//! impl DeterministicBrick for MelSpectrogramBrick {
+//!     type State = ComputeState;
+//!     type Input = AudioChunk;
+//!     type Output = MelFrames;
+//!
+//!     fn execute_pure(
+//!         state: Self::State,
+//!         input: Self::Input,
+//!     ) -> Result<(Self::State, Self::Output), BrickError> {
+//!         let mel = compute_mel(&input, &state.filterbank)?;
+//!         let new_state = state.with_frame_count(state.frame_count + 1);
+//!         Ok((new_state, mel))
+//!     }
+//! }
+//! ```
+
+use super::{Brick, BrickError};
+use std::collections::HashMap;
+use std::time::Duration;
+
+/// Trait for bricks with deterministic, pure functional execution
+pub trait DeterministicBrick: Brick {
+    /// State type (must be cloneable for snapshots)
+    type State: Clone + Default;
+    /// Input type
+    type Input;
+    /// Output type
+    type Output;
+
+    /// Pure function: (state, input) → (new_state, output)
+    ///
+    /// This function MUST be:
+    /// - Deterministic: same inputs → same outputs
+    /// - Pure: no side effects
+    /// - Total: always returns or errors (no panics)
+    fn execute_pure(
+        state: Self::State,
+        input: Self::Input,
+    ) -> Result<(Self::State, Self::Output), BrickError>;
+
+    /// Create initial state
+    fn initial_state() -> Self::State {
+        Self::State::default()
+    }
+
+    /// Get state dependencies for determinism verification
+    fn state_dependencies(&self) -> &[&str] {
+        &[]
+    }
+}
+
+/// Brick state snapshot with structural sharing
+#[derive(Debug, Clone)]
+pub struct BrickState {
+    /// Named tensors (using owned Vecs for simplicity)
+    pub tensors: HashMap<String, Vec<f32>>,
+    /// Tensor shapes
+    pub shapes: HashMap<String, Vec<usize>>,
+    /// Scalar metadata
+    pub metadata: HashMap<String, StateValue>,
+    /// Snapshot version for debugging
+    pub version: u64,
+}
+
+/// Value types for state metadata
+#[derive(Debug, Clone, PartialEq)]
+pub enum StateValue {
+    /// Integer value
+    Int(i64),
+    /// Float value
+    Float(f64),
+    /// String value
+    String(String),
+    /// Boolean value
+    Bool(bool),
+}
+
+impl BrickState {
+    /// Create a new empty state
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            tensors: HashMap::new(),
+            shapes: HashMap::new(),
+            metadata: HashMap::new(),
+            version: 0,
+        }
+    }
+
+    /// Create a snapshot (clones with new version)
+    #[must_use]
+    pub fn snapshot(&self) -> Self {
+        let mut snap = self.clone();
+        snap.version = self.version + 1;
+        snap
+    }
+
+    /// Set a tensor value
+    pub fn set_tensor(&mut self, name: impl Into<String>, data: Vec<f32>, shape: Vec<usize>) {
+        let name = name.into();
+        self.tensors.insert(name.clone(), data);
+        self.shapes.insert(name, shape);
+    }
+
+    /// Get a tensor value
+    pub fn get_tensor(&self, name: &str) -> Option<(&[f32], &[usize])> {
+        let data = self.tensors.get(name)?;
+        let shape = self.shapes.get(name)?;
+        Some((data, shape))
+    }
+
+    /// Set metadata value
+    pub fn set_metadata(&mut self, key: impl Into<String>, value: StateValue) {
+        self.metadata.insert(key.into(), value);
+    }
+
+    /// Get metadata value
+    pub fn get_metadata(&self, key: &str) -> Option<&StateValue> {
+        self.metadata.get(key)
+    }
+}
+
+impl Default for BrickState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Execution trace entry for time-travel debugging
+#[derive(Debug, Clone)]
+pub struct ExecutionTrace {
+    /// Operation name
+    pub operation: String,
+    /// Input summary (for debugging)
+    pub input_summary: String,
+    /// Output summary (for debugging)
+    pub output_summary: String,
+    /// Duration
+    pub duration: Duration,
+    /// State version before execution
+    pub state_version_before: u64,
+    /// State version after execution
+    pub state_version_after: u64,
+}
+
+/// History for time-travel debugging
+#[derive(Debug)]
+pub struct BrickHistory {
+    /// State snapshots
+    snapshots: Vec<BrickState>,
+    /// Execution traces
+    traces: Vec<ExecutionTrace>,
+    /// Current position
+    position: usize,
+    /// Maximum history size
+    max_size: usize,
+}
+
+impl BrickHistory {
+    /// Create a new history with given max size
+    #[must_use]
+    pub fn new(max_size: usize) -> Self {
+        Self {
+            snapshots: Vec::with_capacity(max_size),
+            traces: Vec::with_capacity(max_size),
+            position: 0,
+            max_size,
+        }
+    }
+
+    /// Record a state snapshot
+    pub fn record(&mut self, state: BrickState, trace: ExecutionTrace) {
+        // Truncate forward history if we're not at the end
+        if self.position < self.snapshots.len() {
+            self.snapshots.truncate(self.position);
+            self.traces.truncate(self.position);
+        }
+
+        // Remove oldest if at capacity
+        if self.snapshots.len() >= self.max_size {
+            self.snapshots.remove(0);
+            self.traces.remove(0);
+        }
+
+        self.snapshots.push(state);
+        self.traces.push(trace);
+        self.position = self.snapshots.len();
+    }
+
+    /// Step backward to previous state
+    pub fn step_back(&mut self) -> Option<&BrickState> {
+        if self.position > 0 {
+            self.position -= 1;
+            self.snapshots.get(self.position)
+        } else {
+            None
+        }
+    }
+
+    /// Step forward to next state
+    pub fn step_forward(&mut self) -> Option<&BrickState> {
+        if self.position < self.snapshots.len() {
+            let state = self.snapshots.get(self.position);
+            self.position += 1;
+            state
+        } else {
+            None
+        }
+    }
+
+    /// Jump to specific position
+    pub fn goto(&mut self, position: usize) -> Option<&BrickState> {
+        if position < self.snapshots.len() {
+            self.position = position;
+            self.snapshots.get(position)
+        } else {
+            None
+        }
+    }
+
+    /// Get current state
+    pub fn current(&self) -> Option<&BrickState> {
+        if self.position > 0 && self.position <= self.snapshots.len() {
+            self.snapshots.get(self.position - 1)
+        } else {
+            self.snapshots.first()
+        }
+    }
+
+    /// Get current position
+    #[must_use]
+    pub fn position(&self) -> usize {
+        self.position
+    }
+
+    /// Get total snapshot count
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.snapshots.len()
+    }
+
+    /// Check if history is empty
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.snapshots.is_empty()
+    }
+
+    /// Get trace at position
+    pub fn trace_at(&self, position: usize) -> Option<&ExecutionTrace> {
+        self.traces.get(position)
+    }
+
+    /// Get all traces
+    pub fn traces(&self) -> &[ExecutionTrace] {
+        &self.traces
+    }
+}
+
+impl Default for BrickHistory {
+    fn default() -> Self {
+        Self::new(1000)
+    }
+}
+
+/// Severity level for invariant violations
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuardSeverity {
+    /// Warning only, execution continues
+    Warning,
+    /// Error, execution stops
+    Error,
+    /// Critical, execution stops and alerts
+    Critical,
+}
+
+/// Invariant guard for Jidoka pattern
+pub struct InvariantGuard {
+    /// Guard name
+    pub name: &'static str,
+    /// Check function
+    pub check: fn(&BrickState) -> bool,
+    /// Severity on violation
+    pub severity: GuardSeverity,
+}
+
+impl InvariantGuard {
+    /// Create a new invariant guard
+    #[must_use]
+    pub const fn new(
+        name: &'static str,
+        check: fn(&BrickState) -> bool,
+        severity: GuardSeverity,
+    ) -> Self {
+        Self {
+            name,
+            check,
+            severity,
+        }
+    }
+
+    /// Check the invariant
+    pub fn check(&self, state: &BrickState) -> bool {
+        (self.check)(state)
+    }
+}
+
+/// Wrapper that adds invariant checking to a brick
+pub struct GuardedBrick<B: Brick> {
+    /// Inner brick
+    inner: B,
+    /// Invariant guards
+    guards: Vec<InvariantGuard>,
+}
+
+impl<B: Brick> GuardedBrick<B> {
+    /// Create a new guarded brick
+    #[must_use]
+    pub fn new(brick: B) -> Self {
+        Self {
+            inner: brick,
+            guards: Vec::new(),
+        }
+    }
+
+    /// Add an invariant guard
+    #[must_use]
+    pub fn guard(mut self, guard: InvariantGuard) -> Self {
+        self.guards.push(guard);
+        self
+    }
+
+    /// Check all guards against state
+    pub fn check_guards(&self, state: &BrickState) -> Result<(), GuardViolation> {
+        for guard in &self.guards {
+            if !guard.check(state) {
+                return Err(GuardViolation {
+                    guard_name: guard.name,
+                    severity: guard.severity,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Get the inner brick
+    pub fn inner(&self) -> &B {
+        &self.inner
+    }
+
+    /// Get guards
+    pub fn guards(&self) -> &[InvariantGuard] {
+        &self.guards
+    }
+}
+
+/// Guard violation error
+#[derive(Debug, Clone)]
+pub struct GuardViolation {
+    /// Name of the violated guard
+    pub guard_name: &'static str,
+    /// Severity
+    pub severity: GuardSeverity,
+}
+
+impl std::fmt::Display for GuardViolation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Invariant guard '{}' violated (severity: {:?})",
+            self.guard_name, self.severity
+        )
+    }
+}
+
+impl std::error::Error for GuardViolation {}
+
+/// Deterministic random number generator (for reproducibility)
+#[derive(Debug, Clone)]
+pub struct DeterministicRng {
+    state: u64,
+}
+
+impl DeterministicRng {
+    /// Create a new RNG with given seed
+    #[must_use]
+    pub const fn new(seed: u64) -> Self {
+        Self { state: seed }
+    }
+
+    /// Generate next random u64
+    pub fn next_u64(&mut self) -> u64 {
+        // Simple xorshift64
+        self.state ^= self.state << 13;
+        self.state ^= self.state >> 7;
+        self.state ^= self.state << 17;
+        self.state
+    }
+
+    /// Generate random f64 in [0, 1)
+    pub fn next_f64(&mut self) -> f64 {
+        (self.next_u64() >> 11) as f64 / ((1u64 << 53) as f64)
+    }
+
+    /// Generate random f32 in [0, 1)
+    pub fn next_f32(&mut self) -> f32 {
+        self.next_f64() as f32
+    }
+
+    /// Get current state (for checkpointing)
+    #[must_use]
+    pub const fn state(&self) -> u64 {
+        self.state
+    }
+
+    /// Restore state (from checkpoint)
+    pub fn restore(&mut self, state: u64) {
+        self.state = state;
+    }
+}
+
+impl Default for DeterministicRng {
+    fn default() -> Self {
+        Self::new(42)
+    }
+}
+
+/// Deterministic clock for reproducibility
+#[derive(Debug, Clone)]
+pub struct DeterministicClock {
+    /// Current time in nanoseconds
+    current_ns: u64,
+    /// Time step per tick
+    tick_ns: u64,
+}
+
+impl DeterministicClock {
+    /// Create a new clock
+    #[must_use]
+    pub const fn new(start_ns: u64, tick_ns: u64) -> Self {
+        Self {
+            current_ns: start_ns,
+            tick_ns,
+        }
+    }
+
+    /// Get current time
+    #[must_use]
+    pub const fn now_ns(&self) -> u64 {
+        self.current_ns
+    }
+
+    /// Get current time as Duration
+    #[must_use]
+    pub const fn now(&self) -> Duration {
+        Duration::from_nanos(self.current_ns)
+    }
+
+    /// Advance clock by one tick
+    pub fn tick(&mut self) {
+        self.current_ns += self.tick_ns;
+    }
+
+    /// Advance clock by multiple ticks
+    pub fn advance(&mut self, ticks: u64) {
+        self.current_ns += self.tick_ns * ticks;
+    }
+
+    /// Set time (for replay)
+    pub fn set(&mut self, time_ns: u64) {
+        self.current_ns = time_ns;
+    }
+}
+
+impl Default for DeterministicClock {
+    fn default() -> Self {
+        // 10ms tick
+        Self::new(0, 10_000_000)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_brick_state_basic() {
+        let mut state = BrickState::new();
+        state.set_tensor("audio", vec![1.0, 2.0, 3.0], vec![3]);
+        state.set_metadata("frame_count", StateValue::Int(42));
+
+        let (data, shape) = state.get_tensor("audio").unwrap();
+        assert_eq!(data, &[1.0, 2.0, 3.0]);
+        assert_eq!(shape, &[3]);
+
+        assert_eq!(
+            state.get_metadata("frame_count"),
+            Some(&StateValue::Int(42))
+        );
+    }
+
+    #[test]
+    fn test_brick_state_snapshot() {
+        let mut state = BrickState::new();
+        state.set_metadata("count", StateValue::Int(1));
+
+        let snap = state.snapshot();
+        assert_eq!(snap.version, 1);
+        assert_eq!(snap.get_metadata("count"), Some(&StateValue::Int(1)));
+    }
+
+    #[test]
+    fn test_brick_history_forward() {
+        let mut history = BrickHistory::new(10);
+
+        for i in 0..5 {
+            let mut state = BrickState::new();
+            state.version = i;
+            state.set_metadata("step", StateValue::Int(i as i64));
+
+            let trace = ExecutionTrace {
+                operation: format!("step_{}", i),
+                input_summary: String::new(),
+                output_summary: String::new(),
+                duration: Duration::from_millis(1),
+                state_version_before: i,
+                state_version_after: i + 1,
+            };
+
+            history.record(state, trace);
+        }
+
+        assert_eq!(history.len(), 5);
+        assert_eq!(history.position(), 5);
+    }
+
+    #[test]
+    fn test_brick_history_time_travel() {
+        let mut history = BrickHistory::new(10);
+
+        // Record 3 states with values 0, 1, 2
+        for i in 0..3 {
+            let mut state = BrickState::new();
+            state.set_metadata("value", StateValue::Int(i as i64));
+
+            let trace = ExecutionTrace {
+                operation: format!("op_{}", i),
+                input_summary: String::new(),
+                output_summary: String::new(),
+                duration: Duration::from_millis(1),
+                state_version_before: i as u64,
+                state_version_after: (i + 1) as u64,
+            };
+
+            history.record(state, trace);
+        }
+
+        // After recording: position = 3 (past end)
+        assert_eq!(history.position(), 3);
+
+        // Go back: position = 2, returns snapshots[2] (value 2)
+        let state = history.step_back().unwrap();
+        assert_eq!(state.get_metadata("value"), Some(&StateValue::Int(2)));
+        assert_eq!(history.position(), 2);
+
+        // Go back again: position = 1, returns snapshots[1] (value 1)
+        let state = history.step_back().unwrap();
+        assert_eq!(state.get_metadata("value"), Some(&StateValue::Int(1)));
+        assert_eq!(history.position(), 1);
+
+        // Go forward: returns snapshots[1] (value 1), then position = 2
+        let state = history.step_forward().unwrap();
+        assert_eq!(state.get_metadata("value"), Some(&StateValue::Int(1)));
+        assert_eq!(history.position(), 2);
+    }
+
+    #[test]
+    fn test_brick_history_goto() {
+        let mut history = BrickHistory::new(10);
+
+        for i in 0..5 {
+            let mut state = BrickState::new();
+            state.set_metadata("index", StateValue::Int(i as i64));
+
+            let trace = ExecutionTrace {
+                operation: format!("op_{}", i),
+                input_summary: String::new(),
+                output_summary: String::new(),
+                duration: Duration::from_millis(1),
+                state_version_before: i as u64,
+                state_version_after: (i + 1) as u64,
+            };
+
+            history.record(state, trace);
+        }
+
+        let state = history.goto(2).unwrap();
+        assert_eq!(state.get_metadata("index"), Some(&StateValue::Int(2)));
+        assert_eq!(history.position(), 2);
+    }
+
+    #[test]
+    fn test_invariant_guard() {
+        fn check_positive(state: &BrickState) -> bool {
+            match state.get_metadata("count") {
+                Some(StateValue::Int(n)) => *n >= 0,
+                _ => true,
+            }
+        }
+
+        let guard = InvariantGuard::new("positive_count", check_positive, GuardSeverity::Error);
+
+        let mut state = BrickState::new();
+        state.set_metadata("count", StateValue::Int(5));
+        assert!(guard.check(&state));
+
+        state.set_metadata("count", StateValue::Int(-1));
+        assert!(!guard.check(&state));
+    }
+
+    #[test]
+    fn test_deterministic_rng() {
+        let mut rng1 = DeterministicRng::new(12345);
+        let mut rng2 = DeterministicRng::new(12345);
+
+        // Same seed should produce same sequence
+        for _ in 0..100 {
+            assert_eq!(rng1.next_u64(), rng2.next_u64());
+        }
+    }
+
+    #[test]
+    fn test_deterministic_rng_f64_range() {
+        let mut rng = DeterministicRng::new(42);
+
+        for _ in 0..1000 {
+            let val = rng.next_f64();
+            assert!(val >= 0.0 && val < 1.0);
+        }
+    }
+
+    #[test]
+    fn test_deterministic_clock() {
+        let mut clock = DeterministicClock::new(0, 1_000_000); // 1ms tick
+
+        assert_eq!(clock.now_ns(), 0);
+
+        clock.tick();
+        assert_eq!(clock.now_ns(), 1_000_000);
+
+        clock.advance(10);
+        assert_eq!(clock.now_ns(), 11_000_000);
+        assert_eq!(clock.now(), Duration::from_millis(11));
+    }
+
+    #[test]
+    fn test_deterministic_clock_replay() {
+        let mut clock = DeterministicClock::new(0, 1_000_000);
+
+        clock.advance(100);
+        assert_eq!(clock.now_ns(), 100_000_000);
+
+        // Reset for replay
+        clock.set(0);
+        assert_eq!(clock.now_ns(), 0);
+    }
+
+    #[test]
+    fn test_state_value_variants() {
+        let int_val = StateValue::Int(42);
+        let float_val = StateValue::Float(3.14);
+        let string_val = StateValue::String("hello".into());
+        let bool_val = StateValue::Bool(true);
+
+        assert_eq!(int_val, StateValue::Int(42));
+        assert_eq!(float_val, StateValue::Float(3.14));
+        assert_eq!(string_val, StateValue::String("hello".into()));
+        assert_eq!(bool_val, StateValue::Bool(true));
+    }
+}

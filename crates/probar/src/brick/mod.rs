@@ -17,6 +17,14 @@
 //! 2. **Budget**: Performance envelope (max render time in ms)
 //! 3. **Events**: State transitions that trigger assertions
 //!
+//! # Zero-Artifact Architecture (PROBAR-SPEC-009-P7)
+//!
+//! The following brick types generate all web artifacts from Rust:
+//!
+//! - [`WorkerBrick`] - Web Worker JavaScript and Rust web_sys bindings
+//! - [`EventBrick`] - DOM event handlers
+//! - [`AudioBrick`] - AudioWorklet processor code
+//!
 //! # Popperian Falsification
 //!
 //! Each assertion is a falsifiable hypothesis. If ANY assertion fails,
@@ -44,6 +52,34 @@
 //! - Popper, K. (1959). The Logic of Scientific Discovery
 //! - Beizer, B. (1990). Software Testing Techniques
 //! - PROBAR-SPEC-009: Bug Hunting Probador
+
+// Zero-Artifact submodules (PROBAR-SPEC-009-P7)
+pub mod audio;
+pub mod compute;
+pub mod deterministic;
+pub mod event;
+pub mod pipeline;
+pub mod worker;
+
+// Re-export submodule types
+pub use audio::{AudioBrick, AudioParam, RingBufferConfig};
+pub use compute::{
+    ComputeBrick, ElementwiseOp, ReduceKind, TensorBinding, TensorType, TileOp, TileStrategy,
+};
+pub use deterministic::{
+    BrickHistory, BrickState, DeterministicBrick, DeterministicClock, DeterministicRng,
+    ExecutionTrace, GuardSeverity, GuardViolation, GuardedBrick, InvariantGuard, StateValue,
+};
+pub use event::{EventBinding, EventBrick, EventHandler, EventType};
+pub use pipeline::{
+    AuditEntry, BrickPipeline, BrickStage, Checkpoint, PipelineAuditCollector, PipelineContext,
+    PipelineData, PipelineError, PipelineMetadata, PipelineResult, PrivacyTier, StageTrace,
+    ValidationLevel, ValidationMessage, ValidationResult,
+};
+pub use worker::{
+    BrickWorkerMessage, BrickWorkerMessageDirection, FieldType, MessageField, WorkerBrick,
+    WorkerTransition,
+};
 
 use std::time::Duration;
 

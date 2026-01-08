@@ -630,6 +630,12 @@ pub use brick::{
     Brick, BrickAssertion, BrickBudget, BrickError, BrickPhase, BrickResult, BrickVerification,
     BudgetViolation,
 };
+// Zero-Artifact Architecture (PROBAR-SPEC-009-P7)
+pub use brick::{
+    AudioBrick, AudioParam, BrickWorkerMessage, BrickWorkerMessageDirection, EventBinding,
+    EventBrick, EventHandler, EventType, FieldType, RingBufferConfig, WorkerBrick,
+    WorkerTransition,
+};
 pub use brick_house::{BrickHouse, BrickHouseBuilder, BrickTiming, BudgetReport, JidokaAlert};
 pub use websocket::{
     MessageDirection, MessageType, MockWebSocketResponse, WebSocketConnection, WebSocketMessage,

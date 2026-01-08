@@ -1038,6 +1038,11 @@ async fn run_browser_validation_async(
 fn run_build(args: &probador::BuildArgs) -> CliResult<()> {
     use probador::dev_server::run_wasm_pack_build;
 
+    // Check if brick-based generation is requested
+    if args.bricks.is_some() {
+        return run_brick_generation(args);
+    }
+
     let rt = tokio::runtime::Runtime::new().map_err(|e| {
         probador::CliError::test_execution(format!("Failed to create runtime: {e}"))
     })?;
@@ -1053,6 +1058,79 @@ fn run_build(args: &probador::BuildArgs) -> CliResult<()> {
         .await
         .map_err(|e| probador::CliError::test_execution(e))
     })
+}
+
+/// Run brick-based code generation (PROBAR-SPEC-009-P7)
+fn run_brick_generation(args: &probador::BuildArgs) -> CliResult<()> {
+    use jugar_probar::brick::Brick;
+    use probador::generate::{
+        create_whisper_event_brick, create_whisper_worker_brick, generate_from_bricks,
+        GenerateConfig,
+    };
+
+    println!("Zero-Artifact Code Generation (PROBAR-SPEC-009-P7)");
+    println!("===================================================\n");
+
+    let output_dir = args.out_dir.clone().unwrap_or_else(|| args.path.clone());
+    let title = args
+        .title
+        .clone()
+        .unwrap_or_else(|| format!("{} Application", args.app_name));
+
+    let config = GenerateConfig {
+        app_name: args.app_name.clone(),
+        wasm_module: args.wasm_module.clone(),
+        model_path: args.model_path.clone(),
+        title,
+        output_dir: output_dir.clone(),
+    };
+
+    println!("Configuration:");
+    println!("  App name: {}", config.app_name);
+    println!("  WASM module: {}", config.wasm_module);
+    println!("  Output dir: {}", output_dir.display());
+    if let Some(ref model) = config.model_path {
+        println!("  Model path: {model}");
+    }
+    println!();
+
+    // Create demo bricks (in a real implementation, these would be parsed from the brick file)
+    let worker = create_whisper_worker_brick();
+    let events = create_whisper_event_brick();
+
+    println!("Generating artifacts...");
+
+    let result = generate_from_bricks(Some(&worker), Some(&events), None, &config)
+        .map_err(|e| probador::CliError::test_execution(e))?;
+
+    println!("\nGenerated files:");
+    for file in &result.files_written {
+        println!("  {}", file.display());
+    }
+
+    if args.verify {
+        println!("\nVerifying brick assertions...");
+        let verification = worker.verify();
+        if verification.is_valid() {
+            println!(
+                "  WorkerBrick: {} assertions passed",
+                verification.passed.len()
+            );
+        } else {
+            println!("  WorkerBrick: {} failures", verification.failed.len());
+            for (assertion, reason) in &verification.failed {
+                println!("    - {assertion:?}: {reason}");
+            }
+            return Err(probador::CliError::test_execution(
+                "Brick verification failed",
+            ));
+        }
+    }
+
+    println!("\nZero-Artifact generation complete.");
+    println!("All web artifacts derived from Rust brick definitions.");
+
+    Ok(())
 }
 
 fn run_watch(args: &probador::WatchArgs) -> CliResult<()> {

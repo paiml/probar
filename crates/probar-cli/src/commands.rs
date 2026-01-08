@@ -528,6 +528,36 @@ pub struct BuildArgs {
     /// Enable profiling (adds names section to WASM)
     #[arg(long)]
     pub profiling: bool,
+
+    // ========================================================================
+    // Zero-Artifact Architecture (PROBAR-SPEC-009-P7)
+    // ========================================================================
+    /// Generate web artifacts from brick definitions (PROBAR-SPEC-009-P7)
+    ///
+    /// Path to Rust file containing #[brick] definitions.
+    /// Generates: index.html, style.css, main.js, worker.js, audio-worklet.js
+    #[arg(long)]
+    pub bricks: Option<PathBuf>,
+
+    /// Application name for generated artifacts
+    #[arg(long, default_value = "app")]
+    pub app_name: String,
+
+    /// WASM module path for generated HTML
+    #[arg(long, default_value = "./pkg/app.js")]
+    pub wasm_module: String,
+
+    /// Model path for worker (if applicable)
+    #[arg(long)]
+    pub model_path: Option<String>,
+
+    /// Page title for generated HTML
+    #[arg(long)]
+    pub title: Option<String>,
+
+    /// Verify generated artifacts match brick assertions
+    #[arg(long)]
+    pub verify: bool,
 }
 
 /// WASM build target
