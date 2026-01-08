@@ -813,4 +813,16 @@ mod tests {
         let controller = ClockController::with_clock(clock);
         assert_eq!(controller.now_ms(), 1234);
     }
+
+    // =========================================================================
+    // H₀-CLOCK-31: Default options
+    // =========================================================================
+
+    #[test]
+    fn h0_clock_31_options_default() {
+        let options = ClockOptions::default();
+        // Default is ClockOptions::now() which should have a reasonable timestamp
+        // time_ms should be > 0 for now() or paused should be false
+        assert!(options.time_ms > 0 || !options.paused);
+    }
 }

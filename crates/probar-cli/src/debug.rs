@@ -436,6 +436,7 @@ pub fn create_tracer(enabled: bool) -> Arc<DebugTracer> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_debug_tracer_creation() {
@@ -494,5 +495,146 @@ mod tests {
         let line = tracer.format_line(DebugCategory::Server, "test message");
         assert!(line.contains("SERVER"));
         assert!(line.contains("test message"));
+    }
+
+    // =========================================================================
+    // Additional coverage tests for debug.rs
+    // =========================================================================
+
+    #[test]
+    fn test_debug_category_all_variants_str() {
+        // Test all category string representations
+        assert_eq!(DebugCategory::Server.as_str(), "SERVER");
+        assert_eq!(DebugCategory::Request.as_str(), "REQUEST");
+        assert_eq!(DebugCategory::Resolve.as_str(), "RESOLVE");
+        assert_eq!(DebugCategory::Response.as_str(), "RESPONSE");
+        assert_eq!(DebugCategory::Error.as_str(), "ERROR");
+        assert_eq!(DebugCategory::WebSocket.as_str(), "WS");
+        assert_eq!(DebugCategory::Watcher.as_str(), "WATCHER");
+    }
+
+    #[test]
+    fn test_debug_category_all_variants_color() {
+        // Test all category color codes
+        assert!(DebugCategory::Server.color().contains("\x1b["));
+        assert!(DebugCategory::Request.color().contains("\x1b["));
+        assert!(DebugCategory::Resolve.color().contains("\x1b["));
+        assert!(DebugCategory::Response.color().contains("\x1b["));
+        assert!(DebugCategory::Error.color().contains("\x1b["));
+        assert!(DebugCategory::WebSocket.color().contains("\x1b["));
+        assert!(DebugCategory::Watcher.color().contains("\x1b["));
+    }
+
+    #[test]
+    fn test_resolution_rule_all_variants_str() {
+        // Test all resolution rule string representations
+        assert_eq!(
+            ResolutionRule::DirectoryIndex.as_str(),
+            "Directory index (index.html)"
+        );
+        assert_eq!(ResolutionRule::StaticFile.as_str(), "Static file");
+        assert_eq!(ResolutionRule::Fallback.as_str(), "Fallback");
+        assert_eq!(ResolutionRule::NotFound.as_str(), "Not found");
+    }
+
+    #[test]
+    fn test_debug_verbosity_all_variants() {
+        // Ensure all variants are distinct
+        assert_ne!(DebugVerbosity::Minimal, DebugVerbosity::Normal);
+        assert_ne!(DebugVerbosity::Normal, DebugVerbosity::Verbose);
+        assert_ne!(DebugVerbosity::Verbose, DebugVerbosity::Trace);
+    }
+
+    #[test]
+    fn test_tracer_default() {
+        let tracer = DebugTracer::default();
+        assert!(!tracer.is_enabled());
+    }
+
+    #[test]
+    fn test_create_tracer_disabled() {
+        let tracer = create_tracer(false);
+        assert!(!tracer.is_enabled());
+    }
+
+    #[test]
+    fn test_log_multi_empty() {
+        let tracer = DebugTracer::new(false);
+        // Empty lines should not panic
+        tracer.log_multi(DebugCategory::Server, &[]);
+    }
+
+    #[test]
+    fn test_all_log_methods_disabled() {
+        // All log methods should not panic when tracer is disabled
+        let tracer = DebugTracer::new(false);
+        let path = PathBuf::from("/test/path");
+        let searched: Vec<PathBuf> = vec![PathBuf::from("/search1"), PathBuf::from("/search2")];
+        let suggestions: Vec<String> = vec!["suggestion1".to_string()];
+
+        tracer.log(DebugCategory::Server, "test");
+        tracer.log_multi(DebugCategory::Request, &["line1", "line2"]);
+        tracer.log_server_start(8080, &path, true, true);
+        tracer.log_request("GET", "/", Some("127.0.0.1"), Some("Mozilla/5.0"));
+        tracer.log_resolve("/", &path, ResolutionRule::DirectoryIndex);
+        tracer.log_response(200, "text/html", 1024, 50);
+        tracer.log_not_found("/missing.txt", &searched, &suggestions);
+        tracer.log_mime_check(&path, "text/html", true);
+        tracer.log_ws_connect("127.0.0.1");
+        tracer.log_ws_disconnect("127.0.0.1");
+        tracer.log_file_change("/test/file.rs", "modified");
+    }
+
+    #[test]
+    fn test_format_line_no_colors() {
+        // Force no colors by creating a tracer with use_colors = false
+        let mut tracer = DebugTracer::new(true);
+        tracer.use_colors = false;
+
+        let line = tracer.format_line(DebugCategory::Server, "test");
+        assert!(line.contains("SERVER"));
+        assert!(!line.contains("\x1b[")); // No ANSI codes
+    }
+
+    #[test]
+    fn test_format_line_with_colors() {
+        // Force colors
+        let mut tracer = DebugTracer::new(true);
+        tracer.use_colors = true;
+
+        let line = tracer.format_line(DebugCategory::Server, "test");
+        assert!(line.contains("SERVER"));
+        assert!(line.contains("\x1b[")); // Has ANSI codes
+    }
+
+    #[test]
+    fn test_elapsed_str_format() {
+        let tracer = DebugTracer::new(true);
+        let elapsed = tracer.elapsed_str();
+        // Should be in format "SS:MMM"
+        assert!(elapsed.contains(":"));
+        assert!(elapsed.len() >= 5); // At least "00:000"
+    }
+
+    #[test]
+    fn test_debug_category_debug_impl() {
+        // Test Debug trait implementation
+        let cat = DebugCategory::Server;
+        let debug_str = format!("{:?}", cat);
+        assert!(debug_str.contains("Server"));
+    }
+
+    #[test]
+    fn test_debug_verbosity_clone() {
+        let verbosity = DebugVerbosity::Verbose;
+        let cloned = verbosity;
+        assert_eq!(verbosity, cloned);
+    }
+
+    #[test]
+    fn test_resolution_rule_debug_impl() {
+        let rule = ResolutionRule::StaticFile;
+        let debug_str = format!("{:?}", rule);
+        assert!(debug_str.contains("StaticFile"));
     }
 }

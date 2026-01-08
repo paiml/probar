@@ -51,6 +51,7 @@
 - [Runtime Validation](./probar/runtime-validation.md)
 - [Hot Reload](./probar/watch-mode.md)
 - [Load Testing](./probar/load-testing.md)
+- [Stress Testing](./probar/stress-testing.md)
 
 # Analysis & Debugging
 

@@ -843,4 +843,224 @@ mod tests {
         let json = render_trace_json(&analysis);
         assert!(json.contains("json-test"));
     }
+
+    #[test]
+    fn test_trace_category_all_names() {
+        // Cover all TraceCategory::name() branches
+        assert_eq!(TraceCategory::Syscall.name(), "Syscall");
+        assert_eq!(TraceCategory::Wasm.name(), "WASM");
+        assert_eq!(TraceCategory::Network.name(), "Network");
+        assert_eq!(TraceCategory::Memory.name(), "Memory");
+        assert_eq!(TraceCategory::Gpu.name(), "GPU");
+    }
+
+    #[test]
+    fn test_trace_config_default() {
+        let config = TraceConfig::default();
+        assert_eq!(config.sample_rate, 1.0);
+        assert_eq!(config.max_events, 100_000);
+        assert_eq!(config.categories.len(), 5);
+    }
+
+    #[test]
+    fn test_trace_config_with_source_map() {
+        let config = TraceConfig::new().with_source_map(PathBuf::from("/src/source.map"));
+        assert_eq!(config.source_map, Some(PathBuf::from("/src/source.map")));
+    }
+
+    #[test]
+    fn test_trace_config_sample_rate_clamp() {
+        let config_high = TraceConfig::new().with_sample_rate(1.5);
+        assert_eq!(config_high.sample_rate, 1.0);
+
+        let config_low = TraceConfig::new().with_sample_rate(-0.5);
+        assert_eq!(config_low.sample_rate, 0.0);
+    }
+
+    #[test]
+    fn test_wasm_event_type_all_names() {
+        // Cover all WasmEventType::name() branches
+        assert_eq!(WasmEventType::Compile.name(), "wasm_compile");
+        assert_eq!(WasmEventType::Instantiate.name(), "wasm_instantiate");
+        assert_eq!(WasmEventType::Call.name(), "wasm_call");
+        assert_eq!(WasmEventType::MemoryGrow.name(), "wasm_memory_grow");
+        assert_eq!(WasmEventType::TableOp.name(), "wasm_table_op");
+    }
+
+    #[test]
+    fn test_source_location_without_function() {
+        let loc = SourceLocation::new(PathBuf::from("src/lib.rs"), 10);
+        let display = loc.display();
+        assert!(display.contains("src/lib.rs:10"));
+        assert!(!display.contains("("));
+    }
+
+    #[test]
+    fn test_source_hotspot_total_ms() {
+        let mut hotspot = SourceHotspot::new(PathBuf::from("src/hot.rs"), 50, "hot_function");
+        hotspot.total_us = 5000;
+        assert_eq!(hotspot.total_ms(), 5.0);
+    }
+
+    #[test]
+    fn test_optimization_suggestion_all_hints() {
+        // Cover all OptimizationSuggestion::hint() branches
+        let simd = OptimizationSuggestion::UseSIMD {
+            expected_speedup: 4.0,
+        };
+        assert_eq!(simd.hint(), "⚠ SIMD");
+
+        let pool = OptimizationSuggestion::UsePool {
+            current_allocs: 100,
+        };
+        assert_eq!(pool.hint(), "⚠ Pool");
+
+        let batch = OptimizationSuggestion::BatchOperations { current_calls: 50 };
+        assert_eq!(batch.hint(), "⚠ Batch");
+
+        let async_io = OptimizationSuggestion::AsyncIO { blocking_us: 1000 };
+        assert_eq!(async_io.hint(), "⚠ Async");
+    }
+
+    #[test]
+    fn test_trace_analysis_wasm_events() {
+        let mut analysis = TraceAnalysis::new("wasm-test");
+
+        let event = WasmEvent {
+            event_type: WasmEventType::Compile,
+            duration_us: 1000,
+            memory_impact: 1024,
+            source_location: Some(SourceLocation::new(PathBuf::from("src/wasm.rs"), 1)),
+        };
+        analysis.add_wasm_event(event);
+
+        assert_eq!(analysis.wasm_events.len(), 1);
+    }
+
+    #[test]
+    fn test_trace_analysis_hotspots() {
+        let mut analysis = TraceAnalysis::new("hotspot-test");
+
+        let hotspot = SourceHotspot::new(PathBuf::from("src/slow.rs"), 100, "slow_function");
+        analysis.add_hotspot(hotspot);
+
+        assert_eq!(analysis.source_hotspots.len(), 1);
+    }
+
+    #[test]
+    fn test_trace_analysis_syscall_percentages() {
+        let mut analysis = TraceAnalysis::new("syscall-test");
+        analysis.record_syscall("read", 700);
+        analysis.record_syscall("write", 300);
+        analysis.calculate_syscall_percentages();
+
+        let read_stats = analysis.syscall_breakdown.get("read").unwrap();
+        let write_stats = analysis.syscall_breakdown.get("write").unwrap();
+
+        assert_eq!(read_stats.percent, 70.0);
+        assert_eq!(write_stats.percent, 30.0);
+    }
+
+    #[test]
+    fn test_trace_analysis_empty_syscall_percentages() {
+        let mut analysis = TraceAnalysis::new("empty-syscall");
+        analysis.calculate_syscall_percentages();
+        // Should not panic with empty syscalls
+        assert!(analysis.syscall_breakdown.is_empty());
+    }
+
+    #[test]
+    fn test_flamegraph_default() {
+        let fg = Flamegraph::default();
+        assert!(fg.roots.is_empty());
+        assert_eq!(fg.total_us, 0);
+    }
+
+    #[test]
+    fn test_flamegraph_to_folded_with_children() {
+        let mut fg = Flamegraph::new();
+
+        let mut root = FlamegraphNode::new("root");
+        root.add_time(100);
+
+        let mut child1 = FlamegraphNode::new("child1");
+        child1.add_time(50);
+
+        let mut grandchild = FlamegraphNode::new("grandchild");
+        grandchild.add_time(25);
+        child1.add_child(grandchild);
+
+        root.add_child(child1);
+        fg.add_root(root);
+
+        let folded = fg.to_folded();
+        assert!(folded.contains("root 100"));
+        assert!(folded.contains("root;child1 50"));
+        assert!(folded.contains("root;child1;grandchild 25"));
+    }
+
+    #[test]
+    fn test_render_trace_report_full() {
+        let mut analysis = TraceAnalysis::new("full-test");
+
+        // Add spans
+        analysis.add_span(TraceSpan::new(
+            "dns_lookup",
+            TraceCategory::Network,
+            0,
+            2000,
+        ));
+        analysis.add_span(TraceSpan::new("compile", TraceCategory::Wasm, 2000, 5000));
+
+        // Add syscalls
+        analysis.record_syscall("read", 500);
+        analysis.record_syscall("write", 300);
+        analysis.calculate_syscall_percentages();
+
+        // Add WASM events
+        let wasm_event = WasmEvent {
+            event_type: WasmEventType::Instantiate,
+            duration_us: 3000,
+            memory_impact: 2048,
+            source_location: None,
+        };
+        analysis.add_wasm_event(wasm_event);
+
+        // Add negative memory impact WASM event
+        let wasm_event_negative = WasmEvent {
+            event_type: WasmEventType::MemoryGrow,
+            duration_us: 1000,
+            memory_impact: -1024,
+            source_location: Some(SourceLocation::new(PathBuf::from("src/mem.rs"), 42)),
+        };
+        analysis.add_wasm_event(wasm_event_negative);
+
+        // Add hotspots
+        let mut hotspot = SourceHotspot::new(PathBuf::from("src/hot.rs"), 100, "hot_func");
+        hotspot.total_us = 4000;
+        hotspot.call_count = 1000;
+        hotspot.suggestion = Some(OptimizationSuggestion::UseSIMD {
+            expected_speedup: 2.0,
+        });
+        analysis.add_hotspot(hotspot);
+
+        // Calculate critical path
+        analysis.calculate_critical_path();
+
+        let report = render_trace_report(&analysis);
+
+        // Verify all sections present
+        assert!(report.contains("DEEP TRACE ANALYSIS"));
+        assert!(report.contains("TIMELINE"));
+        assert!(report.contains("SYSCALL BREAKDOWN"));
+        assert!(report.contains("WASM-SPECIFIC EVENTS"));
+        assert!(report.contains("SOURCE CORRELATION"));
+        assert!(report.contains("Critical Path"));
+    }
+
+    #[test]
+    fn test_truncate_helper() {
+        assert_eq!(truncate("short", 10), "short");
+        assert_eq!(truncate("verylongstring", 5), "very…");
+    }
 }

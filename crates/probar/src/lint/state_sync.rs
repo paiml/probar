@@ -190,8 +190,35 @@ impl StateSyncLinter {
         self.lint_source(&content)
     }
 
-    /// Lint source code directly
+    /// Lint source code directly (uses AST-based analysis by default)
+    ///
+    /// This method first attempts AST-based analysis using `syn`, which is more
+    /// accurate and handles edge cases like turbofish syntax. Falls back to
+    /// text-based analysis if AST parsing fails.
     pub fn lint_source(&mut self, source: &str) -> LintResult {
+        // Try AST-based analysis first (PROBAR-WASM-003)
+        if let Ok(ast_report) = super::ast_visitor::lint_source_ast(source, &self.current_file) {
+            // Merge AST findings with text-based for comprehensive coverage
+            let mut report = ast_report;
+            if let Ok(text_report) = self.lint_source_text_based(source) {
+                // Only add text-based errors that aren't duplicates
+                for error in text_report.errors {
+                    if !report.errors.iter().any(|e| {
+                        e.rule == error.rule && e.line == error.line && e.file == error.file
+                    }) {
+                        report.errors.push(error);
+                    }
+                }
+            }
+            return Ok(report);
+        }
+
+        // Fallback to text-based analysis
+        self.lint_source_text_based(source)
+    }
+
+    /// Text-based lint analysis (legacy, for edge cases)
+    fn lint_source_text_based(&mut self, source: &str) -> LintResult {
         let mut report = StateSyncReport {
             files_analyzed: 1,
             lines_analyzed: source.lines().count(),

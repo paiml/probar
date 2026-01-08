@@ -825,4 +825,398 @@ mod tests {
         assert!(json.contains("\"root\""));
         assert!(json.contains("\"results\""));
     }
+
+    #[test]
+    fn test_lint_directory_full() {
+        let temp = TempDir::new().unwrap();
+
+        // Create various test files
+        std::fs::write(
+            temp.path().join("index.html"),
+            "<!DOCTYPE html><html><head></head><body></body></html>",
+        )
+        .unwrap();
+        std::fs::write(temp.path().join("style.css"), "body { color: red; }").unwrap();
+        std::fs::write(temp.path().join("app.js"), "function test() {}").unwrap();
+        std::fs::write(temp.path().join("data.json"), r#"{"key": "value"}"#).unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let report = linter.lint();
+
+        // Should have checked files
+        assert!(report.files_checked >= 4);
+        // All valid files, should pass
+        assert!(report.passed());
+    }
+
+    #[test]
+    fn test_lint_directory_with_errors() {
+        let temp = TempDir::new().unwrap();
+
+        // Create files with issues
+        std::fs::write(temp.path().join("bad.html"), "<html>no doctype</html>").unwrap();
+        std::fs::write(temp.path().join("bad.css"), "body { color: red").unwrap(); // missing }
+        std::fs::write(temp.path().join("bad.json"), "{invalid}").unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let report = linter.lint();
+
+        assert!(report.errors > 0);
+        assert!(!report.passed());
+    }
+
+    #[test]
+    fn test_lint_directory_nested() {
+        let temp = TempDir::new().unwrap();
+
+        // Create nested directory structure
+        let subdir = temp.path().join("subdir");
+        std::fs::create_dir(&subdir).unwrap();
+        std::fs::write(
+            subdir.join("nested.html"),
+            "<!DOCTYPE html><html><head></head><body></body></html>",
+        )
+        .unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let report = linter.lint();
+
+        // Should find nested file
+        assert!(report.files_checked >= 1);
+    }
+
+    #[test]
+    fn test_lint_directory_skips_hidden() {
+        let temp = TempDir::new().unwrap();
+
+        // Create hidden directory
+        let hidden = temp.path().join(".hidden");
+        std::fs::create_dir(&hidden).unwrap();
+        std::fs::write(hidden.join("test.html"), "<html>bad</html>").unwrap();
+
+        // Create visible file for comparison
+        std::fs::write(
+            temp.path().join("visible.html"),
+            "<!DOCTYPE html><html><head></head><body></body></html>",
+        )
+        .unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let report = linter.lint();
+
+        // Should only find the visible file
+        assert_eq!(report.files_checked, 1);
+    }
+
+    #[test]
+    fn test_lint_directory_skips_node_modules() {
+        let temp = TempDir::new().unwrap();
+
+        // Create node_modules directory
+        let node_modules = temp.path().join("node_modules");
+        std::fs::create_dir(&node_modules).unwrap();
+        std::fs::write(node_modules.join("lib.js"), "console.log('test');").unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let report = linter.lint();
+
+        // Should skip node_modules
+        assert_eq!(report.files_checked, 0);
+    }
+
+    #[test]
+    fn test_lint_file_unknown_extension() {
+        let temp = TempDir::new().unwrap();
+        let txt_path = temp.path().join("test.txt");
+        std::fs::write(&txt_path, "Just some text").unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let results = linter.lint_file(&txt_path);
+
+        // Unknown extension returns empty results
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_lint_file_mjs_extension() {
+        let temp = TempDir::new().unwrap();
+        let mjs_path = temp.path().join("test.mjs");
+        std::fs::write(&mjs_path, "export function test() {}").unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let results = linter.lint_file(&mjs_path);
+
+        // Should lint .mjs files
+        assert!(results.is_empty()); // Valid JS
+    }
+
+    #[test]
+    fn test_lint_disabled_html() {
+        let temp = TempDir::new().unwrap();
+        let html_path = temp.path().join("test.html");
+        std::fs::write(&html_path, "<html>no doctype</html>").unwrap();
+
+        let mut linter = ContentLinter::new(temp.path());
+        linter.lint_html = false;
+
+        let results = linter.lint_file(&html_path);
+        assert!(results.is_empty()); // Disabled
+    }
+
+    #[test]
+    fn test_lint_disabled_css() {
+        let temp = TempDir::new().unwrap();
+        let css_path = temp.path().join("test.css");
+        std::fs::write(&css_path, "body { color: red").unwrap(); // Missing brace
+
+        let mut linter = ContentLinter::new(temp.path());
+        linter.lint_css = false;
+
+        let results = linter.lint_file(&css_path);
+        assert!(results.is_empty()); // Disabled
+    }
+
+    #[test]
+    fn test_lint_disabled_js() {
+        let temp = TempDir::new().unwrap();
+        let js_path = temp.path().join("test.js");
+        std::fs::write(&js_path, "console.log('debug');").unwrap();
+
+        let mut linter = ContentLinter::new(temp.path());
+        linter.lint_js = false;
+
+        let results = linter.lint_file(&js_path);
+        assert!(results.is_empty()); // Disabled
+    }
+
+    #[test]
+    fn test_lint_disabled_wasm() {
+        let temp = TempDir::new().unwrap();
+        let wasm_path = temp.path().join("test.wasm");
+        std::fs::write(&wasm_path, b"not valid wasm").unwrap();
+
+        let mut linter = ContentLinter::new(temp.path());
+        linter.lint_wasm = false;
+
+        let results = linter.lint_file(&wasm_path);
+        assert!(results.is_empty()); // Disabled
+    }
+
+    #[test]
+    fn test_lint_disabled_json() {
+        let temp = TempDir::new().unwrap();
+        let json_path = temp.path().join("test.json");
+        std::fs::write(&json_path, "{invalid}").unwrap();
+
+        let mut linter = ContentLinter::new(temp.path());
+        linter.lint_json = false;
+
+        let results = linter.lint_file(&json_path);
+        assert!(results.is_empty()); // Disabled
+    }
+
+    #[test]
+    fn test_lint_wasm_too_small() {
+        let temp = TempDir::new().unwrap();
+        let wasm_path = temp.path().join("tiny.wasm");
+        std::fs::write(&wasm_path, b"tiny").unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let results = linter.lint_file(&wasm_path);
+
+        assert!(results.iter().any(|r| r.code == "WASM001"));
+    }
+
+    #[test]
+    fn test_lint_wasm_wrong_version() {
+        let temp = TempDir::new().unwrap();
+        let wasm_path = temp.path().join("oldversion.wasm");
+        // Valid magic, but version 2
+        std::fs::write(&wasm_path, [0x00, 0x61, 0x73, 0x6D, 0x02, 0x00, 0x00, 0x00]).unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let results = linter.lint_file(&wasm_path);
+
+        assert!(results.iter().any(|r| r.code == "WASM003"));
+    }
+
+    #[test]
+    fn test_lint_html_missing_html_tag() {
+        let temp = TempDir::new().unwrap();
+        let html_path = temp.path().join("test.html");
+        std::fs::write(&html_path, "<!DOCTYPE html><head></head><body></body>").unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let results = linter.lint_file(&html_path);
+
+        assert!(results.iter().any(|r| r.code == "HTML002"));
+    }
+
+    #[test]
+    fn test_lint_html_missing_head() {
+        let temp = TempDir::new().unwrap();
+        let html_path = temp.path().join("test.html");
+        std::fs::write(&html_path, "<!DOCTYPE html><html><body></body></html>").unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let results = linter.lint_file(&html_path);
+
+        assert!(results.iter().any(|r| r.code == "HTML003"));
+    }
+
+    #[test]
+    fn test_lint_html_missing_body() {
+        let temp = TempDir::new().unwrap();
+        let html_path = temp.path().join("test.html");
+        std::fs::write(&html_path, "<!DOCTYPE html><html><head></head></html>").unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let results = linter.lint_file(&html_path);
+
+        assert!(results.iter().any(|r| r.code == "HTML004"));
+    }
+
+    #[test]
+    fn test_lint_html_mismatched_divs() {
+        let temp = TempDir::new().unwrap();
+        let html_path = temp.path().join("test.html");
+        std::fs::write(
+            &html_path,
+            "<!DOCTYPE html><html><head></head><body><div><div></div></body></html>",
+        )
+        .unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let results = linter.lint_file(&html_path);
+
+        assert!(results.iter().any(|r| r.code == "HTML005"));
+    }
+
+    #[test]
+    fn test_lint_css_empty_rule() {
+        let temp = TempDir::new().unwrap();
+        let css_path = temp.path().join("test.css");
+        // CSS003 triggers when line is exactly "{}"
+        std::fs::write(&css_path, "body\n{}\n.empty\n{}").unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let results = linter.lint_file(&css_path);
+
+        assert!(results.iter().any(|r| r.code == "CSS003"));
+    }
+
+    #[test]
+    fn test_lint_js_console_log() {
+        let temp = TempDir::new().unwrap();
+        let js_path = temp.path().join("test.js");
+        std::fs::write(&js_path, "console.log('debugging');").unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let results = linter.lint_file(&js_path);
+
+        assert!(results.iter().any(|r| r.code == "JS003"));
+    }
+
+    #[test]
+    fn test_lint_js_mismatched_braces() {
+        let temp = TempDir::new().unwrap();
+        let js_path = temp.path().join("test.js");
+        std::fs::write(&js_path, "function test() { return 1;").unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let results = linter.lint_file(&js_path);
+
+        assert!(results.iter().any(|r| r.code == "JS001"));
+    }
+
+    #[test]
+    fn test_lint_js_mismatched_parens() {
+        let temp = TempDir::new().unwrap();
+        let js_path = temp.path().join("test.js");
+        std::fs::write(&js_path, "function test( { return 1; }").unwrap();
+
+        let linter = ContentLinter::new(temp.path());
+        let results = linter.lint_file(&js_path);
+
+        assert!(results.iter().any(|r| r.code == "JS002"));
+    }
+
+    #[test]
+    fn test_is_lintable() {
+        let temp = TempDir::new().unwrap();
+        let linter = ContentLinter::new(temp.path());
+
+        assert!(linter.is_lintable(Path::new("test.html")));
+        assert!(linter.is_lintable(Path::new("test.htm")));
+        assert!(linter.is_lintable(Path::new("test.css")));
+        assert!(linter.is_lintable(Path::new("test.js")));
+        assert!(linter.is_lintable(Path::new("test.mjs")));
+        assert!(linter.is_lintable(Path::new("test.wasm")));
+        assert!(linter.is_lintable(Path::new("test.json")));
+        assert!(!linter.is_lintable(Path::new("test.txt")));
+        assert!(!linter.is_lintable(Path::new("test.rs")));
+    }
+
+    #[test]
+    fn test_render_report_with_location() {
+        let mut report = LintReport::new("./test");
+        report.add(
+            LintResult::error("test.html", "HTML001", "Test")
+                .at_line(5)
+                .at_column(10),
+        );
+
+        let output = render_lint_report(&report);
+        assert!(output.contains("Line 5:10"));
+    }
+
+    #[test]
+    fn test_render_report_with_line_only() {
+        let mut report = LintReport::new("./test");
+        report.add(LintResult::warning("test.css", "CSS001", "Test").at_line(3));
+
+        let output = render_lint_report(&report);
+        assert!(output.contains("Line 3"));
+    }
+
+    #[test]
+    fn test_render_report_empty() {
+        let report = LintReport::new("./test");
+        let output = render_lint_report(&report);
+
+        assert!(output.contains("All files passed linting"));
+    }
+
+    #[test]
+    fn test_render_report_with_suggestion() {
+        let mut report = LintReport::new("./test");
+        report.add(
+            LintResult::info("test.js", "JS001", "Found issue")
+                .with_suggestion("Try fixing it this way"),
+        );
+
+        let output = render_lint_report(&report);
+        assert!(output.contains("Suggestion: Try fixing it this way"));
+    }
+
+    #[test]
+    fn test_lint_file_read_error() {
+        let linter = ContentLinter::new("/tmp");
+
+        // Try to lint a non-existent file
+        let results = linter.lint_file(Path::new("/nonexistent/test.html"));
+        assert!(results.iter().any(|r| r.code == "HTML000"));
+
+        let results = linter.lint_file(Path::new("/nonexistent/test.css"));
+        assert!(results.iter().any(|r| r.code == "CSS000"));
+
+        let results = linter.lint_file(Path::new("/nonexistent/test.js"));
+        assert!(results.iter().any(|r| r.code == "JS000"));
+
+        let results = linter.lint_file(Path::new("/nonexistent/test.wasm"));
+        assert!(results.iter().any(|r| r.code == "WASM000"));
+
+        let results = linter.lint_file(Path::new("/nonexistent/test.json"));
+        assert!(results.iter().any(|r| r.code == "JSON000"));
+    }
 }

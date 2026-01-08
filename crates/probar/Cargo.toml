@@ -1,6 +1,6 @@
 [package]
 name = "jugar-probar"
-version = "0.5.0"
+version = "0.5.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Probar: Rust-native testing framework for WASM games"
@@ -61,6 +61,13 @@ bollard = { workspace = true, optional = true }
 
 # Optional property-based testing (PROBAR-SPEC-WASM-001)
 proptest = { workspace = true, optional = true }
+
+# AST analysis for state sync linter (PROBAR-WASM-003)
+syn = { workspace = true }
+proc-macro2 = { version = "1.0", features = ["span-locations"] }
+
+# Binary serialization for mock fidelity (PROBAR-WASM-003)
+bincode = { workspace = true }
 
 # Native-only dependencies (not available on WASM)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

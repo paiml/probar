@@ -4,7 +4,15 @@
 //! for WASM worker components without requiring browser APIs.
 //!
 //! Per `PROBAR-SPEC-WASM-001` Section 2.1.
+//!
+//! ## Browser Fidelity (PROBAR-WASM-003)
+//!
+//! To simulate real browser `structuredClone` semantics, messages are
+//! serialized and deserialized when passed through `receive_message`.
+//! This ensures that non-serializable types (like `Rc`, closures) will
+//! fail at test time, just as they would in a real browser.
 
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -12,7 +20,14 @@ use std::rc::Rc;
 /// Mock message types for testing worker communication
 ///
 /// These mirror the actual message types used in WASM worker protocols.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// ## Serialization Requirement (PROBAR-WASM-003)
+///
+/// All messages implement `Serialize` and `Deserialize` to simulate
+/// browser `structuredClone` semantics. Messages are round-tripped
+/// through serialization in `receive_message` to catch non-serializable
+/// payloads at test time.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MockMessage {
     /// Bootstrap message with base URL
     Bootstrap {
@@ -184,14 +199,60 @@ impl MockWasmRuntime {
     /// Send message (like `worker.postMessage`)
     ///
     /// This puts a message in the outgoing queue for the component to "send".
+    ///
+    /// ## Browser Fidelity (PROBAR-WASM-003)
+    ///
+    /// Like `receive_message`, this performs a round-trip serialization to
+    /// simulate `structuredClone` semantics.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the message cannot be serialized. This intentionally mirrors
+    /// browser `postMessage` semantics where non-cloneable objects throw.
+    #[allow(clippy::expect_used)] // Intentional: simulates browser postMessage failure
     pub fn post_message(&self, msg: MockMessage) {
-        self.outgoing.borrow_mut().push_back(msg);
+        // Round-trip through bincode to simulate structuredClone
+        let serialized = bincode::serialize(&msg)
+            .expect("MockMessage serialization failed - this would fail in browser postMessage");
+        let cloned: MockMessage = bincode::deserialize(&serialized)
+            .expect("MockMessage deserialization failed - corrupted message");
+
+        self.outgoing.borrow_mut().push_back(cloned);
     }
 
     /// Receive a message (simulates worker sending to main thread)
     ///
     /// This puts a message in the incoming queue to be processed by handlers.
+    ///
+    /// ## Browser Fidelity (PROBAR-WASM-003)
+    ///
+    /// To simulate real browser `structuredClone` semantics, the message is
+    /// serialized and deserialized before being queued. This ensures that:
+    /// - Non-serializable types will panic (like they would in a browser)
+    /// - Message data is deep-copied (no shared references)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the message cannot be serialized or deserialized. This
+    /// simulates browser `postMessage` behavior where non-cloneable objects
+    /// cause errors.
+    #[allow(clippy::expect_used)] // Intentional: simulates browser postMessage failure
     pub fn receive_message(&self, msg: MockMessage) {
+        // Round-trip through bincode to simulate structuredClone
+        let serialized = bincode::serialize(&msg)
+            .expect("MockMessage serialization failed - this would fail in browser postMessage");
+        let cloned: MockMessage = bincode::deserialize(&serialized)
+            .expect("MockMessage deserialization failed - corrupted message");
+
+        self.incoming.borrow_mut().push_back(cloned);
+    }
+
+    /// Receive a message without serialization (bypass for testing)
+    ///
+    /// This is the legacy method that doesn't enforce serialization.
+    /// Use `receive_message` for browser-fidelity testing.
+    #[doc(hidden)]
+    pub fn receive_message_unchecked(&self, msg: MockMessage) {
         self.incoming.borrow_mut().push_back(msg);
     }
 
@@ -209,27 +270,37 @@ impl MockWasmRuntime {
         let msg = self.incoming.borrow_mut().pop_front();
 
         if let Some(msg) = msg {
-            // Step 2: Swap out handlers to enable full re-entrancy
-            // This allows handlers to call on_message() without deadlock
-            let handlers_to_run = {
-                let mut handlers = self.handlers.borrow_mut();
-                std::mem::take(&mut *handlers)
+            // Helper guard to ensure handlers are restored even on panic
+            struct HandlersGuard {
+                handlers_ref: Rc<RefCell<Vec<Box<dyn Fn(&MockMessage)>>>>,
+                handlers_to_run: Vec<Box<dyn Fn(&MockMessage)>>,
+            }
+
+            impl Drop for HandlersGuard {
+                fn drop(&mut self) {
+                    let mut handlers = self.handlers_ref.borrow_mut();
+                    // Prepend original handlers (handlers_to_run), keeping new ones at the end
+                    let new_handlers = std::mem::take(&mut *handlers);
+                    *handlers = std::mem::take(&mut self.handlers_to_run);
+                    handlers.extend(new_handlers);
+                }
+            }
+
+            // Step 2: Swap out handlers using RAII guard for panic safety
+            let handlers_guard = HandlersGuard {
+                handlers_ref: Rc::clone(&self.handlers),
+                handlers_to_run: {
+                    let mut h = self.handlers.borrow_mut();
+                    std::mem::take(&mut *h)
+                },
             };
-            // Borrow is now released - handlers can safely modify self
 
             // Step 3: Run all handlers with NO borrows held
-            for handler in &handlers_to_run {
+            for handler in &handlers_guard.handlers_to_run {
                 handler(&msg);
             }
 
-            // Step 4: Merge handlers back (preserving any newly registered ones)
-            {
-                let mut handlers = self.handlers.borrow_mut();
-                // Prepend original handlers, keeping new ones at the end
-                let new_handlers = std::mem::take(&mut *handlers);
-                *handlers = handlers_to_run;
-                handlers.extend(new_handlers);
-            }
+            // Step 4 (Implicit): Guard drops here, restoring handlers via Drop trait
 
             self.messages_processed += 1;
             true
@@ -431,7 +502,7 @@ mod tests {
         let runtime1 = MockWasmRuntime::new();
         runtime1.receive_message(MockMessage::Ready);
 
-        let runtime2 = runtime1.clone();
+        let runtime2 = runtime1;
 
         // Both share the same queues
         assert_eq!(runtime2.pending_count(), 1);

@@ -2,6 +2,8 @@
 //!
 //! These tests exercise all code paths in builder.rs, codegen.rs, and hir.rs.
 
+#![allow(clippy::unwrap_used)]
+
 use probar_js_gen::prelude::*;
 
 // ============================================================================
@@ -791,7 +793,7 @@ fn codegen_bitwise_and() {
     };
     let module = JsModuleBuilder::new().let_decl("x", expr).unwrap().build();
     let js = generate(&module);
-    assert!(js.contains("&"));
+    assert!(js.contains('&'));
 }
 
 #[test]
@@ -803,7 +805,7 @@ fn codegen_bitwise_or() {
     };
     let module = JsModuleBuilder::new().let_decl("x", expr).unwrap().build();
     let js = generate(&module);
-    assert!(js.contains("|"));
+    assert!(js.contains('|'));
 }
 
 // ============================================================================
@@ -905,9 +907,9 @@ fn codegen_block_structure() {
     let stmt = Stmt::Block(vec![Stmt::expr(Expr::ident("z").unwrap())]);
     let module = JsModuleBuilder::new().stmt(stmt).build();
     let js = generate(&module);
-    assert!(js.contains("{"), "Opening brace: {:?}", js);
+    assert!(js.contains('{'), "Opening brace: {:?}", js);
     assert!(js.contains("z;"), "Body: {:?}", js);
-    assert!(js.contains("}"), "Closing brace: {:?}", js);
+    assert!(js.contains('}'), "Closing brace: {:?}", js);
 }
 
 #[test]
@@ -1088,13 +1090,13 @@ fn validator_worklet_missing_base_class() {
 
 #[test]
 fn validator_worklet_missing_register() {
-    let js = r#"
+    let js = r"
         class MyProcessor extends AudioWorkletProcessor {
             process(inputs, outputs, params) {
                 return true;
             }
         }
-    "#;
+    ";
     let errors = probar_js_gen::validator::validate_worklet_js(js);
     assert!(
         !errors.is_empty(),
@@ -1155,7 +1157,7 @@ fn validator_worker_missing_import() {
 #[test]
 fn codegen_large_integer() {
     let module = JsModuleBuilder::new()
-        .let_decl("big", Expr::num(9007199254740991.0)) // MAX_SAFE_INTEGER
+        .let_decl("big", Expr::num(9_007_199_254_740_991.0)) // MAX_SAFE_INTEGER
         .unwrap()
         .build();
     let js = generate(&module);

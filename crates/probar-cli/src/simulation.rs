@@ -931,4 +931,46 @@ mod tests {
         assert!(report.contains("Test Chaos"));
         assert!(report.contains("INJECTIONS"));
     }
+
+    #[test]
+    fn test_failure_injection_error() {
+        let injection = FailureInjection::error("database", 0.3);
+        assert_eq!(injection.injection_type, InjectionType::Error);
+        assert_eq!(injection.probability, 0.3);
+        assert_eq!(injection.target, "database");
+        assert!(injection.duration_ms.is_none());
+    }
+
+    #[test]
+    fn test_injection_type_all_names() {
+        // Cover all InjectionType::name() branches
+        assert_eq!(InjectionType::Latency.name(), "latency");
+        assert_eq!(InjectionType::PacketLoss.name(), "packet_loss");
+        assert_eq!(InjectionType::Error.name(), "error");
+        assert_eq!(InjectionType::Timeout.name(), "timeout");
+        assert_eq!(InjectionType::CpuThrottle.name(), "cpu_throttle");
+        assert_eq!(InjectionType::MemoryPressure.name(), "memory_pressure");
+    }
+
+    #[test]
+    fn test_simulation_config_with_variation() {
+        let config = SimulationConfig::deterministic(PathBuf::from("session.json")).with_variation(
+            "latency",
+            ParameterVariation {
+                distribution: Distribution::Normal {
+                    mean: 50.0,
+                    std_dev: 10.0,
+                },
+                min: 10.0,
+                max: 100.0,
+                base: 50.0,
+            },
+        );
+
+        assert!(config.parameter_variations.contains_key("latency"));
+        let variation = config.parameter_variations.get("latency").unwrap();
+        assert_eq!(variation.min, 10.0);
+        assert_eq!(variation.max, 100.0);
+        assert_eq!(variation.base, 50.0);
+    }
 }

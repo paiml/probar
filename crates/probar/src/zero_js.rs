@@ -986,7 +986,7 @@ mod tests {
         std::fs::create_dir(&vendor_path).unwrap();
         std::fs::write(vendor_path.join("lib.js"), "var x = 1;").unwrap();
 
-        let config = ZeroJsConfig::default().with_skip_path(vendor_path.clone());
+        let config = ZeroJsConfig::default().with_skip_path(vendor_path);
         let validator = ZeroJsValidator::with_config(config);
         let result = validator.validate_directory(temp.path()).unwrap();
 

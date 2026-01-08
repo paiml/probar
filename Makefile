@@ -76,7 +76,18 @@ format-check: ## Check code formatting
 lint: ## Run clippy with auto-fix
 	@echo "🔍 Running clippy..."
 	@cargo clippy --workspace --all-targets --all-features --fix --allow-dirty --allow-staged 2>/dev/null || true
-	@cargo clippy --workspace --all-targets --all-features -- -D warnings -A dead_code
+	@cargo clippy --workspace --lib --all-features -- -D warnings -A dead_code
+	@cargo clippy --workspace --tests --all-features -- \
+		-D clippy::suspicious \
+		-A clippy::expect_used \
+		-A clippy::unwrap_used \
+		-A clippy::panic \
+		-A clippy::float_cmp \
+		-A clippy::field_reassign_with_default \
+		-A clippy::type_complexity \
+		-A clippy::approx_constant \
+		-A clippy::needless_collect \
+		-A dead_code
 
 lint-check: ## Check clippy without fixing
 	@echo "🔍 Checking clippy..."

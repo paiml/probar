@@ -821,4 +821,40 @@ mod tests {
         assert_eq!(vp.width, 1920);
         assert_eq!(vp.height, 1080);
     }
+
+    #[test]
+    fn test_recording_save_load() {
+        let mut recording = Recording::new("test-session", "http://localhost/test");
+        recording.add_event(RecordedEvent::Click {
+            x: 100,
+            y: 200,
+            selector: Some("#button".to_string()),
+            timestamp_ms: 1000,
+        });
+        recording.add_event(RecordedEvent::KeyPress {
+            key: "Enter".to_string(),
+            modifiers: KeyModifiers::default(),
+            timestamp_ms: 2000,
+        });
+
+        let temp_dir = std::env::temp_dir();
+        let path = temp_dir.join("test_recording.json");
+
+        // Save
+        recording.save(&path).expect("Failed to save recording");
+
+        // Load
+        let loaded = Recording::load(&path).expect("Failed to load recording");
+        assert_eq!(loaded.name, "test-session");
+        assert_eq!(loaded.event_count(), 2);
+
+        // Cleanup
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_recording_load_nonexistent() {
+        let result = Recording::load(&PathBuf::from("/nonexistent/path.json"));
+        assert!(result.is_err());
+    }
 }

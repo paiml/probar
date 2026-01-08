@@ -249,6 +249,7 @@ mod tests {
     #[cfg(feature = "proptest")]
     mod proptest_tests {
         use super::*;
+        use proptest::strategy::ValueTree;
         use proptest::test_runner::{Config, TestRunner};
 
         #[test]

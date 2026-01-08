@@ -9,6 +9,8 @@
 //! probar comply --wasm-threading ./src
 //! ```
 
+pub mod tarantula;
 pub mod wasm_threading;
 
+pub use tarantula::{TarantulaEngine, TarantulaReport};
 pub use wasm_threading::{ComplianceResult, ComplianceStatus, WasmThreadingCompliance};

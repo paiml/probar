@@ -722,4 +722,98 @@ mod tests {
         let json = render_statistical_json(&analysis);
         assert!(json.contains("JSON Test"));
     }
+
+    #[test]
+    fn test_variance_tree_default() {
+        let tree = VarianceTree::default();
+        assert_eq!(tree.total_variance, 0.0);
+        assert!(tree.components.is_empty());
+    }
+
+    #[test]
+    fn test_variance_tree_from_samples() {
+        let mut samples = Vec::new();
+
+        // Create sample 1
+        let mut components1 = HashMap::new();
+        components1.insert("network".to_string(), 50.0);
+        components1.insert("compute".to_string(), 20.0);
+        samples.push(LatencySample {
+            total_ms: 70.0,
+            components: components1,
+            timestamp_ms: 1000,
+        });
+
+        // Create sample 2
+        let mut components2 = HashMap::new();
+        components2.insert("network".to_string(), 60.0);
+        components2.insert("compute".to_string(), 25.0);
+        samples.push(LatencySample {
+            total_ms: 85.0,
+            components: components2,
+            timestamp_ms: 2000,
+        });
+
+        // Create sample 3
+        let mut components3 = HashMap::new();
+        components3.insert("network".to_string(), 55.0);
+        components3.insert("compute".to_string(), 22.0);
+        samples.push(LatencySample {
+            total_ms: 77.0,
+            components: components3,
+            timestamp_ms: 3000,
+        });
+
+        let tree = VarianceTree::from_samples(&samples);
+
+        // Should have 2 components (network and compute)
+        assert_eq!(tree.components.len(), 2);
+        assert!(tree.total_variance > 0.0);
+
+        // Each component should have a percentage
+        for comp in &tree.components {
+            assert!(comp.percentage >= 0.0);
+            assert!(comp.percentage <= 100.0);
+        }
+    }
+
+    #[test]
+    fn test_variance_tree_recalculate_empty() {
+        let mut tree = VarianceTree::new();
+        // Should not panic with empty tree
+        tree.recalculate_percentages();
+        assert_eq!(tree.total_variance, 0.0);
+    }
+
+    #[test]
+    fn test_variance_tree_recalculate_with_children() {
+        let mut tree = VarianceTree::new();
+
+        // Add parent component with children
+        let mut parent = VarianceComponent::new("parent", 100.0);
+        parent.add_child(VarianceComponent::new("child1", 60.0));
+        parent.add_child(VarianceComponent::new("child2", 40.0));
+
+        tree.add_component(parent);
+        tree.recalculate_percentages();
+
+        // Parent should be 100% of tree
+        assert!((tree.components[0].percentage - 100.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_latency_sample() {
+        let mut components = HashMap::new();
+        components.insert("dns".to_string(), 10.0);
+        components.insert("connect".to_string(), 20.0);
+
+        let sample = LatencySample {
+            total_ms: 30.0,
+            components,
+            timestamp_ms: 1234567890,
+        };
+
+        assert_eq!(sample.total_ms, 30.0);
+        assert_eq!(sample.components.len(), 2);
+    }
 }

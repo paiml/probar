@@ -208,9 +208,9 @@ proptest! {
         let js = generate(&module);
 
         // Must have parentheses around binary op
-        prop_assert!(js.contains("("), "Missing opening paren");
-        prop_assert!(js.contains(")"), "Missing closing paren");
-        prop_assert!(js.contains("+"), "Missing operator");
+        prop_assert!(js.contains('('), "Missing opening paren");
+        prop_assert!(js.contains(')'), "Missing closing paren");
+        prop_assert!(js.contains('+'), "Missing operator");
     }
 }
 

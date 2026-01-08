@@ -662,6 +662,7 @@ impl Stmt {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -685,7 +686,13 @@ mod tests {
             .build();
 
         assert_eq!(class.name.as_str(), "Foo");
-        assert_eq!(class.extends.as_ref().map(|i| i.as_str()), Some("Bar"));
+        assert_eq!(
+            class
+                .extends
+                .as_ref()
+                .map(super::super::hir::Identifier::as_str),
+            Some("Bar")
+        );
         assert_eq!(class.methods.len(), 1);
         Ok(())
     }

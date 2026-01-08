@@ -497,6 +497,7 @@ fn write_expr(out: &mut String, expr: &Expr) {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::builder::*;

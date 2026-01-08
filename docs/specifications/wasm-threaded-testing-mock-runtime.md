@@ -4,7 +4,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | DRAFT - Implementation Required |
+| Status | **IMPLEMENTED** ✅ |
 | Author | Claude Code |
 | Created | 2025-01-07 |
 | Ticket | [probar#20](https://github.com/paiml/probar/issues/20) |
@@ -746,6 +746,23 @@ The `organization-intelligence-plugin` enforces advanced fault localization and 
 | 114 | **Flaky Test Detection** | `probar flaky --detect` | Identify non-deterministic failures |
 | 115 | **Historical Regression** | `git bisect` auto | Auto-bisect on new Tarantula hotspots |
 
+### Section H: Dual-Mode Load Testing (Points 116-125)
+
+The protocol requires verifying system stability under both browser-internal concurrency stress and external protocol load.
+
+| # | Falsification Test | Method | Pass Criteria |
+|---|-------------------|--------|---------------|
+| 116 | **Browser Stress: Atomics** | `probar stress --atomics` | `SharedArrayBuffer` lock contention > 10k ops/sec |
+| 117 | **Browser Stress: Message Queue** | `probar stress --worker-msg` | Worker message throughput > 5k/sec without leaks |
+| 118 | **Browser Stress: Render Loop** | `probar stress --render` | 60 FPS maintained under mock load |
+| 119 | **Browser Stress: Tracing Overhead** | `probar stress --trace` | `renacer` overhead < 5% at saturation |
+| 120 | **Protocol Load: Locust Integration** | `locust -f load_test.py` | 100 concurrent users simulating WS/HTTP traffic |
+| 121 | **Protocol Load: K6 Benchmark** | `k6 run load_test.js` | P99 latency < 200ms under load |
+| 122 | **Protocol Load: Connection Leaks** | `netstat` monitoring | No zombie connections after load test |
+| 123 | **Hybrid Load: Full System** | `probar stress --full` | Browser + Protocol load simultaneously |
+| 124 | **Memory Leak under Load** | `valgrind` / `heaptrack` | Stable heap usage over 1 hour load test |
+| 125 | **Recovery from Saturation** | Chaos injection | System recovers within 5s after load spike |
+
 ### Section F: Quality and Documentation (Points 91-100)
 
 | # | Falsification Test | Method | Pass Criteria |
@@ -830,6 +847,7 @@ The mock runtime is designed for **unit testing** and is NOT isomorphic to brows
 | **Serialization** | Rust Clone trait | structuredClone (rejects functions, Rc) |
 | **State Isolation** | Shared via Rc clones | Isolated workers, postMessage copies |
 | **Atomics** | std::sync::atomic works | Requires SharedArrayBuffer feature |
+| **Panic Safety** | Handlers restored via `HandlersGuard` | Worker termination |
 
 **Use the mock for**: Testing callback state transitions, regression prevention
 **Do NOT use the mock for**: Performance testing, concurrency validation, browser compatibility
@@ -843,10 +861,18 @@ The linter uses **text-based pattern matching**, not AST analysis:
 | `let x = Rc::new(...)` | ✅ Yes | WASM-SS-001 |
 | `type T = Rc<...>; T::new()` | ✅ Yes | WASM-SS-006 |
 | `fn f() -> Rc<...>` | ✅ Yes | WASM-SS-007 |
+| `Rc::default()` | ✅ Yes | WASM-SS-008 |
 | `macro_rules! m { Rc::new }` | ❌ No (macro expansion needed) | - |
 | Complex nested patterns | ❌ No (requires full AST) | - |
 
 **Note**: For comprehensive analysis, consider integrating with `rust-analyzer` or using `syn` crate for AST parsing.
+
+### Load Testing Scope
+
+The `probar stress` command focuses on **Browser/WASM internals**:
+- Validates `SharedArrayBuffer` atomics, Worker message queues, and `renacer` tracing overhead.
+- Does **NOT** replace HTTP/WebSocket load testing tools (Locust, K6).
+- **Mandate:** Use `probar stress` for concurrency correctness, and standard tools (Locust) for network capacity planning.
 
 ### Compliance Checker (WasmThreadingCompliance)
 
@@ -968,7 +994,7 @@ Run `probar doc-check --spec docs/specifications/wasm-threaded-testing-mock-runt
 **Document Version**: 1.0.0
 **Last Updated**: 2025-01-07
 **Authors**: Claude Code
-**Review Status**: DRAFT
+**Review Status**: IMPLEMENTED
 **Toyota Principles Applied**: Jidoka (Automation with Human Touch), Genchi Genbutsu (Go and See), Kaizen (Continuous Improvement)
 **Iron Lotus Philosophy**: "Test the code, not the model"
 **Citations**: 21 peer-reviewed references

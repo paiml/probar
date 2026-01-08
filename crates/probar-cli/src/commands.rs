@@ -73,6 +73,77 @@ pub enum Commands {
     /// - C009: WASM under size limit
     /// - C010: No panic paths in WASM
     Comply(ComplyArgs),
+
+    /// Run browser/WASM stress tests (Section H: Points 116-125)
+    ///
+    /// Validates system stability under concurrency stress:
+    /// - atomics: `SharedArrayBuffer` lock contention (> 10k ops/sec)
+    /// - worker-msg: Worker message throughput (> 5k msg/sec)
+    /// - render: Render loop stability (60 FPS under load)
+    /// - trace: Renacer tracing overhead (< 5%)
+    /// - full: All stress tests combined
+    Stress(StressArgs),
+}
+
+/// Arguments for the stress command
+#[derive(Parser, Debug)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct StressArgs {
+    /// Stress test mode
+    #[arg(long, default_value = "atomics")]
+    pub mode: String,
+
+    /// Test duration in seconds
+    #[arg(short, long, default_value = "30")]
+    pub duration: u64,
+
+    /// Number of concurrent workers
+    #[arg(short, long, default_value = "4")]
+    pub concurrency: u32,
+
+    /// Output format (text, json)
+    #[arg(short, long, default_value = "text")]
+    pub output: String,
+
+    /// Run atomics stress test
+    #[arg(long)]
+    pub atomics: bool,
+
+    /// Run worker message stress test
+    #[arg(long)]
+    pub worker_msg: bool,
+
+    /// Run render loop stress test
+    #[arg(long)]
+    pub render: bool,
+
+    /// Run tracing overhead stress test
+    #[arg(long)]
+    pub trace: bool,
+
+    /// Run full system stress test
+    #[arg(long)]
+    pub full: bool,
+}
+
+impl StressArgs {
+    /// Get the stress mode from arguments
+    #[must_use]
+    pub fn get_mode(&self) -> String {
+        if self.atomics {
+            "atomics".to_string()
+        } else if self.worker_msg {
+            "worker-msg".to_string()
+        } else if self.render {
+            "render".to_string()
+        } else if self.trace {
+            "trace".to_string()
+        } else if self.full {
+            "full".to_string()
+        } else {
+            self.mode.clone()
+        }
+    }
 }
 
 /// Arguments for the test command
@@ -110,6 +181,12 @@ pub struct TestArgs {
     /// Output directory for results
     #[arg(short, long, default_value = "target/probar")]
     pub output: PathBuf,
+
+    /// Skip compile check before running tests
+    /// By default, probar runs `cargo test --no-run` to verify compilation
+    /// before executing playbook tests. Use this flag to bypass that check.
+    #[arg(long)]
+    pub skip_compile: bool,
 }
 
 /// Arguments for the record command
@@ -1005,6 +1082,7 @@ mod tests {
                 watch: false,
                 timeout: 30000,
                 output: PathBuf::from("target/probar"),
+                skip_compile: false,
             };
             assert!(!args.coverage);
             assert_eq!(args.timeout, 30000);
@@ -1021,9 +1099,26 @@ mod tests {
                 watch: false,
                 timeout: 5000,
                 output: PathBuf::from("target"),
+                skip_compile: false,
             };
             let debug = format!("{args:?}");
             assert!(debug.contains("TestArgs"));
+        }
+
+        #[test]
+        fn test_skip_compile_flag() {
+            let args = TestArgs {
+                filter: None,
+                parallel: 0,
+                coverage: false,
+                mutants: false,
+                fail_fast: false,
+                watch: false,
+                timeout: 30000,
+                output: PathBuf::from("target/probar"),
+                skip_compile: true,
+            };
+            assert!(args.skip_compile);
         }
     }
 

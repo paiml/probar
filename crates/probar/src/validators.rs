@@ -2116,4 +2116,298 @@ mod tests {
         assert!((entropies[2] - 7.5).abs() < f32::EPSILON);
         assert!((entropies[3] - 0.0).abs() < f32::EPSILON); // Uniform has 0 entropy
     }
+
+    // ========================================================================
+    // Additional coverage tests for validators.rs
+    // ========================================================================
+
+    #[test]
+    fn test_execution_stats_start_stop_throughput() {
+        // Test start/stop timing and throughput calculation
+        let mut stats = TestExecutionStats::new();
+        stats.start();
+
+        // Record some captures
+        stats.record_state_capture(1_000_000, 100_000);
+        stats.record_state_capture(1_000_000, 100_000);
+
+        stats.stop();
+
+        // Throughput should be > 0 after recording data
+        let throughput = stats.compress_throughput();
+        // May be 0 if test runs too fast, but shouldn't panic
+        assert!(throughput >= 0.0);
+    }
+
+    #[test]
+    fn test_execution_stats_throughput_no_timing() {
+        // Test throughput without start/stop
+        let mut stats = TestExecutionStats::new();
+        stats.record_state_capture(1000, 100);
+
+        // Should return 0 when no timing is set
+        assert!((stats.compress_throughput() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_execution_stats_throughput_start_only() {
+        // Test throughput with only start (no stop)
+        let mut stats = TestExecutionStats::new();
+        stats.start();
+        stats.record_state_capture(1000, 100);
+
+        // Should return 0 when end time not set
+        assert!((stats.compress_throughput() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_streaming_validation_error_display() {
+        // Test Display implementations for all error variants
+        let latency_err = StreamingValidationError::LatencyExceeded {
+            measured: Duration::from_millis(500),
+            max: Duration::from_millis(100),
+        };
+        assert!(latency_err.to_string().contains("exceeded"));
+
+        let underrun_err = StreamingValidationError::BufferUnderrunThreshold {
+            count: 10,
+            threshold: 5,
+        };
+        assert!(underrun_err.to_string().contains("Buffer underruns"));
+
+        let dropped_err = StreamingValidationError::DroppedFrameThreshold { count: 20, max: 10 };
+        assert!(dropped_err.to_string().contains("Dropped frames"));
+
+        let fps_err = StreamingValidationError::FpsBelowMinimum {
+            measured: 15.0,
+            min: 30.0,
+        };
+        assert!(fps_err.to_string().contains("FPS below"));
+
+        let ttfb_err = StreamingValidationError::TtfbExceeded {
+            measured: Duration::from_secs(5),
+            max: Duration::from_secs(2),
+        };
+        assert!(ttfb_err.to_string().contains("first byte"));
+
+        let transition_err = StreamingValidationError::InvalidStateTransition {
+            from: StreamingState::Idle,
+            to: StreamingState::Completed,
+        };
+        assert!(transition_err.to_string().contains("Invalid state"));
+
+        let error_err = StreamingValidationError::EndedInError;
+        assert!(error_err.to_string().contains("error state"));
+    }
+
+    #[test]
+    fn test_streaming_state_default() {
+        let state: StreamingState = Default::default();
+        assert_eq!(state, StreamingState::Idle);
+    }
+
+    #[test]
+    fn test_streaming_state_display_all_variants() {
+        assert_eq!(format!("{}", StreamingState::Idle), "Idle");
+        assert_eq!(format!("{}", StreamingState::Buffering), "Buffering");
+        assert_eq!(format!("{}", StreamingState::Streaming), "Streaming");
+        assert_eq!(format!("{}", StreamingState::Stalled), "Stalled");
+        assert_eq!(format!("{}", StreamingState::Error), "Error");
+        assert_eq!(format!("{}", StreamingState::Completed), "Completed");
+    }
+
+    #[test]
+    fn test_streaming_metric_record_creation() {
+        let record = StreamingMetricRecord {
+            metric: StreamingMetric::BufferUnderrun,
+            timestamp: Instant::now(),
+        };
+        assert!(matches!(record.metric, StreamingMetric::BufferUnderrun));
+    }
+
+    #[test]
+    fn test_streaming_ux_validator_default() {
+        let validator: StreamingUxValidator = Default::default();
+        assert_eq!(validator.state(), StreamingState::Idle);
+    }
+
+    #[test]
+    fn test_ttfb_validation() {
+        let mut validator =
+            StreamingUxValidator::new().with_ttfb_timeout(Duration::from_millis(100));
+
+        // Start and wait for first byte
+        validator.start();
+
+        // Simulate waiting too long before first byte
+        std::thread::sleep(Duration::from_millis(150));
+
+        // Record first byte
+        validator.record_metric(StreamingMetric::FirstByteReceived);
+
+        let result = validator.validate();
+        // TTFB should be exceeded
+        assert!(result.is_err());
+        if let Err(err) = result {
+            assert!(matches!(err, StreamingValidationError::TtfbExceeded { .. }));
+        }
+    }
+
+    #[test]
+    fn test_ttfb_validation_success() {
+        let mut validator = StreamingUxValidator::new().with_ttfb_timeout(Duration::from_secs(5));
+
+        // Start and immediately receive first byte
+        validator.start();
+        validator.record_metric(StreamingMetric::FirstByteReceived);
+
+        // Other metrics to make it valid
+        validator.record_metric(StreamingMetric::AudioChunk {
+            samples: 1024,
+            sample_rate: 16000,
+        });
+
+        let result = validator.validate();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_compression_algorithm_enum() {
+        // Ensure all variants are distinct
+        assert_ne!(CompressionAlgorithm::Lz4, CompressionAlgorithm::Zstd);
+        assert_ne!(CompressionAlgorithm::Zstd, CompressionAlgorithm::Png);
+        assert_ne!(CompressionAlgorithm::Png, CompressionAlgorithm::Rle);
+    }
+
+    #[test]
+    fn test_vu_meter_config_debug() {
+        let config = VuMeterConfig::default();
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("VuMeterConfig"));
+    }
+
+    #[test]
+    fn test_state_transition_debug() {
+        let transition = StateTransition {
+            from: "Idle".to_string(),
+            to: "Recording".to_string(),
+            timestamp_ms: 1000.0,
+            duration_ms: 500.0,
+        };
+        let debug_str = format!("{:?}", transition);
+        assert!(debug_str.contains("StateTransition"));
+    }
+
+    #[test]
+    fn test_partial_result_debug() {
+        let partial = PartialResult {
+            timestamp_ms: 1500.0,
+            text: "Hello".to_string(),
+            is_final: false,
+        };
+        let debug_str = format!("{:?}", partial);
+        assert!(debug_str.contains("PartialResult"));
+    }
+
+    #[test]
+    fn test_vu_meter_sample_debug() {
+        let sample = VuMeterSample {
+            timestamp_ms: 100.0,
+            level: 0.5,
+        };
+        let debug_str = format!("{:?}", sample);
+        assert!(debug_str.contains("VuMeterSample"));
+    }
+
+    #[test]
+    fn test_test_execution_stats_debug() {
+        let stats = TestExecutionStats::new();
+        let debug_str = format!("{:?}", stats);
+        assert!(debug_str.contains("TestExecutionStats"));
+    }
+
+    #[test]
+    fn test_screenshot_content_debug() {
+        let content = ScreenshotContent::UiDominated { entropy: 2.0 };
+        let debug_str = format!("{:?}", content);
+        assert!(debug_str.contains("UiDominated"));
+    }
+
+    #[test]
+    fn test_streaming_metric_debug() {
+        let metric = StreamingMetric::Latency(Duration::from_millis(50));
+        let debug_str = format!("{:?}", metric);
+        assert!(debug_str.contains("Latency"));
+    }
+
+    #[test]
+    fn test_streaming_validation_error_as_error() {
+        // Test std::error::Error implementation
+        let err = StreamingValidationError::EndedInError;
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn test_vu_meter_error_as_error() {
+        // Test std::error::Error implementation
+        let err = VuMeterError::NegativeLevel(-0.5);
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn test_streaming_metric_all_variants() {
+        // Ensure all variants can be created
+        let metrics = vec![
+            StreamingMetric::Latency(Duration::from_millis(50)),
+            StreamingMetric::FrameRendered { timestamp: 1000 },
+            StreamingMetric::FrameDropped,
+            StreamingMetric::BufferUnderrun,
+            StreamingMetric::FirstByteReceived,
+            StreamingMetric::BufferLevel(0.5),
+            StreamingMetric::AudioChunk {
+                samples: 1024,
+                sample_rate: 16000,
+            },
+        ];
+
+        assert_eq!(metrics.len(), 7);
+    }
+
+    #[test]
+    fn test_streaming_ux_validator_clone() {
+        let validator = StreamingUxValidator::new()
+            .with_max_latency(Duration::from_millis(100))
+            .with_buffer_underrun_threshold(3);
+
+        let cloned = validator.clone();
+        assert_eq!(cloned.state(), StreamingState::Idle);
+    }
+
+    #[test]
+    fn test_test_execution_stats_clone() {
+        let mut stats = TestExecutionStats::new();
+        stats.record_state_capture(1000, 100);
+
+        let cloned = stats.clone();
+        assert_eq!(cloned.states_captured, 1);
+    }
+
+    #[test]
+    fn test_vu_meter_config_clone() {
+        let config = VuMeterConfig::default().with_min_level(0.2);
+        let cloned = config.clone();
+        assert!((cloned.min_level - 0.2).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_state_transition_clone() {
+        let transition = StateTransition {
+            from: "Idle".to_string(),
+            to: "Recording".to_string(),
+            timestamp_ms: 1000.0,
+            duration_ms: 500.0,
+        };
+        let cloned = transition.clone();
+        assert_eq!(cloned.from, "Idle");
+    }
 }

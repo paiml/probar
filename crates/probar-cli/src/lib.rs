@@ -22,6 +22,7 @@ mod runner;
 pub mod score;
 pub mod simulation;
 pub mod statistics;
+pub mod stress;
 pub mod tracing;
 pub mod tree;
 pub mod visualization;
@@ -32,8 +33,8 @@ pub use commands::{
     ComplyMigrateArgs, ComplyOutputFormat, ComplyReportArgs, ComplyReportFormat, ComplySubcommand,
     ConfigArgs, CoverageArgs, DiagramFormat, InitArgs, PaletteArg, PlaybookArgs,
     PlaybookOutputFormat, RecordArgs, RecordFormat, ReportArgs, ReportFormat, ScoreArgs,
-    ScoreOutputFormat, ServeArgs, ServeSubcommand, TestArgs, TreeArgs, VizArgs, WasmTarget,
-    WatchArgs,
+    ScoreOutputFormat, ServeArgs, ServeSubcommand, StressArgs, TestArgs, TreeArgs, VizArgs,
+    WasmTarget, WatchArgs,
 };
 pub use config::{CliConfig, ColorChoice, Verbosity};
 pub use debug::{create_tracer, DebugCategory, DebugTracer, DebugVerbosity, ResolutionRule};
@@ -89,4 +90,9 @@ pub use simulation::{
     ChaosResult, Distribution, FailureInjection, ImpactLevel, InjectionType, LatencyDistribution,
     MonteCarloResult, ObservationSeverity, ParameterVariation, RiskLevel, SensitivityFactor,
     SimulationConfig, SimulationMode, SimulationOutput, SlaProbability,
+};
+// PROBAR-SPEC-WASM-001 Section H: Browser/WASM Stress Testing
+pub use stress::{
+    render_stress_json, render_stress_report, LatencyStats, MemoryStats, StressConfig, StressError,
+    StressErrorKind, StressMode, StressResult, StressRunner,
 };

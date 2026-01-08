@@ -11,7 +11,14 @@
 //! | WASM-COMPLY-002 | Mock runtime tests exist | Yes |
 //! | WASM-COMPLY-003 | Property tests on actual code | Warning |
 //! | WASM-COMPLY-004 | Regression tests for known bugs | Yes |
+//! | WASM-COMPLY-005 | No JS files in target/ (post-build) | Yes |
+//!
+//! ## Tarantula Integration
+//!
+//! When proptest fails, run `probar comply --wasm-threading --lcov-passed <path> --lcov-failed <path>`
+//! to generate a Tarantula Hotspot Report showing suspicious lines.
 
+use crate::comply::tarantula::TarantulaEngine;
 use crate::lint::StateSyncLinter;
 use std::path::Path;
 
@@ -191,6 +198,12 @@ impl ComplianceResult {
 pub struct WasmThreadingCompliance {
     /// State sync linter
     linter: StateSyncLinter,
+    /// Tarantula fault localization engine
+    tarantula: TarantulaEngine,
+    /// LCOV file for passing tests (optional)
+    lcov_passed: Option<std::path::PathBuf>,
+    /// LCOV file for failing tests (optional)
+    lcov_failed: Option<std::path::PathBuf>,
 }
 
 impl WasmThreadingCompliance {
@@ -199,7 +212,20 @@ impl WasmThreadingCompliance {
     pub fn new() -> Self {
         Self {
             linter: StateSyncLinter::new(),
+            tarantula: TarantulaEngine::new(),
+            lcov_passed: None,
+            lcov_failed: None,
         }
+    }
+
+    /// Set LCOV files for Tarantula analysis
+    ///
+    /// When both passed and failed coverage files are provided,
+    /// Tarantula will generate a hotspot report.
+    pub fn with_lcov(&mut self, passed: Option<&Path>, failed: Option<&Path>) -> &mut Self {
+        self.lcov_passed = passed.map(|p| p.to_path_buf());
+        self.lcov_failed = failed.map(|p| p.to_path_buf());
+        self
     }
 
     /// Check compliance for a project directory
@@ -218,7 +244,46 @@ impl WasmThreadingCompliance {
         // WASM-COMPLY-004: Regression tests
         self.check_regression_tests(project_path, &mut result);
 
+        // WASM-COMPLY-005: Post-build JS file check
+        self.check_target_js_files(project_path, &mut result);
+
         result
+    }
+
+    /// Generate Tarantula hotspot report if LCOV files are configured
+    ///
+    /// Returns the formatted report string, or None if no coverage data.
+    pub fn tarantula_report(&mut self) -> Option<String> {
+        // Load LCOV files if configured
+        if let Some(ref passed_path) = self.lcov_passed {
+            if let Err(e) = self.tarantula.parse_lcov(passed_path, true) {
+                return Some(format!("Error parsing passed LCOV: {e}"));
+            }
+        }
+
+        if let Some(ref failed_path) = self.lcov_failed {
+            if let Err(e) = self.tarantula.parse_lcov(failed_path, false) {
+                return Some(format!("Error parsing failed LCOV: {e}"));
+            }
+        }
+
+        // Generate reports
+        let reports = self.tarantula.generate_all_reports();
+        if reports.is_empty() {
+            return None;
+        }
+
+        let mut output = String::new();
+        output.push_str("═══════════════════════════════════════════════════════════════════\n");
+        output.push_str("                    🕷️  TARANTULA HOTSPOT REPORT\n");
+        output.push_str("═══════════════════════════════════════════════════════════════════\n\n");
+
+        for report in reports {
+            output.push_str(&report.format_hotspot_report());
+            output.push('\n');
+        }
+
+        Some(output)
     }
 
     /// Check state sync lint (WASM-COMPLY-001)
@@ -364,6 +429,262 @@ impl WasmThreadingCompliance {
             ));
         }
     }
+
+    /// Check for JS files in target/ directory (WASM-COMPLY-005)
+    ///
+    /// This catches CI loopholes where build.rs writes JS to target/,
+    /// bypassing WASM-only compliance checks.
+    fn check_target_js_files(&self, project_path: &Path, result: &mut ComplianceResult) {
+        let target_path = project_path.join("target");
+
+        if !target_path.exists() {
+            result.add_check(ComplianceCheck::skip(
+                "WASM-COMPLY-005",
+                "No JS files in target/",
+                "No target/ directory found (run cargo build first)",
+            ));
+            return;
+        }
+
+        let js_files = find_js_files_in_target(&target_path);
+
+        if js_files.is_empty() {
+            result.add_check(ComplianceCheck::pass(
+                "WASM-COMPLY-005",
+                "No JS files in target/",
+            ));
+        } else {
+            // Filter to only suspicious JS files (not from wasm-bindgen)
+            let suspicious: Vec<_> = js_files
+                .iter()
+                .filter(|p| !is_wasm_bindgen_output(p))
+                .collect();
+
+            if suspicious.is_empty() {
+                result.add_check(ComplianceCheck::pass(
+                    "WASM-COMPLY-005",
+                    "No JS files in target/",
+                ));
+            } else {
+                let file_list: Vec<_> = suspicious
+                    .iter()
+                    .take(5)
+                    .map(|p| p.display().to_string())
+                    .collect();
+                result.add_check(ComplianceCheck::fail(
+                    "WASM-COMPLY-005",
+                    "No JS files in target/",
+                    &format!(
+                        "Found {} JS file(s) in target/ (possible build.rs loophole): {}{}",
+                        suspicious.len(),
+                        file_list.join(", "),
+                        if suspicious.len() > 5 { "..." } else { "" }
+                    ),
+                    suspicious.len(),
+                ));
+            }
+        }
+    }
+}
+
+/// Suspicious file found in target/ directory
+#[derive(Debug, Clone)]
+pub struct SuspiciousFile {
+    /// Path to the suspicious file
+    pub path: std::path::PathBuf,
+    /// Reason it's suspicious
+    pub reason: SuspiciousReason,
+}
+
+/// Why a file is considered suspicious
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SuspiciousReason {
+    /// File has .js extension
+    JsExtension,
+    /// File contains JavaScript-like content
+    JsContent,
+}
+
+impl std::fmt::Display for SuspiciousReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::JsExtension => write!(f, ".js extension"),
+            Self::JsContent => write!(f, "JS content detected"),
+        }
+    }
+}
+
+/// Find all suspicious files in the target directory
+///
+/// This includes:
+/// - Files with .js extension
+/// - Text files containing JavaScript-like content (MIME-type smuggling defense)
+///
+/// HOTFIX PROBAR-WASM-003: Now traverses hidden directories (no more .hidden bypass)
+fn find_suspicious_files_in_target(target_path: &Path) -> Vec<SuspiciousFile> {
+    fn visit(dir: &Path, suspicious: &mut Vec<SuspiciousFile>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    // HOTFIX: Only skip node_modules, NOT hidden directories
+                    // Hidden directories in target/ are suspicious by definition
+                    if name != "node_modules" {
+                        visit(&path, suspicious);
+                    }
+                } else {
+                    // Check by extension
+                    if path.extension().map(|e| e == "js").unwrap_or(false) {
+                        suspicious.push(SuspiciousFile {
+                            path,
+                            reason: SuspiciousReason::JsExtension,
+                        });
+                    } else {
+                        // HOTFIX: Content inspection for MIME-type smuggling
+                        // Check non-.js files for JavaScript content
+                        if let Some(reason) = check_file_for_js_content(&path) {
+                            suspicious.push(SuspiciousFile { path, reason });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut suspicious = Vec::new();
+    if target_path.exists() {
+        visit(target_path, &mut suspicious);
+    }
+    suspicious
+}
+
+/// Check if a file contains JavaScript-like content
+///
+/// Scans the first 2048 bytes for JS keywords to detect MIME-type smuggling.
+fn check_file_for_js_content(path: &Path) -> Option<SuspiciousReason> {
+    // Skip known safe binary extensions
+    const SAFE_BINARY_EXTENSIONS: &[&str] = &[
+        "wasm",
+        "png",
+        "jpg",
+        "jpeg",
+        "gif",
+        "ico",
+        "webp",
+        "svg",
+        "ttf",
+        "woff",
+        "woff2",
+        "eot",
+        "otf",
+        "zip",
+        "tar",
+        "gz",
+        "br",
+        "zst",
+        "rlib",
+        "rmeta",
+        "so",
+        "dylib",
+        "dll",
+        "a",
+        "o",
+        "d",
+        "fingerprint",
+        "bin",
+        "dat",
+    ];
+
+    // JS keyword patterns that indicate JavaScript content
+    // Using word boundaries via simple checks
+    const JS_KEYWORDS: &[&str] = &[
+        "function ",
+        "function(",
+        "const ",
+        "let ",
+        "var ",
+        "=> {",
+        "=>{",
+        "class ",
+        "import ",
+        "export ",
+        "require(",
+        "module.exports",
+        "window.",
+        "document.",
+        "console.log",
+        "addEventListener",
+        "setTimeout(",
+        "setInterval(",
+        "Promise.",
+        "async ",
+        "await ",
+    ];
+
+    // Only check text-like files (skip binaries, images, etc.)
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+    if SAFE_BINARY_EXTENSIONS.contains(&ext) {
+        return None;
+    }
+
+    // Skip files that are too large (likely not hand-written JS)
+    let metadata = std::fs::metadata(path).ok()?;
+    if metadata.len() > 10 * 1024 * 1024 {
+        // > 10MB
+        return None;
+    }
+
+    // Read first 2048 bytes
+    let content = std::fs::read(path).ok()?;
+    let sample_size = content.len().min(2048);
+    let sample = &content[..sample_size];
+
+    // Check if it looks like text (not binary)
+    let is_text = sample.iter().all(|&b| {
+        b.is_ascii_graphic() || b.is_ascii_whitespace() || b == b'\t' || b == b'\n' || b == b'\r'
+    });
+
+    if !is_text {
+        return None;
+    }
+
+    // Convert to string and check for JS keywords
+    let text = std::str::from_utf8(sample).ok()?;
+
+    // Count how many JS keywords are found
+    let keyword_count = JS_KEYWORDS.iter().filter(|kw| text.contains(*kw)).count();
+
+    // If 2+ keywords found, it's likely JS content
+    if keyword_count >= 2 {
+        return Some(SuspiciousReason::JsContent);
+    }
+
+    None
+}
+
+/// Legacy wrapper for backward compatibility
+fn find_js_files_in_target(target_path: &Path) -> Vec<std::path::PathBuf> {
+    find_suspicious_files_in_target(target_path)
+        .into_iter()
+        .map(|s| s.path)
+        .collect()
+}
+
+/// Check if a JS file is legitimate wasm-bindgen output
+fn is_wasm_bindgen_output(path: &Path) -> bool {
+    // wasm-bindgen outputs go into pkg/ or have specific naming patterns
+    let path_str = path.display().to_string();
+
+    // Legitimate patterns:
+    // - /pkg/*.js (wasm-pack output)
+    // - *_bg.js (wasm-bindgen background module)
+    // - snippets/ directory (wasm-bindgen snippets)
+    path_str.contains("/pkg/")
+        || path_str.contains("_bg.js")
+        || path_str.contains("/snippets/")
+        || path_str.contains("wasm-bindgen")
 }
 
 /// Count occurrences of a pattern in all .rs files in a directory
@@ -495,7 +816,95 @@ fn test_007() {}
         let mut checker = WasmThreadingCompliance::new();
         let result = checker.check(temp_dir.path());
 
-        // Should have run all 4 checks
-        assert_eq!(result.checks.len(), 4);
+        // Should have run all 5 checks
+        assert_eq!(result.checks.len(), 5);
+    }
+
+    #[test]
+    fn test_target_js_files_detection() {
+        let temp_dir = TempDir::new().unwrap();
+        let target_dir = temp_dir.path().join("target");
+        fs::create_dir(&target_dir).unwrap();
+
+        // Create a suspicious JS file (not wasm-bindgen)
+        let suspicious_js = target_dir.join("evil_backdoor.js");
+        fs::write(&suspicious_js, "console.log('sneaky');").unwrap();
+
+        let js_files = find_js_files_in_target(&target_dir);
+        assert_eq!(js_files.len(), 1);
+        assert!(!is_wasm_bindgen_output(&js_files[0]));
+    }
+
+    #[test]
+    fn test_wasm_bindgen_output_detection() {
+        // Legitimate wasm-bindgen outputs
+        assert!(is_wasm_bindgen_output(Path::new("/target/pkg/app.js")));
+        assert!(is_wasm_bindgen_output(Path::new(
+            "/target/wasm32/app_bg.js"
+        )));
+        assert!(is_wasm_bindgen_output(Path::new(
+            "/target/snippets/helper.js"
+        )));
+        assert!(is_wasm_bindgen_output(Path::new(
+            "/target/wasm-bindgen/out.js"
+        )));
+
+        // Suspicious JS files
+        assert!(!is_wasm_bindgen_output(Path::new("/target/debug/evil.js")));
+        assert!(!is_wasm_bindgen_output(Path::new(
+            "/target/release/backdoor.js"
+        )));
+    }
+
+    #[test]
+    fn test_target_js_check_passes_for_wasm_bindgen() {
+        let temp_dir = TempDir::new().unwrap();
+        let target_dir = temp_dir.path().join("target");
+        let pkg_dir = target_dir.join("pkg");
+        fs::create_dir_all(&pkg_dir).unwrap();
+
+        // Create legitimate wasm-bindgen output
+        let wasm_bindgen_js = pkg_dir.join("app.js");
+        fs::write(&wasm_bindgen_js, "// wasm-bindgen generated").unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_target_js_files(temp_dir.path(), &mut result);
+
+        // Should pass since it's legitimate wasm-bindgen output
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Pass);
+    }
+
+    #[test]
+    fn test_target_js_check_fails_for_suspicious_js() {
+        let temp_dir = TempDir::new().unwrap();
+        let target_dir = temp_dir.path().join("target");
+        let debug_dir = target_dir.join("debug");
+        fs::create_dir_all(&debug_dir).unwrap();
+
+        // Create suspicious JS file (bypassing WASM-only compliance)
+        let evil_js = debug_dir.join("build_script_output.js");
+        fs::write(&evil_js, "// generated by build.rs - CI loophole!").unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_target_js_files(temp_dir.path(), &mut result);
+
+        // Should fail since it's not legitimate wasm-bindgen output
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Fail);
+        assert!(result.checks[0]
+            .details
+            .as_ref()
+            .unwrap()
+            .contains("build.rs loophole"));
+    }
+
+    #[test]
+    fn test_tarantula_report_empty_without_lcov() {
+        let mut checker = WasmThreadingCompliance::new();
+        let report = checker.tarantula_report();
+        assert!(report.is_none());
     }
 }

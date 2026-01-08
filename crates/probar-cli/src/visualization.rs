@@ -807,4 +807,53 @@ mod tests {
         assert_eq!(ep.name, "homepage");
         assert_eq!(ep.count, 0);
     }
+
+    #[test]
+    fn test_export_format_extension_all() {
+        // Cover all ExportFormat::extension() branches
+        assert_eq!(ExportFormat::MessagePack.extension(), "msgpack");
+        assert_eq!(ExportFormat::Json.extension(), "json");
+        assert_eq!(ExportFormat::NdJsonStream.extension(), "ndjson");
+        assert_eq!(ExportFormat::BinaryStream.extension(), "bin");
+    }
+
+    #[test]
+    fn test_export_format_from_extension_all_variants() {
+        assert_eq!(
+            ExportFormat::from_extension("msgpack"),
+            Some(ExportFormat::MessagePack)
+        );
+        assert_eq!(
+            ExportFormat::from_extension("mp"),
+            Some(ExportFormat::MessagePack)
+        );
+        assert_eq!(
+            ExportFormat::from_extension("json"),
+            Some(ExportFormat::Json)
+        );
+        assert_eq!(
+            ExportFormat::from_extension("ndjson"),
+            Some(ExportFormat::NdJsonStream)
+        );
+        assert_eq!(
+            ExportFormat::from_extension("jsonl"),
+            Some(ExportFormat::NdJsonStream)
+        );
+        assert_eq!(
+            ExportFormat::from_extension("bin"),
+            Some(ExportFormat::BinaryStream)
+        );
+        assert_eq!(
+            ExportFormat::from_extension("binary"),
+            Some(ExportFormat::BinaryStream)
+        );
+        assert_eq!(ExportFormat::from_extension("unknown"), None);
+    }
+
+    #[test]
+    fn test_data_point_creation() {
+        let point = DataPoint::new(1000, 42.5);
+        assert_eq!(point.timestamp_ms, 1000);
+        assert_eq!(point.value, 42.5);
+    }
 }

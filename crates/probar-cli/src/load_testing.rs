@@ -1149,4 +1149,13 @@ mod tests {
         assert_eq!(parsed.stages.len(), 1);
         assert_eq!(parsed.requests.len(), 1);
     }
+
+    #[test]
+    fn test_load_test_config_from_scenario() {
+        let config = LoadTestConfig::from_scenario(PathBuf::from("scenario.yaml"));
+        assert!(config.target_url.is_empty());
+        assert_eq!(config.users, UserConfig::Fixed(1));
+        assert_eq!(config.duration_secs, 0);
+        assert_eq!(config.scenario, Some(PathBuf::from("scenario.yaml")));
+    }
 }

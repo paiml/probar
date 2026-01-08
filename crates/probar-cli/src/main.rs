@@ -56,6 +56,7 @@ fn run() -> CliResult<()> {
         Commands::Watch(args) => run_watch(&args),
         Commands::Playbook(args) => run_playbook(&config, &args),
         Commands::Comply(args) => run_comply(&config, &args),
+        Commands::Stress(args) => run_stress(&config, &args),
     }
 }
 
@@ -76,6 +77,52 @@ fn build_config(cli: &Cli) -> CliConfig {
 }
 
 fn run_tests(config: CliConfig, args: &probador::TestArgs) -> CliResult<()> {
+    // PROBAR-006: Compile-first gate
+    // Run `cargo test --no-run` before executing playbook tests to catch compile errors early
+    if !args.skip_compile {
+        if config.verbosity.is_verbose() {
+            println!("Running compile check (cargo test --no-run)...");
+        }
+
+        let compile_result = std::process::Command::new("cargo")
+            .args(["test", "--no-run"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output();
+
+        match compile_result {
+            Ok(output) => {
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    // Extract the first error for a cleaner message
+                    let first_error = stderr
+                        .lines()
+                        .find(|line| line.contains("error[E"))
+                        .unwrap_or("Compilation failed");
+
+                    eprintln!("❌ Compile check failed!");
+                    eprintln!();
+                    eprintln!("First error: {first_error}");
+                    eprintln!();
+                    eprintln!("Run `cargo test --no-run` to see full error output.");
+                    eprintln!("Use `probar test --skip-compile` to bypass this check.");
+
+                    return Err(probador::CliError::test_execution(
+                        "Compile check failed - fix compilation errors before running tests",
+                    ));
+                }
+                if config.verbosity.is_verbose() {
+                    println!("✓ Compile check passed");
+                }
+            }
+            Err(e) => {
+                // cargo not found or other execution error - warn but continue
+                eprintln!("⚠ Could not run compile check: {e}");
+                eprintln!("Continuing with tests...");
+            }
+        }
+    }
+
     let config = config
         .with_parallel_jobs(args.parallel)
         .with_fail_fast(args.fail_fast)
@@ -1323,6 +1370,51 @@ fn run_playbook(config: &CliConfig, args: &probador::PlaybookArgs) -> CliResult<
         Err(probador::CliError::test_execution(
             "One or more playbooks failed validation".to_string(),
         ))
+    }
+}
+
+// =============================================================================
+// Browser/WASM Stress Testing (Section H: Points 116-125)
+// =============================================================================
+
+/// Run browser/WASM stress tests per PROBAR-SPEC-WASM-001 Section H
+fn run_stress(_config: &CliConfig, args: &probador::StressArgs) -> CliResult<()> {
+    use probador::{
+        render_stress_json, render_stress_report, StressConfig, StressMode, StressRunner,
+    };
+
+    let mode_str = args.get_mode();
+    let mode: StressMode = mode_str
+        .parse()
+        .map_err(|e: String| probador::CliError::invalid_argument(e))?;
+
+    let config = match mode {
+        StressMode::Atomics => StressConfig::atomics(args.duration, args.concurrency),
+        StressMode::WorkerMsg => StressConfig::worker_msg(args.duration, args.concurrency),
+        StressMode::Render => StressConfig::render(args.duration),
+        StressMode::Trace => StressConfig::trace(args.duration),
+        StressMode::Full => StressConfig::full(args.duration, args.concurrency),
+    };
+
+    let runner = StressRunner::new(config);
+    let result = runner.run();
+
+    // Output result
+    let output = if args.output == "json" {
+        render_stress_json(&result)
+    } else {
+        render_stress_report(&result)
+    };
+
+    println!("{}", output);
+
+    if result.passed {
+        Ok(())
+    } else {
+        Err(probador::CliError::test_execution(format!(
+            "Stress test {} failed: {}",
+            mode, result.actual_value
+        )))
     }
 }
 
@@ -2764,6 +2856,7 @@ mod tests {
                 watch: false,
                 timeout: 30000,
                 output: PathBuf::from("target/probar"),
+                skip_compile: true, // Skip compile in tests to avoid recursive cargo calls
             };
             // run_tests returns Ok when no tests are found
             let result = run_tests(config, &args);
@@ -2783,6 +2876,7 @@ mod tests {
                 watch: false,
                 timeout: 5000,
                 output: PathBuf::from("target/test_output"),
+                skip_compile: true, // Skip compile in tests to avoid recursive cargo calls
             };
             let result = run_tests(config, &args);
             assert!(result.is_ok());
@@ -2891,6 +2985,570 @@ mod tests {
             assert!(report.covered_cells < 150); // Some gaps exist
             assert!(report.overall_coverage > 0.0);
             assert!(report.overall_coverage < 1.0);
+        }
+    }
+
+    // =========================================================================
+    // Additional coverage tests for main.rs pure functions
+    // =========================================================================
+
+    mod is_gap_cell_tests {
+        use super::*;
+
+        #[test]
+        fn test_is_gap_cell_middle_gap() {
+            // Gap in row 5, columns 5-7
+            assert!(is_gap_cell(5, 5));
+            assert!(is_gap_cell(5, 6));
+            assert!(is_gap_cell(5, 7));
+        }
+
+        #[test]
+        fn test_is_gap_cell_end_gap() {
+            // Gap at end of row 2 (col > 10)
+            assert!(is_gap_cell(2, 11));
+            assert!(is_gap_cell(2, 12));
+            assert!(is_gap_cell(2, 20));
+        }
+
+        #[test]
+        fn test_is_gap_cell_not_gap() {
+            // Not gaps
+            assert!(!is_gap_cell(0, 0));
+            assert!(!is_gap_cell(5, 4)); // Before middle gap
+            assert!(!is_gap_cell(5, 8)); // After middle gap
+            assert!(!is_gap_cell(2, 10)); // At boundary (not > 10)
+            assert!(!is_gap_cell(3, 11)); // Different row
+        }
+    }
+
+    mod calculate_coverage_tests {
+        use super::*;
+
+        #[test]
+        fn test_calculate_coverage_gap() {
+            // Gap cells should return 0.0
+            assert_eq!(calculate_coverage(5, 5, 10, 15), 0.0);
+            assert_eq!(calculate_coverage(2, 11, 10, 15), 0.0);
+        }
+
+        #[test]
+        fn test_calculate_coverage_corners() {
+            // Top-left corner: (0,0) -> (0 + 0) / 2 = 0
+            let tl = calculate_coverage(0, 0, 10, 15);
+            assert!((tl - 0.0).abs() < 0.01);
+
+            // Bottom-right corner: (1 + 1) / 2 = 1
+            let br = calculate_coverage(9, 14, 10, 15);
+            assert!((br - 1.0).abs() < 0.01);
+        }
+
+        #[test]
+        fn test_calculate_coverage_middle() {
+            // Middle point should be around 0.5
+            let mid = calculate_coverage(4, 7, 10, 15);
+            assert!(mid > 0.3 && mid < 0.7);
+        }
+    }
+
+    mod generate_report_tests {
+        use super::*;
+
+        #[test]
+        fn test_generate_html_report_structure() {
+            let html = generate_html_report();
+            assert!(html.contains("<!DOCTYPE html>"));
+            assert!(html.contains("<html"));
+            assert!(html.contains("Probar"));
+            assert!(html.contains("</html>"));
+        }
+
+        #[test]
+        fn test_generate_json_report_structure() {
+            let json = generate_json_report();
+            assert!(json.contains("summary"));
+            assert!(json.contains("tests"));
+            // Should be valid JSON-ish (contains braces)
+            assert!(json.contains("{"));
+            assert!(json.contains("}"));
+        }
+
+        #[test]
+        fn test_generate_lcov_report_format() {
+            let lcov = generate_lcov_report();
+            assert!(lcov.contains("TN:"));
+            assert!(lcov.contains("end_of_record"));
+        }
+
+        #[test]
+        fn test_generate_junit_report_xml() {
+            let junit = generate_junit_report();
+            assert!(junit.contains("<?xml"));
+            assert!(junit.contains("<testsuites"));
+            assert!(junit.contains("</testsuites>"));
+        }
+
+        #[test]
+        fn test_generate_cobertura_report_xml() {
+            let cobertura = generate_cobertura_report();
+            assert!(cobertura.contains("<?xml"));
+            assert!(cobertura.contains("<coverage"));
+            assert!(cobertura.contains("</coverage>"));
+        }
+    }
+
+    mod compliance_check_tests {
+        use super::*;
+        use std::fs;
+        use tempfile::TempDir;
+
+        #[test]
+        fn test_check_c001_with_wasm_and_tests() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("app.wasm"), b"wasm").unwrap();
+            fs::write(temp.path().join("test.rs"), b"#[test]").unwrap();
+
+            let result = check_c001_code_execution(temp.path());
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c001_no_wasm() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("test.rs"), b"#[test]").unwrap();
+
+            let result = check_c001_code_execution(temp.path());
+            assert!(!result.passed);
+        }
+
+        #[test]
+        fn test_check_c001_no_tests() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("app.wasm"), b"wasm").unwrap();
+
+            let result = check_c001_code_execution(temp.path());
+            assert!(!result.passed);
+        }
+
+        #[test]
+        fn test_check_c002_console_errors() {
+            let result = check_c002_console_errors();
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c003_with_custom_elements() {
+            let temp = TempDir::new().unwrap();
+            let html = r#"<html><script>customElements.define('my-el', MyEl)</script></html>"#;
+            fs::write(temp.path().join("index.html"), html).unwrap();
+
+            let result = check_c003_custom_elements(temp.path());
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c003_with_wasm_element() {
+            let temp = TempDir::new().unwrap();
+            let html = r#"<html><wasm-app></wasm-app></html>"#;
+            fs::write(temp.path().join("index.html"), html).unwrap();
+
+            let result = check_c003_custom_elements(temp.path());
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c003_no_custom_elements() {
+            let temp = TempDir::new().unwrap();
+            let html = r#"<html><div>Hello</div></html>"#;
+            fs::write(temp.path().join("index.html"), html).unwrap();
+
+            let result = check_c003_custom_elements(temp.path());
+            assert!(result.passed); // Still passes, just with different detail
+        }
+
+        #[test]
+        fn test_check_c004_threading_modes() {
+            let result = check_c004_threading_modes();
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c005_low_memory() {
+            let result = check_c005_low_memory();
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c006_with_htaccess() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join(".htaccess"), "Header set").unwrap();
+
+            let result = check_c006_headers(temp.path());
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c006_with_vercel() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("vercel.json"), "{}").unwrap();
+
+            let result = check_c006_headers(temp.path());
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c006_with_netlify() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("netlify.toml"), "").unwrap();
+
+            let result = check_c006_headers(temp.path());
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c006_with_headers_file() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("_headers"), "/*\n  COOP").unwrap();
+
+            let result = check_c006_headers(temp.path());
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c006_with_probar_config() {
+            let temp = TempDir::new().unwrap();
+            fs::write(
+                temp.path().join("probar.toml"),
+                "cross_origin_isolated = true",
+            )
+            .unwrap();
+
+            let result = check_c006_headers(temp.path());
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c006_with_makefile() {
+            let temp = TempDir::new().unwrap();
+            fs::write(
+                temp.path().join("Makefile"),
+                "serve:\n\tprobador serve --cross-origin-isolated",
+            )
+            .unwrap();
+
+            let result = check_c006_headers(temp.path());
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c006_no_config() {
+            let temp = TempDir::new().unwrap();
+
+            let result = check_c006_headers(temp.path());
+            assert!(!result.passed);
+        }
+
+        #[test]
+        fn test_check_c007_replay_hash() {
+            let result = check_c007_replay_hash();
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c008_cache() {
+            let result = check_c008_cache();
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c009_wasm_size_under_limit() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("small.wasm"), vec![0u8; 1000]).unwrap();
+
+            let result = check_c009_wasm_size(temp.path(), 10000);
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c009_wasm_size_over_limit() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("large.wasm"), vec![0u8; 10000]).unwrap();
+
+            let result = check_c009_wasm_size(temp.path(), 1000);
+            assert!(!result.passed);
+        }
+
+        #[test]
+        fn test_check_c009_no_wasm() {
+            let temp = TempDir::new().unwrap();
+
+            let result = check_c009_wasm_size(temp.path(), 10000);
+            assert!(result.passed);
+        }
+
+        #[test]
+        fn test_check_c010_with_panic_abort() {
+            let temp = TempDir::new().unwrap();
+            let cargo = r#"[profile.release]
+panic = "abort""#;
+            fs::write(temp.path().join("Cargo.toml"), cargo).unwrap();
+
+            let result = check_c010_panic_paths(temp.path());
+            assert!(result.passed);
+            assert!(result
+                .details
+                .iter()
+                .any(|d| d.contains("panic = \"abort\"")));
+        }
+
+        #[test]
+        fn test_check_c010_without_panic_abort() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("Cargo.toml"), "[package]\nname = \"test\"").unwrap();
+
+            let result = check_c010_panic_paths(temp.path());
+            assert!(result.passed); // Still passes with different detail
+        }
+    }
+
+    mod file_finder_tests {
+        use super::*;
+        use std::fs;
+        use tempfile::TempDir;
+
+        #[test]
+        fn test_find_wasm_files_found() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("app.wasm"), b"wasm").unwrap();
+
+            let files = find_wasm_files(temp.path());
+            assert!(files.is_some());
+            assert_eq!(files.unwrap().len(), 1);
+        }
+
+        #[test]
+        fn test_find_wasm_files_nested() {
+            let temp = TempDir::new().unwrap();
+            let nested = temp.path().join("pkg");
+            fs::create_dir(&nested).unwrap();
+            fs::write(nested.join("module.wasm"), b"wasm").unwrap();
+
+            let files = find_wasm_files(temp.path());
+            assert!(files.is_some());
+        }
+
+        #[test]
+        fn test_find_wasm_files_none() {
+            let temp = TempDir::new().unwrap();
+
+            let files = find_wasm_files(temp.path());
+            assert!(files.is_none());
+        }
+
+        #[test]
+        fn test_find_test_files() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("test.rs"), b"#[test]").unwrap();
+            fs::write(temp.path().join("mod.rs"), b"mod test").unwrap();
+
+            let files = find_test_files(temp.path());
+            assert!(!files.is_empty());
+        }
+
+        #[test]
+        fn test_find_html_files_in_dir() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("index.html"), "<html>").unwrap();
+            fs::write(temp.path().join("about.html"), "<html>").unwrap();
+
+            let files = find_html_files_in_dir(temp.path());
+            assert_eq!(files.len(), 2);
+        }
+
+        #[test]
+        fn test_find_files_recursive() {
+            let temp = TempDir::new().unwrap();
+            let sub = temp.path().join("sub");
+            fs::create_dir(&sub).unwrap();
+            fs::write(temp.path().join("a.txt"), "").unwrap();
+            fs::write(sub.join("b.txt"), "").unwrap();
+
+            let mut files = Vec::new();
+            find_files_recursive(temp.path(), "txt", &mut files);
+            assert_eq!(files.len(), 2);
+        }
+    }
+
+    mod cross_origin_config_tests {
+        use super::*;
+        use std::fs;
+        use tempfile::TempDir;
+
+        #[test]
+        fn test_check_probar_cross_origin_config_true() {
+            let temp = TempDir::new().unwrap();
+            fs::write(
+                temp.path().join("probar.toml"),
+                "cross_origin_isolated = true",
+            )
+            .unwrap();
+
+            assert!(check_probar_cross_origin_config(temp.path()));
+        }
+
+        #[test]
+        fn test_check_probar_cross_origin_config_no_space() {
+            let temp = TempDir::new().unwrap();
+            fs::write(
+                temp.path().join("probar.toml"),
+                "cross_origin_isolated=true",
+            )
+            .unwrap();
+
+            assert!(check_probar_cross_origin_config(temp.path()));
+        }
+
+        #[test]
+        fn test_check_probar_cross_origin_config_dot_prefixed() {
+            let temp = TempDir::new().unwrap();
+            fs::write(
+                temp.path().join(".probar.toml"),
+                "cross_origin_isolated = true",
+            )
+            .unwrap();
+
+            assert!(check_probar_cross_origin_config(temp.path()));
+        }
+
+        #[test]
+        fn test_check_probar_cross_origin_config_probador() {
+            let temp = TempDir::new().unwrap();
+            fs::write(
+                temp.path().join("probador.toml"),
+                "cross_origin_isolated = true",
+            )
+            .unwrap();
+
+            assert!(check_probar_cross_origin_config(temp.path()));
+        }
+
+        #[test]
+        fn test_check_probar_cross_origin_config_false() {
+            let temp = TempDir::new().unwrap();
+            fs::write(
+                temp.path().join("probar.toml"),
+                "cross_origin_isolated = false",
+            )
+            .unwrap();
+
+            assert!(!check_probar_cross_origin_config(temp.path()));
+        }
+
+        #[test]
+        fn test_check_probar_cross_origin_config_missing() {
+            let temp = TempDir::new().unwrap();
+
+            assert!(!check_probar_cross_origin_config(temp.path()));
+        }
+
+        #[test]
+        fn test_check_makefile_cross_origin_probador() {
+            let temp = TempDir::new().unwrap();
+            fs::write(
+                temp.path().join("Makefile"),
+                "serve:\n\tprobador serve --cross-origin-isolated",
+            )
+            .unwrap();
+
+            assert!(check_makefile_cross_origin(temp.path()));
+        }
+
+        #[test]
+        fn test_check_makefile_cross_origin_probar() {
+            let temp = TempDir::new().unwrap();
+            fs::write(
+                temp.path().join("Makefile"),
+                "serve:\n\tprobar serve --cross-origin-isolated",
+            )
+            .unwrap();
+
+            assert!(check_makefile_cross_origin(temp.path()));
+        }
+
+        #[test]
+        fn test_check_makefile_cross_origin_lowercase() {
+            let temp = TempDir::new().unwrap();
+            fs::write(
+                temp.path().join("makefile"),
+                "serve:\n\tprobador serve --cross-origin-isolated",
+            )
+            .unwrap();
+
+            assert!(check_makefile_cross_origin(temp.path()));
+        }
+
+        #[test]
+        fn test_check_makefile_cross_origin_gnu() {
+            let temp = TempDir::new().unwrap();
+            fs::write(
+                temp.path().join("GNUmakefile"),
+                "serve:\n\tprobador serve --cross-origin-isolated",
+            )
+            .unwrap();
+
+            assert!(check_makefile_cross_origin(temp.path()));
+        }
+
+        #[test]
+        fn test_check_makefile_cross_origin_package_json() {
+            let temp = TempDir::new().unwrap();
+            let pkg = r#"{"scripts": {"serve": "probador serve --cross-origin-isolated"}}"#;
+            fs::write(temp.path().join("package.json"), pkg).unwrap();
+
+            assert!(check_makefile_cross_origin(temp.path()));
+        }
+
+        #[test]
+        fn test_check_makefile_cross_origin_without_flag() {
+            let temp = TempDir::new().unwrap();
+            fs::write(temp.path().join("Makefile"), "serve:\n\tprobador serve").unwrap();
+
+            assert!(!check_makefile_cross_origin(temp.path()));
+        }
+
+        #[test]
+        fn test_check_makefile_cross_origin_missing() {
+            let temp = TempDir::new().unwrap();
+
+            assert!(!check_makefile_cross_origin(temp.path()));
+        }
+    }
+
+    mod compliance_result_tests {
+        use super::*;
+
+        #[test]
+        fn test_compliance_result_pass() {
+            let result = ComplianceResult::pass("TEST");
+            assert!(result.passed);
+            assert_eq!(result.id, "TEST");
+        }
+
+        #[test]
+        fn test_compliance_result_fail() {
+            let result = ComplianceResult::fail("TEST", "reason");
+            assert!(!result.passed);
+            assert_eq!(result.id, "TEST");
+            // Failure reason is in details
+            assert!(result.details.iter().any(|d| d.contains("reason")));
+        }
+
+        #[test]
+        fn test_compliance_result_with_detail() {
+            let result = ComplianceResult::pass("TEST")
+                .with_detail("detail1")
+                .with_detail("detail2");
+            assert_eq!(result.details.len(), 2);
         }
     }
 }
