@@ -85,6 +85,11 @@ trueno = { version = "0.11", features = ["gpu"] }
 # Uses custom TextGrid/MockTty - no ratatui
 crossterm = "0.28"
 
+# ComputeBlock testing (presentar-terminal integration)
+# NOTE: Path dependency until published to crates.io
+presentar-terminal = { path = "../presentar/crates/presentar-terminal" }
+presentar-core = { path = "../presentar/crates/presentar-core" }
+
 # Deterministic replay
 serde_yaml = "0.9"
 sha2 = "0.10"

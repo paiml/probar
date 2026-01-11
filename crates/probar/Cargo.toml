@@ -23,6 +23,9 @@ derive = ["jugar-probar-derive"]
 tui = ["crossterm"]
 # GPU compute support via trueno (RTX 4090 etc.)
 gpu = ["trueno"]
+# ComputeBlock testing (PROBAR-SPEC-009 Brick Architecture)
+# Enables testing of presentar-terminal widgets and ComputeBlocks
+compute-blocks = ["presentar-terminal", "presentar-core"]
 # Docker-based cross-browser WASM testing (PROBAR-SPEC-014)
 docker = ["bollard", "tokio", "futures", "async-trait"]
 # Property-based testing strategies (PROBAR-SPEC-WASM-001)
@@ -56,6 +59,10 @@ jugar-probar-derive = { version = "=1.0.0", path = "../probar-derive", optional 
 
 # Optional GPU compute via trueno
 trueno = { workspace = true, optional = true }
+
+# Optional ComputeBlock testing (presentar-terminal integration)
+presentar-terminal = { workspace = true, optional = true }
+presentar-core = { workspace = true, optional = true }
 
 # Optional Docker SDK for container-based testing
 bollard = { workspace = true, optional = true }
