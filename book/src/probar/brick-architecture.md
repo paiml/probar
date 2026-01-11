@@ -256,6 +256,150 @@ The `brick_tui_demo` shows a live visualization of bricks being verified:
     Budget Utilization: 40.2% (healthy)
 ```
 
+## ComputeBlock Testing (presentar-terminal)
+
+The `compute-blocks` feature enables testing of SIMD-optimized panel elements from presentar-terminal. ComputeBlocks are high-performance widgets like sparklines, gauges, and thermal displays that use SIMD instructions for efficient computation.
+
+### Enabling ComputeBlock Support
+
+```toml
+[dev-dependencies]
+jugar-probar = { version = "1.0", features = ["compute-blocks"] }
+```
+
+### ComputeBlockAssertion (Playwright-style API)
+
+```rust
+use jugar_probar::tui::{ComputeBlockAssertion, SimdInstructionSet};
+use presentar_terminal::SparklineBlock;
+
+let mut block = SparklineBlock::new(60);
+block.push(50.0);
+
+// Fluent assertions
+ComputeBlockAssertion::new(&block)
+    .to_have_simd_support()
+    .to_have_latency_under(100)  // microseconds
+    .to_use_simd(SimdInstructionSet::Sse4);
+```
+
+### Soft Assertions (Collect Errors)
+
+```rust
+let mut assertion = ComputeBlockAssertion::new(&block).soft();
+assertion.to_have_simd_support();
+assertion.to_have_latency_under(50);
+
+// Check all errors at once
+if !assertion.errors().is_empty() {
+    println!("Warnings: {:?}", assertion.errors());
+}
+```
+
+### Latency Budget Validation
+
+```rust
+use jugar_probar::tui::assert_compute_latency;
+
+// Assert actual computation time is within the block's budget
+let duration = assert_compute_latency(&mut sparkline, &75.0)?;
+println!("Computed in {:?}", duration);
+```
+
+### SIMD Detection
+
+```rust
+use jugar_probar::tui::{detect_simd, simd_available, assert_simd_available};
+use presentar_terminal::SimdInstructionSet;
+
+// Check what SIMD is available
+let simd = detect_simd();
+println!("Detected: {} ({}-bit vectors)", simd.name(), simd.vector_width() * 8);
+
+// Quick check
+if simd_available() {
+    println!("SIMD acceleration available");
+}
+
+// Assert minimum SIMD level
+assert_simd_available(SimdInstructionSet::Avx2)?;
+```
+
+### BrickTestAssertion for Verification Gates
+
+```rust
+use jugar_probar::tui::{BrickTestAssertion, assert_brick_valid, assert_brick_budget};
+
+// Playwright-style fluent API
+BrickTestAssertion::new(&my_widget)
+    .to_be_valid()
+    .to_have_budget_under(16)  // milliseconds
+    .to_be_renderable();
+
+// Standalone assertions
+assert_brick_valid(&my_widget)?;
+
+// Measure phase timing
+let duration = assert_brick_budget(&my_widget, || {
+    my_widget.paint(&mut buffer);
+}, "paint")?;
+```
+
+### Available ComputeBlock Types
+
+The following presentar-terminal types are re-exported:
+
+| Block Type | Description | SIMD Optimized |
+|------------|-------------|----------------|
+| `SparklineBlock` | Sparkline graph | Yes |
+| `CpuFrequencyBlock` | CPU frequency display | Yes |
+| `CpuGovernorBlock` | CPU governor status | No |
+| `GpuThermalBlock` | GPU temperature | Yes |
+| `GpuVramBlock` | GPU VRAM usage | Yes |
+| `LoadTrendBlock` | System load trend | Yes |
+| `MemPressureBlock` | Memory pressure indicator | Yes |
+| `HugePagesBlock` | HugePages status | No |
+
+### SIMD Instruction Sets
+
+Probar detects and validates these instruction sets:
+
+| Set | Vector Width | Platforms |
+|-----|--------------|-----------|
+| `Scalar` | 1 (no SIMD) | All |
+| `Sse4` | 128-bit | x86_64 |
+| `Avx2` | 256-bit | x86_64 |
+| `Avx512` | 512-bit | x86_64 (server) |
+| `Neon` | 128-bit | ARM64 |
+| `WasmSimd128` | 128-bit | WASM |
+
+### Example: Testing a Dashboard
+
+```rust
+use jugar_probar::tui::{
+    BrickTestAssertion, ComputeBlockAssertion,
+    assert_brick_valid, assert_compute_latency,
+};
+use presentar_terminal::{SparklineBlock, GpuThermalBlock};
+
+#[test]
+fn test_dashboard_widgets() {
+    // Test sparkline
+    let mut sparkline = SparklineBlock::new(60);
+    for i in 0..60 {
+        sparkline.push(50.0 + (i as f64).sin() * 20.0);
+    }
+
+    ComputeBlockAssertion::new(&sparkline)
+        .to_have_simd_support()
+        .to_have_latency_under(100);
+
+    // Test thermal display
+    let thermal = GpuThermalBlock::new(75.0, 90.0);
+    assert_brick_valid(&thermal).expect("Thermal widget must be valid");
+}
+```
+
 ## See Also
 
 - [PROBAR-SPEC-009: Brick Architecture](../specs/brick-architecture.md)
