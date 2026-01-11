@@ -2704,4 +2704,979 @@ mod tests {
             assert_eq!(report.scripts[0].functions.len(), 1);
         }
     }
+
+    // =========================================================================
+    // Additional Comprehensive Coverage Tests
+    // =========================================================================
+
+    mod browser_console_level_comprehensive {
+        use super::*;
+
+        #[test]
+        fn test_all_levels_display() {
+            // Test Display for all variants
+            let levels = [
+                (BrowserConsoleLevel::Log, "log"),
+                (BrowserConsoleLevel::Info, "info"),
+                (BrowserConsoleLevel::Warning, "warn"),
+                (BrowserConsoleLevel::Error, "error"),
+                (BrowserConsoleLevel::Debug, "debug"),
+            ];
+            for (level, expected) in levels {
+                assert_eq!(format!("{}", level), expected);
+            }
+        }
+
+        #[test]
+        fn test_level_copy_semantics() {
+            let level = BrowserConsoleLevel::Warning;
+            let copied = level;
+            assert_eq!(level, copied);
+            // Both should still be usable (Copy trait)
+            assert_eq!(format!("{}", level), "warn");
+            assert_eq!(format!("{}", copied), "warn");
+        }
+
+        #[test]
+        fn test_level_equality_all_pairs() {
+            let levels = [
+                BrowserConsoleLevel::Log,
+                BrowserConsoleLevel::Info,
+                BrowserConsoleLevel::Warning,
+                BrowserConsoleLevel::Error,
+                BrowserConsoleLevel::Debug,
+            ];
+            // Each level should only equal itself
+            for (i, level_a) in levels.iter().enumerate() {
+                for (j, level_b) in levels.iter().enumerate() {
+                    if i == j {
+                        assert_eq!(level_a, level_b);
+                    } else {
+                        assert_ne!(level_a, level_b);
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn test_level_debug_all_variants() {
+            assert!(format!("{:?}", BrowserConsoleLevel::Log).contains("Log"));
+            assert!(format!("{:?}", BrowserConsoleLevel::Info).contains("Info"));
+            assert!(format!("{:?}", BrowserConsoleLevel::Warning).contains("Warning"));
+            assert!(format!("{:?}", BrowserConsoleLevel::Error).contains("Error"));
+            assert!(format!("{:?}", BrowserConsoleLevel::Debug).contains("Debug"));
+        }
+    }
+
+    mod browser_console_message_comprehensive {
+        use super::*;
+
+        #[test]
+        fn test_message_all_fields() {
+            let msg = BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Warning,
+                text: "Test warning message".to_string(),
+                timestamp: 9999999999,
+                source: Some("file.js".to_string()),
+                line: Some(123),
+            };
+            assert_eq!(msg.level, BrowserConsoleLevel::Warning);
+            assert_eq!(msg.text, "Test warning message");
+            assert_eq!(msg.timestamp, 9999999999);
+            assert_eq!(msg.source.as_deref(), Some("file.js"));
+            assert_eq!(msg.line, Some(123));
+        }
+
+        #[test]
+        fn test_message_empty_text() {
+            let msg = BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Log,
+                text: String::new(),
+                timestamp: 0,
+                source: None,
+                line: None,
+            };
+            assert!(msg.text.is_empty());
+        }
+
+        #[test]
+        fn test_message_unicode_text() {
+            let msg = BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Info,
+                text: "Unicode: \u{1F600} \u{1F4BB}".to_string(),
+                timestamp: 100,
+                source: Some("/path/\u{65E5}\u{672C}\u{8A9E}.js".to_string()),
+                line: Some(1),
+            };
+            assert!(msg.text.contains("\u{1F600}"));
+            assert!(msg.source.as_ref().unwrap().contains("\u{65E5}"));
+        }
+
+        #[test]
+        fn test_message_clone_deep() {
+            let original = BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Error,
+                text: "Error message".to_string(),
+                timestamp: 12345,
+                source: Some("source.js".to_string()),
+                line: Some(42),
+            };
+            let cloned = original.clone();
+
+            // Verify all fields match
+            assert_eq!(original.level, cloned.level);
+            assert_eq!(original.text, cloned.text);
+            assert_eq!(original.timestamp, cloned.timestamp);
+            assert_eq!(original.source, cloned.source);
+            assert_eq!(original.line, cloned.line);
+        }
+
+        #[test]
+        fn test_message_debug_format_comprehensive() {
+            let msg = BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Debug,
+                text: "debug text".to_string(),
+                timestamp: 555,
+                source: Some("test.js".to_string()),
+                line: Some(10),
+            };
+            let debug = format!("{:?}", msg);
+            assert!(debug.contains("BrowserConsoleMessage"));
+            assert!(debug.contains("debug text"));
+            assert!(debug.contains("555"));
+            assert!(debug.contains("test.js"));
+            assert!(debug.contains("10"));
+        }
+
+        #[test]
+        fn test_message_max_values() {
+            let msg = BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Log,
+                text: "max".to_string(),
+                timestamp: u64::MAX,
+                source: None,
+                line: Some(u32::MAX),
+            };
+            assert_eq!(msg.timestamp, u64::MAX);
+            assert_eq!(msg.line, Some(u32::MAX));
+        }
+    }
+
+    mod browser_config_comprehensive {
+        use super::*;
+
+        #[test]
+        fn test_config_all_builder_methods() {
+            let config = BrowserConfig::default()
+                .with_viewport(1920, 1080)
+                .with_headless(false)
+                .with_chromium_path("/custom/path")
+                .with_user_agent("Custom Agent")
+                .with_no_sandbox();
+
+            assert_eq!(config.viewport_width, 1920);
+            assert_eq!(config.viewport_height, 1080);
+            assert!(!config.headless);
+            assert_eq!(config.chromium_path, Some("/custom/path".to_string()));
+            assert_eq!(config.user_agent, Some("Custom Agent".to_string()));
+            assert!(!config.sandbox);
+        }
+
+        #[test]
+        fn test_config_tracing_enabled_check() {
+            // Without tracing
+            let config = BrowserConfig::default();
+            assert!(!config.is_tracing_enabled());
+
+            // With enabled tracing
+            let tracing = RenacerTracingConfig::new("test");
+            let config_with_tracing = BrowserConfig::default().with_tracing(tracing);
+            assert!(config_with_tracing.is_tracing_enabled());
+
+            // With disabled tracing
+            let disabled_tracing = RenacerTracingConfig::disabled();
+            let config_disabled = BrowserConfig::default().with_tracing(disabled_tracing);
+            assert!(!config_disabled.is_tracing_enabled());
+        }
+
+        #[test]
+        fn test_config_debug_format() {
+            let config = BrowserConfig::default()
+                .with_viewport(800, 600)
+                .with_headless(true);
+            let debug = format!("{:?}", config);
+            assert!(debug.contains("BrowserConfig"));
+            assert!(debug.contains("800"));
+            assert!(debug.contains("600"));
+            assert!(debug.contains("headless"));
+        }
+
+        #[test]
+        fn test_config_clone_all_fields() {
+            let tracing = RenacerTracingConfig::new("service");
+            let config = BrowserConfig::default()
+                .with_viewport(1024, 768)
+                .with_headless(false)
+                .with_chromium_path("/path")
+                .with_user_agent("Agent")
+                .with_no_sandbox()
+                .with_tracing(tracing);
+
+            let cloned = config.clone();
+            assert_eq!(config.viewport_width, cloned.viewport_width);
+            assert_eq!(config.viewport_height, cloned.viewport_height);
+            assert_eq!(config.headless, cloned.headless);
+            assert_eq!(config.chromium_path, cloned.chromium_path);
+            assert_eq!(config.user_agent, cloned.user_agent);
+            assert_eq!(config.sandbox, cloned.sandbox);
+            assert!(cloned.tracing_config.is_some());
+        }
+
+        #[test]
+        fn test_config_with_into_string() {
+            // Test that Into<String> works with String
+            let config = BrowserConfig::default()
+                .with_chromium_path(String::from("/path"))
+                .with_user_agent(String::from("UA"));
+            assert!(config.chromium_path.is_some());
+            assert!(config.user_agent.is_some());
+        }
+
+        #[test]
+        fn test_config_default_values() {
+            let config = BrowserConfig::default();
+            assert!(config.headless);
+            assert_eq!(config.viewport_width, 800);
+            assert_eq!(config.viewport_height, 600);
+            assert!(config.chromium_path.is_none());
+            assert_eq!(config.debug_port, 0);
+            assert!(config.user_agent.is_none());
+            assert!(!config.devtools);
+            assert!(config.sandbox);
+            assert!(config.tracing_config.is_none());
+        }
+    }
+
+    #[cfg(not(feature = "browser"))]
+    mod mock_browser_comprehensive {
+        use super::*;
+
+        #[test]
+        fn test_browser_launch_with_all_config() {
+            let tracing = RenacerTracingConfig::new("test");
+            let config = BrowserConfig::default()
+                .with_viewport(1280, 720)
+                .with_headless(false)
+                .with_no_sandbox()
+                .with_tracing(tracing);
+
+            let browser = Browser::launch(config).unwrap();
+            assert_eq!(browser.config().viewport_width, 1280);
+            assert!(!browser.config().headless);
+            assert!(!browser.config().sandbox);
+        }
+
+        #[test]
+        fn test_browser_multiple_pages() {
+            let browser = Browser::launch(BrowserConfig::default()).unwrap();
+            let page1 = browser.new_page().unwrap();
+            let page2 = browser.new_page().unwrap();
+            assert_eq!(page1.width, 800);
+            assert_eq!(page2.width, 800);
+        }
+
+        #[test]
+        fn test_browser_config_accessor() {
+            let config = BrowserConfig::default().with_viewport(1920, 1080);
+            let browser = Browser::launch(config).unwrap();
+            let returned_config = browser.config();
+            assert_eq!(returned_config.viewport_width, 1920);
+            assert_eq!(returned_config.viewport_height, 1080);
+        }
+    }
+
+    #[cfg(not(feature = "browser"))]
+    mod mock_page_comprehensive {
+        use super::*;
+
+        #[test]
+        fn test_page_new_with_tracing() {
+            let collector = TraceCollector::new("test");
+            let page = Page::new_with_tracing(1024, 768, Some(collector));
+            assert_eq!(page.width, 1024);
+            assert_eq!(page.height, 768);
+            assert!(page.is_tracing_enabled());
+        }
+
+        #[test]
+        fn test_page_new_without_tracing() {
+            let page = Page::new_with_tracing(800, 600, None);
+            assert!(!page.is_tracing_enabled());
+        }
+
+        #[test]
+        fn test_page_goto_various_urls() {
+            let mut page = Page::new(800, 600);
+
+            // HTTP
+            page.goto("http://example.com").unwrap();
+            assert_eq!(page.current_url(), "http://example.com");
+
+            // HTTPS
+            page.goto("https://secure.example.com").unwrap();
+            assert_eq!(page.current_url(), "https://secure.example.com");
+
+            // Localhost
+            page.goto("http://localhost:8080/path").unwrap();
+            assert_eq!(page.current_url(), "http://localhost:8080/path");
+
+            // File URL
+            page.goto("file:///path/to/file.html").unwrap();
+            assert_eq!(page.current_url(), "file:///path/to/file.html");
+        }
+
+        #[test]
+        fn test_page_wasm_ready_lifecycle() {
+            let mut page = Page::new(800, 600);
+            assert!(!page.is_wasm_ready());
+            assert!(!page.wasm_ready);
+
+            page.wait_for_wasm_ready().unwrap();
+            assert!(page.is_wasm_ready());
+            assert!(page.wasm_ready);
+        }
+
+        #[test]
+        fn test_page_eval_wasm_error_message() {
+            let page = Page::new(800, 600);
+            let result: Result<String, _> = page.eval_wasm("window.test");
+            let err = result.unwrap_err();
+            let err_str = format!("{}", err);
+            assert!(err_str.contains("Browser feature not enabled"));
+        }
+
+        #[test]
+        fn test_page_all_touch_actions() {
+            let page = Page::new(800, 600);
+
+            // Tap
+            let tap = crate::Touch {
+                x: 100.0,
+                y: 200.0,
+                action: crate::TouchAction::Tap,
+            };
+            assert!(page.touch(tap).is_ok());
+
+            // Swipe
+            let swipe = crate::Touch {
+                x: 50.0,
+                y: 50.0,
+                action: crate::TouchAction::Swipe {
+                    end_x: 250.0,
+                    end_y: 250.0,
+                    duration_ms: 200,
+                },
+            };
+            assert!(page.touch(swipe).is_ok());
+
+            // Hold
+            let hold = crate::Touch {
+                x: 300.0,
+                y: 300.0,
+                action: crate::TouchAction::Hold { duration_ms: 1000 },
+            };
+            assert!(page.touch(hold).is_ok());
+        }
+
+        #[test]
+        fn test_page_screenshot_returns_empty() {
+            let page = Page::new(800, 600);
+            let screenshot = page.screenshot().unwrap();
+            assert!(screenshot.is_empty());
+        }
+
+        #[test]
+        fn test_page_debug_includes_fields() {
+            let mut page = Page::new(1024, 768);
+            page.goto("http://test.com").unwrap();
+            let debug = format!("{:?}", page);
+            assert!(debug.contains("Page"));
+            assert!(debug.contains("1024"));
+            assert!(debug.contains("768"));
+        }
+    }
+
+    #[cfg(not(feature = "browser"))]
+    mod mock_console_comprehensive {
+        use super::*;
+
+        #[test]
+        fn test_enable_console_capture_idempotent() {
+            let mut page = Page::new(800, 600);
+            page.enable_console_capture().unwrap();
+            assert!(page.is_console_capture_enabled());
+            // Enable again should still work
+            page.enable_console_capture().unwrap();
+            assert!(page.is_console_capture_enabled());
+        }
+
+        #[test]
+        fn test_add_multiple_console_messages() {
+            let page = Page::new(800, 600);
+            for i in 0..10 {
+                page.add_console_message(BrowserConsoleMessage {
+                    level: BrowserConsoleLevel::Log,
+                    text: format!("Message {}", i),
+                    timestamp: i as u64 * 100,
+                    source: None,
+                    line: None,
+                });
+            }
+            assert_eq!(page.console_messages().len(), 10);
+        }
+
+        #[test]
+        fn test_clear_console_after_messages() {
+            let page = Page::new(800, 600);
+            page.add_console_message(BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Error,
+                text: "Error 1".to_string(),
+                timestamp: 0,
+                source: None,
+                line: None,
+            });
+            page.add_console_message(BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Error,
+                text: "Error 2".to_string(),
+                timestamp: 1,
+                source: None,
+                line: None,
+            });
+            assert_eq!(page.console_messages().len(), 2);
+
+            page.clear_console();
+            assert!(page.console_messages().is_empty());
+        }
+
+        #[test]
+        fn test_wait_for_console_complex_predicate() {
+            let page = Page::new(800, 600);
+            page.add_console_message(BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Log,
+                text: "startup complete".to_string(),
+                timestamp: 100,
+                source: Some("main.js".to_string()),
+                line: Some(1),
+            });
+            page.add_console_message(BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Error,
+                text: "error: failed".to_string(),
+                timestamp: 200,
+                source: Some("error.js".to_string()),
+                line: Some(42),
+            });
+
+            // Find by multiple criteria
+            let result = page.wait_for_console(
+                |m| m.level == BrowserConsoleLevel::Error && m.text.contains("failed"),
+                1000,
+            );
+            assert!(result.is_ok());
+            let msg = result.unwrap();
+            assert_eq!(msg.text, "error: failed");
+        }
+
+        #[test]
+        fn test_inject_console_capture_sets_flag() {
+            let mut page = Page::new(800, 600);
+            assert!(!page.is_console_capture_enabled());
+            page.inject_console_capture().unwrap();
+            assert!(page.is_console_capture_enabled());
+        }
+
+        #[test]
+        fn test_fetch_console_messages_returns_copy() {
+            let page = Page::new(800, 600);
+            page.add_console_message(BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Info,
+                text: "info".to_string(),
+                timestamp: 0,
+                source: None,
+                line: None,
+            });
+
+            let fetched = page.fetch_console_messages().unwrap();
+            assert_eq!(fetched.len(), 1);
+
+            // Original should still have messages
+            assert_eq!(page.console_messages().len(), 1);
+        }
+
+        #[test]
+        fn test_console_messages_with_all_levels() {
+            let page = Page::new(800, 600);
+            let levels = [
+                BrowserConsoleLevel::Log,
+                BrowserConsoleLevel::Info,
+                BrowserConsoleLevel::Warning,
+                BrowserConsoleLevel::Error,
+                BrowserConsoleLevel::Debug,
+            ];
+
+            for level in levels {
+                page.add_console_message(BrowserConsoleMessage {
+                    level,
+                    text: format!("{:?}", level),
+                    timestamp: 0,
+                    source: None,
+                    line: None,
+                });
+            }
+
+            let messages = page.console_messages();
+            assert_eq!(messages.len(), 5);
+        }
+    }
+
+    #[cfg(not(feature = "browser"))]
+    mod mock_tracing_comprehensive {
+        use super::*;
+
+        #[test]
+        fn test_traceparent_format_w3c() {
+            let collector = TraceCollector::new("test");
+            let page = Page::new_with_tracing(800, 600, Some(collector));
+            let tp = page.traceparent().unwrap();
+
+            // W3C traceparent format: version-traceid-spanid-flags
+            let parts: Vec<&str> = tp.split('-').collect();
+            assert_eq!(parts.len(), 4);
+            assert_eq!(parts[0], "00"); // version
+            assert_eq!(parts[1].len(), 32); // trace-id is 32 hex chars
+            assert_eq!(parts[2].len(), 16); // span-id is 16 hex chars
+        }
+
+        #[test]
+        fn test_start_span_without_tracing() {
+            let mut page = Page::new(800, 600);
+            let span = page.start_span("test", "category");
+            assert!(span.is_none());
+        }
+
+        #[test]
+        fn test_start_span_with_tracing() {
+            let collector = TraceCollector::new("test");
+            let mut page = Page::new_with_tracing(800, 600, Some(collector));
+            let span = page.start_span("operation", "http");
+            assert!(span.is_some());
+            let mut span = span.unwrap();
+            span.end();
+            page.record_span(span);
+        }
+
+        #[test]
+        fn test_record_span_without_tracing() {
+            let mut page = Page::new(800, 600);
+            // Create a span from a collector
+            let mut collector = TraceCollector::new("temp");
+            let mut span = collector.start_span("test", "cat");
+            span.end();
+            // Recording on page without tracing is a no-op
+            page.record_span(span);
+        }
+
+        #[test]
+        fn test_record_trace_console_without_tracing() {
+            let mut page = Page::new(800, 600);
+            // Should be a no-op
+            page.record_trace_console("test message");
+        }
+
+        #[test]
+        fn test_record_trace_console_with_tracing() {
+            let collector = TraceCollector::new("test");
+            let mut page = Page::new_with_tracing(800, 600, Some(collector));
+            page.record_trace_console("console log entry");
+
+            let trace = page.export_chrome_trace().unwrap();
+            assert!(!trace.trace_events.is_empty());
+        }
+
+        #[test]
+        fn test_export_chrome_trace_without_tracing() {
+            let page = Page::new(800, 600);
+            assert!(page.export_chrome_trace().is_none());
+        }
+
+        #[test]
+        fn test_export_trace_json_without_tracing() {
+            let page = Page::new(800, 600);
+            let json = page.export_trace_json().unwrap();
+            assert!(json.is_none());
+        }
+
+        #[test]
+        fn test_export_trace_json_with_tracing() {
+            let collector = TraceCollector::new("test");
+            let mut page = Page::new_with_tracing(800, 600, Some(collector));
+
+            let mut span = page.start_span("test-op", "test-cat").unwrap();
+            span.end();
+            page.record_span(span);
+
+            let json = page.export_trace_json().unwrap();
+            assert!(json.is_some());
+            let json_str = json.unwrap();
+            assert!(json_str.contains("traceEvents"));
+        }
+
+        #[test]
+        fn test_inject_trace_context_mock() {
+            let collector = TraceCollector::new("test");
+            let mut page = Page::new_with_tracing(800, 600, Some(collector));
+            // Mock just returns Ok
+            assert!(page.inject_trace_context().is_ok());
+        }
+
+        #[test]
+        fn test_inject_trace_context_without_tracing() {
+            let mut page = Page::new(800, 600);
+            assert!(page.inject_trace_context().is_ok());
+        }
+    }
+
+    #[cfg(not(feature = "browser"))]
+    mod mock_coverage_comprehensive {
+        use super::*;
+        use crate::cdp_coverage::{CoverageConfig, CoverageRange, FunctionCoverage};
+
+        #[test]
+        fn test_coverage_lifecycle_complete() {
+            let mut page = Page::new(800, 600);
+            assert!(!page.is_coverage_enabled());
+
+            // Start
+            page.start_coverage().unwrap();
+            assert!(page.is_coverage_enabled());
+
+            // Add data
+            page.add_mock_coverage(FunctionCoverage {
+                function_name: "testFn".to_string(),
+                ranges: vec![CoverageRange {
+                    start_offset: 0,
+                    end_offset: 50,
+                    count: 3,
+                }],
+                is_block_coverage: true,
+            });
+
+            // Take (doesn't stop)
+            let report1 = page.take_coverage().unwrap();
+            assert!(page.is_coverage_enabled());
+            assert_eq!(report1.scripts[0].functions.len(), 1);
+
+            // Stop
+            let report2 = page.stop_coverage().unwrap();
+            assert!(!page.is_coverage_enabled());
+            assert_eq!(report2.scripts[0].functions.len(), 1);
+        }
+
+        #[test]
+        fn test_coverage_config_options() {
+            let mut page = Page::new(800, 600);
+
+            // With detailed config
+            let config = CoverageConfig {
+                call_count: false,
+                detailed: false,
+                allow_triggered_updates: true,
+            };
+            page.start_coverage_with_config(config).unwrap();
+            assert!(page.is_coverage_enabled());
+        }
+
+        #[test]
+        fn test_coverage_report_url() {
+            let mut page = Page::new(800, 600);
+            page.goto("http://localhost:8080/app.html").unwrap();
+            page.start_coverage().unwrap();
+
+            let report = page.take_coverage().unwrap();
+            assert_eq!(report.scripts[0].url, "http://localhost:8080/app.html");
+        }
+
+        #[test]
+        fn test_coverage_report_timestamp() {
+            let mut page = Page::new(800, 600);
+            page.start_coverage().unwrap();
+
+            let report = page.take_coverage().unwrap();
+            // Timestamp should be non-zero (current time)
+            assert!(report.timestamp_ms > 0);
+        }
+
+        #[test]
+        fn test_clear_mock_coverage() {
+            let mut page = Page::new(800, 600);
+            page.start_coverage().unwrap();
+
+            page.add_mock_coverage(FunctionCoverage {
+                function_name: "fn1".to_string(),
+                ranges: vec![],
+                is_block_coverage: false,
+            });
+            page.add_mock_coverage(FunctionCoverage {
+                function_name: "fn2".to_string(),
+                ranges: vec![],
+                is_block_coverage: false,
+            });
+
+            let report1 = page.take_coverage().unwrap();
+            assert_eq!(report1.scripts[0].functions.len(), 2);
+
+            page.clear_mock_coverage();
+
+            let report2 = page.take_coverage().unwrap();
+            assert!(report2.scripts[0].functions.is_empty());
+        }
+
+        #[test]
+        fn test_coverage_multiple_functions() {
+            let mut page = Page::new(800, 600);
+            page.start_coverage().unwrap();
+
+            for i in 0..5 {
+                page.add_mock_coverage(FunctionCoverage {
+                    function_name: format!("function_{}", i),
+                    ranges: vec![CoverageRange {
+                        start_offset: i * 100,
+                        end_offset: (i + 1) * 100,
+                        count: i + 1,
+                    }],
+                    is_block_coverage: i % 2 == 0,
+                });
+            }
+
+            let report = page.take_coverage().unwrap();
+            assert_eq!(report.scripts[0].functions.len(), 5);
+        }
+
+        #[test]
+        fn test_take_coverage_error_when_disabled() {
+            let page = Page::new(800, 600);
+            let result = page.take_coverage();
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            let err_str = format!("{}", err);
+            assert!(err_str.contains("Coverage not enabled"));
+        }
+
+        #[test]
+        fn test_stop_coverage_error_when_disabled() {
+            let mut page = Page::new(800, 600);
+            let result = page.stop_coverage();
+            assert!(result.is_err());
+        }
+    }
+
+    #[cfg(not(feature = "browser"))]
+    mod mock_integration_tests {
+        use super::*;
+
+        #[test]
+        fn test_full_page_lifecycle() {
+            let config = BrowserConfig::default()
+                .with_viewport(1280, 720)
+                .with_headless(true);
+            let browser = Browser::launch(config).unwrap();
+            let mut page = browser.new_page().unwrap();
+
+            // Navigate
+            page.goto("http://localhost:8080").unwrap();
+            assert_eq!(page.current_url(), "http://localhost:8080");
+
+            // Wait for WASM
+            page.wait_for_wasm_ready().unwrap();
+            assert!(page.is_wasm_ready());
+
+            // Console capture
+            page.enable_console_capture().unwrap();
+            page.add_console_message(BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Log,
+                text: "ready".to_string(),
+                timestamp: 100,
+                source: None,
+                line: None,
+            });
+
+            // Coverage
+            page.start_coverage().unwrap();
+            let report = page.stop_coverage().unwrap();
+            assert!(!report.scripts.is_empty());
+
+            // Screenshot
+            let screenshot = page.screenshot().unwrap();
+            assert!(screenshot.is_empty()); // Mock returns empty
+        }
+
+        #[test]
+        fn test_browser_with_tracing_creates_traced_pages() {
+            let tracing = RenacerTracingConfig::new("integration-test");
+            let config = BrowserConfig::default().with_tracing(tracing);
+            let browser = Browser::launch(config).unwrap();
+            let mut page = browser.new_page().unwrap();
+
+            assert!(page.is_tracing_enabled());
+            let traceparent = page.traceparent();
+            assert!(traceparent.is_some());
+
+            // Start a span
+            let mut span = page.start_span("test-op", "test-cat").unwrap();
+            span.add_attribute("key", "value");
+            span.end();
+            page.record_span(span);
+
+            // Export
+            let json = page.export_trace_json().unwrap();
+            assert!(json.is_some());
+        }
+
+        #[test]
+        fn test_console_and_coverage_together() {
+            let mut page = Page::new(800, 600);
+            page.enable_console_capture().unwrap();
+            page.start_coverage().unwrap();
+
+            // Simulate console output
+            page.add_console_message(BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Log,
+                text: "Starting app...".to_string(),
+                timestamp: 1,
+                source: None,
+                line: None,
+            });
+
+            // Simulate coverage
+            page.add_mock_coverage(crate::cdp_coverage::FunctionCoverage {
+                function_name: "init".to_string(),
+                ranges: vec![crate::cdp_coverage::CoverageRange {
+                    start_offset: 0,
+                    end_offset: 100,
+                    count: 1,
+                }],
+                is_block_coverage: false,
+            });
+
+            // Check console
+            let messages = page.console_messages();
+            assert_eq!(messages.len(), 1);
+
+            // Check coverage
+            let report = page.stop_coverage().unwrap();
+            assert_eq!(report.scripts[0].functions.len(), 1);
+        }
+    }
+
+    mod edge_cases {
+        use super::*;
+
+        #[test]
+        fn test_browser_config_zero_viewport() {
+            let config = BrowserConfig::default().with_viewport(0, 0);
+            assert_eq!(config.viewport_width, 0);
+            assert_eq!(config.viewport_height, 0);
+        }
+
+        #[test]
+        fn test_browser_config_max_viewport() {
+            let config = BrowserConfig::default().with_viewport(u32::MAX, u32::MAX);
+            assert_eq!(config.viewport_width, u32::MAX);
+            assert_eq!(config.viewport_height, u32::MAX);
+        }
+
+        #[test]
+        fn test_browser_config_long_path() {
+            let long_path = "a".repeat(10000);
+            let config = BrowserConfig::default().with_chromium_path(&long_path);
+            assert_eq!(config.chromium_path.as_ref().unwrap().len(), 10000);
+        }
+
+        #[test]
+        fn test_browser_config_special_chars_user_agent() {
+            let ua = "Mozilla/5.0 (Test) <script>alert(1)</script> \n\r\t";
+            let config = BrowserConfig::default().with_user_agent(ua);
+            assert_eq!(config.user_agent.as_ref().unwrap(), ua);
+        }
+
+        #[cfg(not(feature = "browser"))]
+        #[test]
+        fn test_page_empty_url() {
+            let mut page = Page::new(800, 600);
+            page.goto("").unwrap();
+            assert_eq!(page.current_url(), "");
+        }
+
+        #[cfg(not(feature = "browser"))]
+        #[test]
+        fn test_page_touch_at_boundaries() {
+            let page = Page::new(800, 600);
+
+            // Touch at (0,0)
+            let tap_origin = crate::Touch {
+                x: 0.0,
+                y: 0.0,
+                action: crate::TouchAction::Tap,
+            };
+            assert!(page.touch(tap_origin).is_ok());
+
+            // Touch at max coords
+            let tap_max = crate::Touch {
+                x: f32::MAX,
+                y: f32::MAX,
+                action: crate::TouchAction::Tap,
+            };
+            assert!(page.touch(tap_max).is_ok());
+
+            // Negative coords
+            let tap_neg = crate::Touch {
+                x: -100.0,
+                y: -100.0,
+                action: crate::TouchAction::Tap,
+            };
+            assert!(page.touch(tap_neg).is_ok());
+        }
+
+        #[test]
+        fn test_console_level_copy() {
+            let level = BrowserConsoleLevel::Error;
+            let copied: BrowserConsoleLevel = level;
+            let another: BrowserConsoleLevel = level;
+            assert_eq!(copied, another);
+        }
+
+        #[cfg(not(feature = "browser"))]
+        #[test]
+        fn test_wait_for_console_empty_predicate() {
+            let page = Page::new(800, 600);
+            // Predicate that never matches
+            let result = page.wait_for_console(|_| false, 100);
+            assert!(result.is_err());
+        }
+
+        #[cfg(not(feature = "browser"))]
+        #[test]
+        fn test_wait_for_console_always_matches() {
+            let page = Page::new(800, 600);
+            page.add_console_message(BrowserConsoleMessage {
+                level: BrowserConsoleLevel::Log,
+                text: "any".to_string(),
+                timestamp: 0,
+                source: None,
+                line: None,
+            });
+            // Predicate that always matches
+            let result = page.wait_for_console(|_| true, 100);
+            assert!(result.is_ok());
+        }
+    }
 }

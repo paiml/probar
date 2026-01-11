@@ -273,6 +273,45 @@ mod tests {
     }
 
     #[test]
+    fn test_latency_budget_error_is_error() {
+        let err = LatencyBudgetError {
+            block_id: "test".to_string(),
+            actual_us: 200,
+            budget_us: 100,
+            simd: "SSE4".to_string(),
+        };
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn test_latency_budget_error_clone() {
+        let err = LatencyBudgetError {
+            block_id: "clone_test".to_string(),
+            actual_us: 300,
+            budget_us: 200,
+            simd: "AVX512".to_string(),
+        };
+        let cloned = err.clone();
+        assert_eq!(err.block_id, cloned.block_id);
+        assert_eq!(err.actual_us, cloned.actual_us);
+        assert_eq!(err.budget_us, cloned.budget_us);
+        assert_eq!(err.simd, cloned.simd);
+    }
+
+    #[test]
+    fn test_latency_budget_error_debug() {
+        let err = LatencyBudgetError {
+            block_id: "debug_test".to_string(),
+            actual_us: 100,
+            budget_us: 50,
+            simd: "NEON".to_string(),
+        };
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("LatencyBudgetError"));
+        assert!(debug.contains("debug_test"));
+    }
+
+    #[test]
     fn test_simd_not_available_error_display() {
         let err = SimdNotAvailableError {
             block_id: "test".to_string(),
@@ -282,5 +321,267 @@ mod tests {
         let display = format!("{}", err);
         assert!(display.contains("AVX2"));
         assert!(display.contains("Scalar"));
+    }
+
+    #[test]
+    fn test_simd_not_available_error_is_error() {
+        let err = SimdNotAvailableError {
+            block_id: "system".to_string(),
+            required: "AVX512".to_string(),
+            detected: "AVX2".to_string(),
+        };
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn test_simd_not_available_error_clone() {
+        let err = SimdNotAvailableError {
+            block_id: "clone".to_string(),
+            required: "NEON".to_string(),
+            detected: "Scalar".to_string(),
+        };
+        let cloned = err.clone();
+        assert_eq!(err.block_id, cloned.block_id);
+        assert_eq!(err.required, cloned.required);
+        assert_eq!(err.detected, cloned.detected);
+    }
+
+    #[test]
+    fn test_simd_not_available_error_debug() {
+        let err = SimdNotAvailableError {
+            block_id: "debug".to_string(),
+            required: "SSE4".to_string(),
+            detected: "Scalar".to_string(),
+        };
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("SimdNotAvailableError"));
+        assert!(debug.contains("debug"));
+    }
+}
+
+#[cfg(all(test, feature = "compute-blocks"))]
+mod compute_block_tests {
+    use super::*;
+
+    // Mock ComputeBlock for testing
+    struct MockComputeBlock {
+        simd_supported: bool,
+        latency_budget_us: u64,
+        simd_set: SimdInstructionSet,
+    }
+
+    impl MockComputeBlock {
+        fn new_with_simd() -> Self {
+            Self {
+                simd_supported: true,
+                latency_budget_us: 100,
+                simd_set: SimdInstructionSet::detect(),
+            }
+        }
+
+        fn new_without_simd() -> Self {
+            Self {
+                simd_supported: false,
+                latency_budget_us: 100,
+                simd_set: SimdInstructionSet::Scalar,
+            }
+        }
+
+        fn with_latency_budget(mut self, budget_us: u64) -> Self {
+            self.latency_budget_us = budget_us;
+            self
+        }
+
+        fn with_simd_set(mut self, set: SimdInstructionSet) -> Self {
+            self.simd_set = set;
+            self
+        }
+    }
+
+    impl ComputeBlock for MockComputeBlock {
+        type Input = f64;
+        type Output = f64;
+
+        fn compute(&mut self, input: &Self::Input) -> Self::Output {
+            *input * 2.0
+        }
+
+        fn simd_supported(&self) -> bool {
+            self.simd_supported
+        }
+
+        fn latency_budget_us(&self) -> u64 {
+            self.latency_budget_us
+        }
+
+        fn simd_instruction_set(&self) -> SimdInstructionSet {
+            self.simd_set
+        }
+    }
+
+    #[test]
+    fn test_compute_block_assertion_new() {
+        let block = MockComputeBlock::new_with_simd();
+        let assertion = ComputeBlockAssertion::new(&block);
+        assert!(!assertion.soft);
+        assert!(assertion.errors.is_empty());
+    }
+
+    #[test]
+    fn test_compute_block_assertion_soft() {
+        let block = MockComputeBlock::new_with_simd();
+        let assertion = ComputeBlockAssertion::new(&block).soft();
+        assert!(assertion.soft);
+    }
+
+    #[test]
+    fn test_compute_block_assertion_to_have_simd_support_passes() {
+        let block = MockComputeBlock::new_with_simd();
+        let mut assertion = ComputeBlockAssertion::new(&block);
+        assertion.to_have_simd_support();
+        assert!(assertion.errors.is_empty());
+    }
+
+    #[test]
+    fn test_compute_block_assertion_to_have_simd_support_soft_collects_error() {
+        let block = MockComputeBlock::new_without_simd();
+        let mut assertion = ComputeBlockAssertion::new(&block).soft();
+        assertion.to_have_simd_support();
+        assert_eq!(assertion.errors.len(), 1);
+        assert!(assertion.errors[0].contains("SIMD"));
+    }
+
+    #[test]
+    #[should_panic(expected = "SIMD")]
+    fn test_compute_block_assertion_to_have_simd_support_panics() {
+        let block = MockComputeBlock::new_without_simd();
+        let mut assertion = ComputeBlockAssertion::new(&block);
+        assertion.to_have_simd_support();
+    }
+
+    #[test]
+    fn test_compute_block_assertion_to_have_latency_under_passes() {
+        let block = MockComputeBlock::new_with_simd().with_latency_budget(50);
+        let mut assertion = ComputeBlockAssertion::new(&block);
+        assertion.to_have_latency_under(100);
+        assert!(assertion.errors.is_empty());
+    }
+
+    #[test]
+    fn test_compute_block_assertion_to_have_latency_under_soft_collects_error() {
+        let block = MockComputeBlock::new_with_simd().with_latency_budget(200);
+        let mut assertion = ComputeBlockAssertion::new(&block).soft();
+        assertion.to_have_latency_under(100);
+        assert_eq!(assertion.errors.len(), 1);
+        assert!(assertion.errors[0].contains("200"));
+        assert!(assertion.errors[0].contains("100"));
+    }
+
+    #[test]
+    #[should_panic(expected = "latency")]
+    fn test_compute_block_assertion_to_have_latency_under_panics() {
+        let block = MockComputeBlock::new_with_simd().with_latency_budget(200);
+        let mut assertion = ComputeBlockAssertion::new(&block);
+        assertion.to_have_latency_under(100);
+    }
+
+    #[test]
+    fn test_compute_block_assertion_to_use_simd_passes() {
+        let block = MockComputeBlock::new_with_simd().with_simd_set(SimdInstructionSet::Avx2);
+        let mut assertion = ComputeBlockAssertion::new(&block);
+        assertion.to_use_simd(SimdInstructionSet::Sse4);
+        assert!(assertion.errors.is_empty());
+    }
+
+    #[test]
+    fn test_compute_block_assertion_to_use_simd_soft_collects_error() {
+        let block = MockComputeBlock::new_with_simd().with_simd_set(SimdInstructionSet::Scalar);
+        let mut assertion = ComputeBlockAssertion::new(&block).soft();
+        assertion.to_use_simd(SimdInstructionSet::Sse4);
+        assert_eq!(assertion.errors.len(), 1);
+        assert!(assertion.errors[0].contains("Scalar"));
+    }
+
+    #[test]
+    #[should_panic(expected = "required")]
+    fn test_compute_block_assertion_to_use_simd_panics() {
+        let block = MockComputeBlock::new_with_simd().with_simd_set(SimdInstructionSet::Scalar);
+        let mut assertion = ComputeBlockAssertion::new(&block);
+        assertion.to_use_simd(SimdInstructionSet::Sse4);
+    }
+
+    #[test]
+    fn test_compute_block_assertion_errors() {
+        let block = MockComputeBlock::new_without_simd().with_latency_budget(200);
+        let mut assertion = ComputeBlockAssertion::new(&block).soft();
+        assertion.to_have_simd_support();
+        assertion.to_have_latency_under(100);
+        assert_eq!(assertion.errors().len(), 2);
+    }
+
+    #[test]
+    fn test_compute_block_assertion_assert_no_errors_passes() {
+        let block = MockComputeBlock::new_with_simd();
+        let assertion = ComputeBlockAssertion::new(&block).soft();
+        assertion.assert_no_errors();
+    }
+
+    #[test]
+    #[should_panic(expected = "soft assertion failures")]
+    fn test_compute_block_assertion_assert_no_errors_panics() {
+        let block = MockComputeBlock::new_without_simd();
+        let mut assertion = ComputeBlockAssertion::new(&block).soft();
+        assertion.to_have_simd_support();
+        assertion.assert_no_errors();
+    }
+
+    #[test]
+    fn test_compute_block_assertion_chaining() {
+        let block = MockComputeBlock::new_with_simd()
+            .with_latency_budget(50)
+            .with_simd_set(SimdInstructionSet::Avx2);
+        let mut assertion = ComputeBlockAssertion::new(&block);
+        assertion
+            .to_have_simd_support()
+            .to_have_latency_under(100)
+            .to_use_simd(SimdInstructionSet::Sse4);
+        assert!(assertion.errors.is_empty());
+    }
+
+    #[test]
+    fn test_assert_compute_latency_passes() {
+        let mut block = MockComputeBlock::new_with_simd().with_latency_budget(1_000_000);
+        let result = assert_compute_latency(&mut block, &42.0);
+        assert!(result.is_ok());
+        let duration = result.unwrap();
+        assert!(duration.as_micros() < 1_000_000);
+    }
+
+    #[test]
+    fn test_detect_simd() {
+        let simd = detect_simd();
+        // Should return a valid SIMD instruction set
+        assert!(simd.vector_width() >= 1);
+    }
+
+    #[test]
+    fn test_simd_available() {
+        // This depends on the CPU, but should not panic
+        let _ = simd_available();
+    }
+
+    #[test]
+    fn test_assert_simd_available_scalar() {
+        // Scalar should always be available
+        let result = assert_simd_available(SimdInstructionSet::Scalar);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_assert_simd_available_returns_detected() {
+        let result = assert_simd_available(SimdInstructionSet::Scalar);
+        assert!(result.is_ok());
+        let detected = result.unwrap();
+        assert!(detected.vector_width() >= 1);
     }
 }

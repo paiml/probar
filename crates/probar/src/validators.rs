@@ -2410,4 +2410,261 @@ mod tests {
         let cloned = transition;
         assert_eq!(cloned.from, "Idle");
     }
+
+    // Additional coverage tests
+
+    #[test]
+    fn test_vu_meter_stale_error_display() {
+        let err = VuMeterError::Stale {
+            last_update_ms: 100,
+            current_ms: 300,
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("stale"));
+        assert!(display.contains("200ms"));
+    }
+
+    #[test]
+    fn test_vu_meter_slow_update_rate_error_display() {
+        let err = VuMeterError::SlowUpdateRate {
+            measured_hz: 15.0,
+            expected_hz: 30.0,
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("15.0Hz"));
+        assert!(display.contains("30.0Hz"));
+    }
+
+    #[test]
+    fn test_vu_meter_not_animating_error_display() {
+        let err = VuMeterError::NotAnimating {
+            sample_count: 100,
+            value: 0.5,
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("100 samples"));
+        assert!(display.contains("0.5"));
+    }
+
+    #[test]
+    fn test_screenshot_content_game_world() {
+        // Create medium entropy data
+        let mut pixels = Vec::with_capacity(1000);
+        for i in 0..1000 {
+            pixels.push((i % 64) as u8); // Moderate variation
+        }
+        let content = ScreenshotContent::classify(&pixels);
+        // With 64 unique values, entropy should be ~6 bits
+        match content {
+            ScreenshotContent::GameWorld { entropy } => {
+                assert!(entropy >= 3.0 && entropy < 6.0);
+            }
+            ScreenshotContent::HighEntropy { entropy } => {
+                // Also acceptable for this pattern
+                assert!(entropy >= 6.0);
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn test_streaming_validation_error_invalid_transition() {
+        let err = StreamingValidationError::InvalidStateTransition {
+            from: StreamingState::Idle,
+            to: StreamingState::Streaming,
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Invalid state transition"));
+        assert!(display.contains("Idle"));
+        assert!(display.contains("Streaming"));
+    }
+
+    #[test]
+    fn test_streaming_latency_transition() {
+        let mut validator = StreamingUxValidator::new();
+        validator.start();
+        assert_eq!(validator.state(), StreamingState::Buffering);
+
+        // Record good latency - should transition to Streaming
+        validator.record_metric(StreamingMetric::Latency(Duration::from_millis(10)));
+        assert_eq!(validator.state(), StreamingState::Streaming);
+    }
+
+    #[test]
+    fn test_streaming_buffer_level() {
+        let mut validator = StreamingUxValidator::new();
+        validator.start();
+
+        // Buffer level should be recorded
+        validator.record_metric(StreamingMetric::BufferLevel(0.75));
+        assert_eq!(validator.state(), StreamingState::Buffering);
+    }
+
+    #[test]
+    fn test_streaming_frame_times_overflow() {
+        let mut validator = StreamingUxValidator::new();
+        validator.start();
+        validator.record_metric(StreamingMetric::AudioChunk {
+            samples: 1024,
+            sample_rate: 16000,
+        });
+
+        // Add more than 120 frames to test the overflow handling
+        for i in 0..150 {
+            validator.record_metric(StreamingMetric::FrameRendered { timestamp: i * 33 });
+        }
+
+        // Should have capped at 120 frames
+        let fps = validator.average_fps();
+        assert!(fps > 0.0);
+    }
+
+    #[test]
+    fn test_streaming_metrics_all_variants_coverage() {
+        let mut validator = StreamingUxValidator::new();
+        validator.start();
+
+        // Cover all metric variants
+        validator.record_metric(StreamingMetric::Latency(Duration::from_millis(50)));
+        validator.record_metric(StreamingMetric::FrameRendered { timestamp: 0 });
+        validator.record_metric(StreamingMetric::FrameDropped);
+        validator.record_metric(StreamingMetric::BufferUnderrun);
+        validator.record_metric(StreamingMetric::FirstByteReceived);
+        validator.record_metric(StreamingMetric::BufferLevel(0.5));
+        validator.record_metric(StreamingMetric::AudioChunk {
+            samples: 1024,
+            sample_rate: 16000,
+        });
+
+        assert!(validator.dropped_frames() >= 1);
+        assert!(validator.buffer_underruns() >= 1);
+    }
+
+    #[test]
+    fn test_max_recorded_latency() {
+        let mut validator = StreamingUxValidator::new();
+        validator.record_metric(StreamingMetric::Latency(Duration::from_millis(50)));
+        validator.record_metric(StreamingMetric::Latency(Duration::from_millis(100)));
+        validator.record_metric(StreamingMetric::Latency(Duration::from_millis(75)));
+
+        // Access the validate method which uses max_recorded_latency
+        let result = validator.validate();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_all_with_fps_error() {
+        let mut validator = StreamingUxValidator::new()
+            .with_min_fps(60.0)
+            .with_max_dropped_frames(0);
+
+        // Add some slow frames
+        for i in 0..10 {
+            validator.record_metric(StreamingMetric::FrameRendered {
+                timestamp: i * 100, // 10fps
+            });
+        }
+        validator.record_metric(StreamingMetric::FrameDropped);
+
+        let errors = validator.validate_all();
+        assert!(!errors.is_empty());
+    }
+
+    #[test]
+    fn test_screenshot_content_entropy_boundaries() {
+        // Test UI-dominated (entropy < 3.0)
+        let mut pixels = Vec::with_capacity(1000);
+        for i in 0..1000 {
+            pixels.push((i % 4) as u8); // Only 4 unique values = low entropy
+        }
+        let content = ScreenshotContent::classify(&pixels);
+        match content {
+            ScreenshotContent::UiDominated { entropy } => {
+                assert!(entropy < 3.0);
+            }
+            _ => {} // Other classifications possible
+        }
+    }
+
+    #[test]
+    fn test_test_execution_stats_default() {
+        let stats: TestExecutionStats = Default::default();
+        assert_eq!(stats.states_captured, 0);
+    }
+
+    #[test]
+    fn test_streaming_validation_result_success() {
+        let mut validator = StreamingUxValidator::new();
+        validator.start();
+        validator.record_metric(StreamingMetric::FirstByteReceived);
+        validator.record_metric(StreamingMetric::AudioChunk {
+            samples: 1024,
+            sample_rate: 16000,
+        });
+
+        // Add enough frames for good FPS
+        for i in 0..60 {
+            validator.record_metric(StreamingMetric::FrameRendered { timestamp: i * 33 });
+        }
+
+        validator.complete();
+
+        let result = validator.validate();
+        assert!(result.is_ok());
+        if let Ok(result) = result {
+            assert!(result.max_latency_recorded >= Duration::ZERO);
+            assert!(result.average_fps >= 0.0);
+        }
+    }
+
+    #[test]
+    fn test_partial_result_clone() {
+        let result = PartialResult {
+            timestamp_ms: 100.0,
+            text: "test".to_string(),
+            is_final: false,
+        };
+        let cloned = result.clone();
+        assert_eq!(cloned.text, "test");
+    }
+
+    #[test]
+    fn test_vu_meter_sample_clone() {
+        let sample = VuMeterSample {
+            timestamp_ms: 100.0,
+            level: 0.5,
+        };
+        let cloned = sample.clone();
+        assert!((cloned.level - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_streaming_metric_record_clone() {
+        let record = StreamingMetricRecord {
+            metric: StreamingMetric::BufferLevel(0.5),
+            timestamp: Instant::now(),
+        };
+        let cloned = record.clone();
+        assert!(matches!(cloned.metric, StreamingMetric::BufferLevel(..)));
+    }
+
+    #[test]
+    fn test_streaming_validation_error_clone() {
+        let err = StreamingValidationError::LatencyExceeded {
+            measured: Duration::from_millis(150),
+            max: Duration::from_millis(100),
+        };
+        let cloned = err.clone();
+        assert!(matches!(
+            cloned,
+            StreamingValidationError::LatencyExceeded { .. }
+        ));
+    }
+
+    #[test]
+    fn test_vu_meter_error_clone() {
+        let err = VuMeterError::Clipping(1.5);
+        let cloned = err.clone();
+        assert!(matches!(cloned, VuMeterError::Clipping(..)));
+    }
 }

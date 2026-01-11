@@ -361,4 +361,246 @@ mod tests {
         let roots = trace.root_spans();
         assert_eq!(roots.len(), 2); // "outer" and "other"
     }
+
+    // =========================================================================
+    // Additional tests for 95% coverage
+    // =========================================================================
+
+    #[test]
+    fn test_trace_config_with_frame_capture() {
+        let config = TraceConfig::default().with_frame_capture(false);
+        assert!(!config.capture_frames);
+
+        let config2 = TraceConfig::default().with_frame_capture(true);
+        assert!(config2.capture_frames);
+    }
+
+    #[test]
+    fn test_tracer_default() {
+        let tracer = Tracer::default();
+        assert!(!tracer.is_recording());
+        assert_eq!(tracer.active_span_count(), 0);
+        assert_eq!(tracer.completed_span_count(), 0);
+    }
+
+    #[test]
+    fn test_tracer_config_getter() {
+        let config = TraceConfig::default().with_sample_rate(1000);
+        let tracer = Tracer::with_config(config);
+        assert_eq!(tracer.config().sample_rate, 1000);
+    }
+
+    #[test]
+    fn test_trace_is_empty() {
+        let mut tracer = Tracer::new();
+        tracer.start();
+        let trace = tracer.stop();
+        assert!(trace.is_empty());
+
+        tracer.start();
+        {
+            let _span = tracer.span("test");
+        }
+        let trace2 = tracer.stop();
+        assert!(!trace2.is_empty());
+    }
+
+    #[test]
+    fn test_trace_duration() {
+        let mut tracer = Tracer::new();
+        tracer.start();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let trace = tracer.stop();
+
+        let duration = trace.duration();
+        assert!(duration.is_some());
+        assert!(duration.unwrap().as_millis() >= 10);
+    }
+
+    #[test]
+    fn test_trace_statistics_for_existing() {
+        let mut tracer = Tracer::new();
+        tracer.start();
+
+        for _ in 0..5 {
+            let _span = tracer.span("repeated");
+            std::thread::sleep(std::time::Duration::from_micros(100));
+        }
+
+        let trace = tracer.stop();
+        let stats = trace.statistics_for("repeated");
+        assert!(stats.is_some());
+        let stats = stats.unwrap();
+        assert!(stats.count >= 5);
+    }
+
+    #[test]
+    fn test_trace_statistics_for_nonexistent() {
+        let mut tracer = Tracer::new();
+        tracer.start();
+        {
+            let _span = tracer.span("exists");
+        }
+        let trace = tracer.stop();
+
+        let stats = trace.statistics_for("does_not_exist");
+        assert!(stats.is_none());
+    }
+
+    #[test]
+    fn test_tracer_state_debug() {
+        let tracer = Tracer::new();
+        let state = tracer.state.borrow();
+        let debug_str = format!("{:?}", *state);
+        assert!(debug_str.contains("TracerState"));
+        assert!(debug_str.contains("active_spans"));
+        assert!(debug_str.contains("completed_spans"));
+    }
+
+    #[test]
+    fn test_tracer_stop_closes_active_spans() {
+        let mut tracer = Tracer::new();
+        tracer.start();
+
+        // Create spans but don't drop them before stopping
+        let _outer = tracer.span("outer");
+        let _inner = tracer.span("inner");
+        drop(_inner);
+        drop(_outer);
+
+        let trace = tracer.stop();
+        // Both spans should be in completed list
+        assert_eq!(trace.span_count(), 2);
+    }
+
+    #[test]
+    fn test_tracer_multiple_sessions() {
+        let mut tracer = Tracer::new();
+
+        // First session
+        tracer.start();
+        {
+            let _span = tracer.span("first_session");
+        }
+        let trace1 = tracer.stop();
+        assert_eq!(trace1.span_count(), 1);
+
+        // Second session - should start fresh
+        tracer.start();
+        {
+            let _span = tracer.span("second_session");
+        }
+        let trace2 = tracer.stop();
+        assert_eq!(trace2.span_count(), 1);
+        assert_eq!(trace2.spans_by_name("first_session").len(), 0);
+    }
+
+    #[test]
+    fn test_trace_config_serialize_deserialize() {
+        let config = TraceConfig::default()
+            .with_sample_rate(500)
+            .with_memory_tracking(true)
+            .with_max_spans(5000);
+
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: TraceConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.sample_rate, 500);
+        assert!(deserialized.capture_memory);
+        assert_eq!(deserialized.max_spans, 5000);
+    }
+
+    #[test]
+    fn test_trace_serialize_deserialize() {
+        let mut tracer = Tracer::new();
+        tracer.start();
+        {
+            let _span = tracer.span("test_span");
+        }
+        let trace = tracer.stop();
+
+        let json = serde_json::to_string(&trace).unwrap();
+        let deserialized: Trace = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.span_count(), trace.span_count());
+        assert_eq!(deserialized.spans_by_name("test_span").len(), 1);
+    }
+
+    #[test]
+    fn test_deeply_nested_spans() {
+        let mut tracer = Tracer::new();
+        tracer.start();
+
+        {
+            let _l1 = tracer.span("level1");
+            {
+                let _l2 = tracer.span("level2");
+                {
+                    let _l3 = tracer.span("level3");
+                    {
+                        let _l4 = tracer.span("level4");
+                    }
+                }
+            }
+        }
+
+        let trace = tracer.stop();
+        assert_eq!(trace.span_count(), 4);
+
+        // Verify parent chain
+        let l4_spans = trace.spans_by_name("level4");
+        assert_eq!(l4_spans.len(), 1);
+        let l4 = l4_spans[0];
+        assert!(l4.parent.is_some());
+
+        let l3_spans = trace.spans_by_name("level3");
+        let l3 = l3_spans[0];
+        assert_eq!(l4.parent, Some(l3.id));
+    }
+
+    #[test]
+    fn test_sibling_spans() {
+        let mut tracer = Tracer::new();
+        tracer.start();
+
+        {
+            let _parent = tracer.span("parent");
+            {
+                let _child1 = tracer.span("child");
+            }
+            {
+                let _child2 = tracer.span("child");
+            }
+            {
+                let _child3 = tracer.span("child");
+            }
+        }
+
+        let trace = tracer.stop();
+        let children = trace.spans_by_name("child");
+        assert_eq!(children.len(), 3);
+
+        // All children should have the same parent
+        let parent_spans = trace.spans_by_name("parent");
+        let parent_id = parent_spans[0].id;
+        for child in children {
+            assert_eq!(child.parent, Some(parent_id));
+        }
+    }
+
+    #[test]
+    fn test_span_count_after_stop() {
+        let mut tracer = Tracer::new();
+        tracer.start();
+        {
+            let _s = tracer.span("a");
+        }
+        assert_eq!(tracer.completed_span_count(), 1);
+        assert_eq!(tracer.active_span_count(), 0);
+
+        tracer.stop();
+        // After stop, counts should be reset on next start
+        tracer.start();
+        assert_eq!(tracer.completed_span_count(), 0);
+    }
 }

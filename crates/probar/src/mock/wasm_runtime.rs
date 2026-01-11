@@ -420,6 +420,7 @@ pub trait MockableWorker: Sized {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -555,5 +556,301 @@ mod tests {
 
         assert_eq!(msg1, msg2);
         assert_ne!(msg1, msg3);
+    }
+
+    #[test]
+    fn test_mock_runtime_default() {
+        let runtime = MockWasmRuntime::default();
+        assert!(!runtime.is_started());
+        assert_eq!(runtime.pending_count(), 0);
+        assert_eq!(runtime.total_processed(), 0);
+    }
+
+    #[test]
+    fn test_mock_runtime_debug() {
+        let runtime = MockWasmRuntime::new();
+        let debug_str = format!("{:?}", runtime);
+        assert!(debug_str.contains("MockWasmRuntime"));
+        assert!(debug_str.contains("incoming_count"));
+        assert!(debug_str.contains("started"));
+    }
+
+    #[test]
+    fn test_mock_runtime_start() {
+        let mut runtime = MockWasmRuntime::new();
+        assert!(!runtime.is_started());
+        runtime.start();
+        assert!(runtime.is_started());
+    }
+
+    #[test]
+    fn test_mock_runtime_receive_message_unchecked() {
+        let runtime = MockWasmRuntime::new();
+        runtime.receive_message_unchecked(MockMessage::Ready);
+        assert_eq!(runtime.pending_count(), 1);
+    }
+
+    #[test]
+    fn test_mock_runtime_tick_empty() {
+        let mut runtime = MockWasmRuntime::new();
+        assert!(!runtime.tick());
+        assert_eq!(runtime.total_processed(), 0);
+    }
+
+    #[test]
+    fn test_mock_runtime_drain_bounded() {
+        let mut runtime = MockWasmRuntime::new();
+        let counter = Rc::new(RefCell::new(0));
+        let counter_clone = Rc::clone(&counter);
+
+        runtime.on_message(move |_| {
+            *counter_clone.borrow_mut() += 1;
+        });
+
+        for _ in 0..20 {
+            runtime.receive_message(MockMessage::Ready);
+        }
+
+        // Process only 5
+        let processed = runtime.drain_bounded(5);
+        assert_eq!(processed, 5);
+        assert_eq!(*counter.borrow(), 5);
+        assert_eq!(runtime.pending_count(), 15);
+    }
+
+    #[test]
+    fn test_mock_runtime_drain_all() {
+        let mut runtime = MockWasmRuntime::new();
+        for _ in 0..10 {
+            runtime.receive_message(MockMessage::Ready);
+        }
+
+        runtime.drain();
+        assert_eq!(runtime.pending_count(), 0);
+    }
+
+    #[test]
+    fn test_mock_runtime_clone_shared_state() {
+        let runtime1 = MockWasmRuntime::new();
+        let runtime2 = runtime1.clone();
+
+        runtime1.receive_message(MockMessage::Ready);
+        // Both should see the same pending message
+        assert_eq!(runtime1.pending_count(), 1);
+        assert_eq!(runtime2.pending_count(), 1);
+
+        runtime2.post_message(MockMessage::Stop);
+        assert!(runtime1.has_outgoing());
+        assert!(runtime2.has_outgoing());
+    }
+
+    #[test]
+    fn test_mock_runtime_peek_outgoing() {
+        let runtime = MockWasmRuntime::new();
+        runtime.post_message(MockMessage::start(48000));
+        runtime.post_message(MockMessage::Stop);
+
+        let peeked = runtime.peek_outgoing();
+        assert_eq!(peeked.len(), 2);
+
+        // peek_outgoing doesn't consume
+        let peeked_again = runtime.peek_outgoing();
+        assert_eq!(peeked_again.len(), 2);
+    }
+
+    #[test]
+    fn test_mock_runtime_take_outgoing_consumes() {
+        let runtime = MockWasmRuntime::new();
+        runtime.post_message(MockMessage::Ready);
+
+        let taken = runtime.take_outgoing();
+        assert_eq!(taken.len(), 1);
+
+        // Should be empty after take
+        assert!(!runtime.has_outgoing());
+        let taken_again = runtime.take_outgoing();
+        assert!(taken_again.is_empty());
+    }
+
+    #[test]
+    fn test_mock_message_custom() {
+        let msg = MockMessage::Custom {
+            msg_type: "test".to_string(),
+            payload: r#"{"key": "value"}"#.to_string(),
+        };
+
+        match msg {
+            MockMessage::Custom { msg_type, payload } => {
+                assert_eq!(msg_type, "test");
+                assert!(payload.contains("key"));
+            }
+            _ => panic!("Expected Custom message"),
+        }
+    }
+
+    #[test]
+    fn test_mock_message_partial() {
+        let msg = MockMessage::partial("Hello world", true);
+        match msg {
+            MockMessage::Partial { text, is_final } => {
+                assert_eq!(text, "Hello world");
+                assert!(is_final);
+            }
+            _ => panic!("Expected Partial message"),
+        }
+
+        let msg2 = MockMessage::partial("Partial", false);
+        match msg2 {
+            MockMessage::Partial { is_final, .. } => {
+                assert!(!is_final);
+            }
+            _ => panic!("Expected Partial message"),
+        }
+    }
+
+    #[test]
+    fn test_mock_message_serialization() {
+        // Test all message variants can be serialized/deserialized
+        let messages = vec![
+            MockMessage::bootstrap("http://localhost"),
+            MockMessage::init("/model.apr"),
+            MockMessage::Ready,
+            MockMessage::model_loaded(100.0, 2000.0),
+            MockMessage::start(44100),
+            MockMessage::Stop,
+            MockMessage::partial("text", true),
+            MockMessage::error("oops"),
+            MockMessage::Shutdown,
+            MockMessage::Custom {
+                msg_type: "t".into(),
+                payload: "{}".into(),
+            },
+        ];
+
+        for msg in messages {
+            let serialized = bincode::serialize(&msg).expect("Should serialize");
+            let deserialized: MockMessage =
+                bincode::deserialize(&serialized).expect("Should deserialize");
+            assert_eq!(msg, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_mockable_worker_is_state_synced() {
+        struct TestWorker {
+            reported: String,
+            internal: String,
+        }
+
+        impl MockableWorker for TestWorker {
+            fn with_mock_runtime(_: MockWasmRuntime) -> Self {
+                Self {
+                    reported: "same".into(),
+                    internal: "same".into(),
+                }
+            }
+
+            fn get_state(&self) -> String {
+                self.reported.clone()
+            }
+
+            fn debug_internal_state(&self) -> String {
+                self.internal.clone()
+            }
+        }
+
+        let worker = TestWorker {
+            reported: "state".into(),
+            internal: "state".into(),
+        };
+        assert!(worker.is_state_synced());
+
+        let desynced = TestWorker {
+            reported: "one".into(),
+            internal: "two".into(),
+        };
+        assert!(!desynced.is_state_synced());
+    }
+
+    #[test]
+    fn test_mock_runtime_multiple_handlers() {
+        let mut runtime = MockWasmRuntime::new();
+        let counter1 = Rc::new(RefCell::new(0));
+        let counter2 = Rc::new(RefCell::new(0));
+
+        let c1 = Rc::clone(&counter1);
+        runtime.on_message(move |_| {
+            *c1.borrow_mut() += 1;
+        });
+
+        let c2 = Rc::clone(&counter2);
+        runtime.on_message(move |_| {
+            *c2.borrow_mut() += 10;
+        });
+
+        runtime.receive_message(MockMessage::Ready);
+        runtime.tick();
+
+        // Both handlers should have been called
+        assert_eq!(*counter1.borrow(), 1);
+        assert_eq!(*counter2.borrow(), 10);
+    }
+
+    #[test]
+    fn test_mock_runtime_handler_adds_new_handler() {
+        let mut runtime = MockWasmRuntime::new();
+        let counter = Rc::new(RefCell::new(0));
+        let counter_clone = Rc::clone(&counter);
+
+        // Handler that uses counter
+        runtime.on_message(move |_| {
+            *counter_clone.borrow_mut() += 1;
+        });
+
+        // Process first message
+        runtime.receive_message(MockMessage::Ready);
+        runtime.tick();
+        assert_eq!(*counter.borrow(), 1);
+
+        // Process second message
+        runtime.receive_message(MockMessage::Stop);
+        runtime.tick();
+        assert_eq!(*counter.borrow(), 2);
+    }
+
+    #[test]
+    fn test_mock_runtime_tick_n_partial() {
+        let mut runtime = MockWasmRuntime::new();
+
+        // Add 3 messages
+        runtime.receive_message(MockMessage::Ready);
+        runtime.receive_message(MockMessage::Stop);
+        runtime.receive_message(MockMessage::Shutdown);
+
+        // Process only 2
+        let processed = runtime.tick_n(2);
+        assert_eq!(processed, 2);
+        assert_eq!(runtime.pending_count(), 1);
+    }
+
+    #[test]
+    fn test_mock_runtime_tick_n_more_than_available() {
+        let mut runtime = MockWasmRuntime::new();
+        runtime.receive_message(MockMessage::Ready);
+
+        // Try to process 100, but only 1 is available
+        let processed = runtime.tick_n(100);
+        assert_eq!(processed, 1);
+        assert_eq!(runtime.pending_count(), 0);
+    }
+
+    #[test]
+    fn test_mock_runtime_tick_n_zero() {
+        let mut runtime = MockWasmRuntime::new();
+        runtime.receive_message(MockMessage::Ready);
+
+        let processed = runtime.tick_n(0);
+        assert_eq!(processed, 0);
+        assert_eq!(runtime.pending_count(), 1);
     }
 }

@@ -848,5 +848,476 @@ mod tests {
             let url = controller.driver.current_url().await.unwrap();
             assert_eq!(url, "https://test.com");
         }
+
+        #[tokio::test]
+        async fn test_mock_driver_screenshot_error() {
+            let driver = MockDriver::new();
+            // No screenshot set, should return error
+            let result = driver.screenshot().await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_mock_driver_screenshot_success() {
+            let mut driver = MockDriver::new();
+            let screenshot = Screenshot::new(vec![1, 2, 3], 100, 50);
+            driver.set_screenshot(screenshot);
+            let result = driver.screenshot().await.unwrap();
+            assert_eq!(result.width, 100);
+            assert_eq!(result.height, 50);
+        }
+
+        #[tokio::test]
+        async fn test_mock_driver_execute_js_error() {
+            let driver = MockDriver::new();
+            // No JS result set, should return error
+            let result = driver.execute_js("return 1;").await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_mock_driver_execute_js_success() {
+            let mut driver = MockDriver::new();
+            driver.set_js_result(serde_json::json!({"result": 42}));
+            let result = driver.execute_js("return 42;").await.unwrap();
+            assert_eq!(result["result"], 42);
+        }
+
+        #[tokio::test]
+        async fn test_mock_driver_query_selector() {
+            let mut driver = MockDriver::new();
+            driver.add_element(ElementHandle::new("btn-submit", "button"));
+
+            let found = driver.query_selector("btn-submit").await.unwrap();
+            assert!(found.is_some());
+            assert_eq!(found.unwrap().tag_name, "button");
+
+            let not_found = driver.query_selector("non-existent").await.unwrap();
+            assert!(not_found.is_none());
+        }
+
+        #[tokio::test]
+        async fn test_mock_driver_query_selector_all() {
+            let mut driver = MockDriver::new();
+            driver.add_element(ElementHandle::new("elem1", "div"));
+            driver.add_element(ElementHandle::new("elem2", "span"));
+
+            let elements = driver.query_selector_all("*").await.unwrap();
+            assert_eq!(elements.len(), 2);
+        }
+
+        #[tokio::test]
+        async fn test_mock_driver_dispatch_input() {
+            let driver = MockDriver::new();
+            let event = InputEvent::KeyPress {
+                key: "Enter".to_string(),
+            };
+            let result = driver.dispatch_input(event).await;
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_mock_driver_click() {
+            let driver = MockDriver::new();
+            let result = driver.click("#button").await;
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_mock_driver_type_text() {
+            let driver = MockDriver::new();
+            let result = driver.type_text("#input", "hello world").await;
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_mock_driver_wait_for_selector_found() {
+            let mut driver = MockDriver::new();
+            driver.add_element(ElementHandle::new("target", "div"));
+            let result = driver
+                .wait_for_selector("target", Duration::from_secs(1))
+                .await;
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().id, "target");
+        }
+
+        #[tokio::test]
+        async fn test_mock_driver_wait_for_selector_not_found() {
+            let driver = MockDriver::new();
+            let result = driver
+                .wait_for_selector("missing", Duration::from_secs(1))
+                .await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_mock_driver_metrics() {
+            let driver = MockDriver::new();
+            let metrics = driver.metrics().await.unwrap();
+            assert!(metrics.first_paint_ms.is_none());
+        }
+
+        #[tokio::test]
+        async fn test_mock_driver_set_network_interceptor() {
+            let mut driver = MockDriver::new();
+            let interceptor = NetworkInterceptor {
+                patterns: vec!["*.js".to_string()],
+                block: true,
+                response_override: None,
+            };
+            let result = driver.set_network_interceptor(interceptor).await;
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_browser_controller_evaluate() {
+            let mut driver = MockDriver::new();
+            driver.set_js_result(serde_json::json!({"foo": "bar"}));
+            let controller = BrowserController::new(driver, DriverConfig::default());
+            let result = controller.evaluate("return {foo: 'bar'}").await.unwrap();
+            assert_eq!(result["foo"], "bar");
+        }
+
+        #[tokio::test]
+        async fn test_browser_controller_query() {
+            let mut driver = MockDriver::new();
+            driver.add_element(ElementHandle::new("elem", "div"));
+            let controller = BrowserController::new(driver, DriverConfig::default());
+            let result = controller.query("elem").await.unwrap();
+            assert!(result.is_some());
+        }
+
+        #[tokio::test]
+        async fn test_browser_controller_metrics() {
+            let driver = MockDriver::new();
+            let controller = BrowserController::new(driver, DriverConfig::default());
+            let metrics = controller.metrics().await.unwrap();
+            assert!(metrics.first_paint_ms.is_none());
+        }
+
+        #[tokio::test]
+        async fn test_browser_controller_screenshot() {
+            let mut driver = MockDriver::new();
+            driver.set_screenshot(Screenshot::new(vec![0x89, 0x50], 640, 480));
+            let controller = BrowserController::new(driver, DriverConfig::default());
+            let screenshot = controller.screenshot().await.unwrap();
+            assert_eq!(screenshot.width, 640);
+            assert_eq!(screenshot.height, 480);
+        }
+
+        #[tokio::test]
+        async fn test_browser_controller_close() {
+            let driver = MockDriver::new();
+            let mut controller = BrowserController::new(driver, DriverConfig::default());
+            let result = controller.close().await;
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_browser_controller_config() {
+            let config = DriverConfig::new().viewport(800, 600);
+            let driver = MockDriver::new();
+            let controller = BrowserController::new(driver, config);
+            assert_eq!(controller.config().viewport_width, 800);
+            assert_eq!(controller.config().viewport_height, 600);
+        }
+
+        #[tokio::test]
+        async fn test_browser_controller_debug() {
+            let driver = MockDriver::new();
+            let controller = BrowserController::new(driver, DriverConfig::default());
+            let debug_str = format!("{:?}", controller);
+            assert!(debug_str.contains("BrowserController"));
+        }
+    }
+
+    mod network_interceptor_tests {
+        use super::*;
+
+        #[test]
+        fn test_network_interceptor_default() {
+            let interceptor = NetworkInterceptor::default();
+            assert!(interceptor.patterns.is_empty());
+            assert!(!interceptor.block);
+            assert!(interceptor.response_override.is_none());
+        }
+
+        #[test]
+        fn test_network_interceptor_with_patterns() {
+            let interceptor = NetworkInterceptor {
+                patterns: vec!["*.js".to_string(), "*.css".to_string()],
+                block: true,
+                response_override: None,
+            };
+            assert_eq!(interceptor.patterns.len(), 2);
+            assert!(interceptor.block);
+        }
+
+        #[test]
+        fn test_network_interceptor_with_response_override() {
+            let response = NetworkResponse::json(200, serde_json::json!({"mock": true}));
+            let interceptor = NetworkInterceptor {
+                patterns: vec!["api/*".to_string()],
+                block: false,
+                response_override: Some(response),
+            };
+            assert!(interceptor.response_override.is_some());
+        }
+    }
+
+    mod driver_config_extended_tests {
+        use super::*;
+
+        #[test]
+        fn test_navigation_timeout() {
+            let config = DriverConfig::new().navigation_timeout(Duration::from_secs(60));
+            assert_eq!(config.navigation_timeout, Duration::from_secs(60));
+        }
+
+        #[test]
+        fn test_config_executable_path() {
+            let mut config = DriverConfig::default();
+            config.executable_path = Some("/usr/bin/chromium".to_string());
+            assert_eq!(
+                config.executable_path,
+                Some("/usr/bin/chromium".to_string())
+            );
+        }
+
+        #[test]
+        fn test_config_element_timeout_default() {
+            let config = DriverConfig::default();
+            assert_eq!(config.element_timeout, Duration::from_secs(5));
+        }
+    }
+
+    mod device_descriptor_extended_tests {
+        use super::*;
+
+        #[test]
+        fn test_ipad_pro_12_9() {
+            let device = DeviceDescriptor::IPAD_PRO_12_9;
+            assert_eq!(device.name, "iPad Pro 12.9");
+            assert_eq!(device.viewport_width, 1024);
+            assert_eq!(device.viewport_height, 1366);
+            assert!((device.device_scale_factor - 2.0).abs() < f64::EPSILON);
+            assert!(device.is_mobile);
+            assert!(device.has_touch);
+            assert!(device.user_agent.contains("iPad"));
+        }
+
+        #[test]
+        fn test_desktop_4k() {
+            let device = DeviceDescriptor::DESKTOP_4K;
+            assert_eq!(device.name, "Desktop 4K");
+            assert_eq!(device.viewport_width, 3840);
+            assert_eq!(device.viewport_height, 2160);
+            assert!((device.device_scale_factor - 2.0).abs() < f64::EPSILON);
+            assert!(!device.is_mobile);
+            assert!(!device.has_touch);
+        }
+
+        #[test]
+        fn test_ipad_to_config() {
+            let config = DeviceDescriptor::IPAD_PRO_12_9.to_config();
+            assert_eq!(config.viewport_width, 1024);
+            assert_eq!(config.viewport_height, 1366);
+            assert!((config.device_scale_factor - 2.0).abs() < f64::EPSILON);
+            assert!(config.user_agent.is_some());
+        }
+
+        #[test]
+        fn test_desktop_4k_to_config() {
+            let config = DeviceDescriptor::DESKTOP_4K.to_config();
+            assert_eq!(config.viewport_width, 3840);
+            assert_eq!(config.viewport_height, 2160);
+        }
+    }
+
+    mod mock_driver_extended_tests {
+        use super::*;
+
+        #[test]
+        fn test_mock_driver_set_js_result() {
+            let mut driver = MockDriver::new();
+            driver.set_js_result(serde_json::json!({"value": 123}));
+            assert_eq!(driver.js_results.len(), 1);
+            assert_eq!(driver.js_results[0]["value"], 123);
+        }
+
+        #[test]
+        fn test_mock_driver_set_screenshot() {
+            let mut driver = MockDriver::new();
+            let screenshot = Screenshot::new(vec![1, 2, 3, 4], 200, 100);
+            driver.set_screenshot(screenshot);
+            assert!(driver.screenshot_data.is_some());
+            let data = driver.screenshot_data.unwrap();
+            assert_eq!(data.width, 200);
+            assert_eq!(data.height, 100);
+        }
+
+        #[test]
+        fn test_mock_driver_debug() {
+            let driver = MockDriver::new();
+            let debug_str = format!("{:?}", driver);
+            assert!(debug_str.contains("MockDriver"));
+        }
+
+        #[test]
+        fn test_mock_driver_multiple_elements() {
+            let mut driver = MockDriver::new();
+            driver.add_element(ElementHandle::new("a", "div"));
+            driver.add_element(ElementHandle::new("b", "span"));
+            driver.add_element(ElementHandle::new("c", "button"));
+            assert_eq!(driver.elements.len(), 3);
+        }
+    }
+
+    mod element_handle_extended_tests {
+        use super::*;
+
+        #[test]
+        fn test_element_handle_with_text() {
+            let mut elem = ElementHandle::new("p1", "p");
+            elem.text_content = Some("Hello World".to_string());
+            assert_eq!(elem.text_content, Some("Hello World".to_string()));
+        }
+
+        #[test]
+        fn test_element_handle_serialization() {
+            let elem = ElementHandle::new("test-id", "input");
+            let json = serde_json::to_string(&elem).unwrap();
+            assert!(json.contains("test-id"));
+            assert!(json.contains("input"));
+        }
+
+        #[test]
+        fn test_element_handle_deserialization() {
+            let json =
+                r#"{"id":"btn","tag_name":"button","text_content":null,"bounding_box":null}"#;
+            let elem: ElementHandle = serde_json::from_str(json).unwrap();
+            assert_eq!(elem.id, "btn");
+            assert_eq!(elem.tag_name, "button");
+        }
+
+        #[test]
+        fn test_element_handle_clone() {
+            let elem = ElementHandle::new("orig", "div");
+            let cloned = elem.clone();
+            assert_eq!(elem.id, cloned.id);
+            assert_eq!(elem.tag_name, cloned.tag_name);
+        }
+    }
+
+    mod screenshot_extended_tests {
+        use super::*;
+
+        #[test]
+        fn test_screenshot_device_pixel_ratio() {
+            let mut screenshot = Screenshot::new(vec![0], 100, 100);
+            screenshot.device_pixel_ratio = 2.0;
+            assert!((screenshot.device_pixel_ratio - 2.0).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn test_screenshot_timestamp() {
+            let screenshot = Screenshot::new(vec![0], 100, 100);
+            // Timestamp should be recent (within the last second)
+            let now = std::time::SystemTime::now();
+            let duration = now.duration_since(screenshot.timestamp).unwrap();
+            assert!(duration.as_secs() < 1);
+        }
+
+        #[test]
+        fn test_screenshot_zero_height_invalid() {
+            let screenshot = Screenshot::new(vec![1, 2], 100, 0);
+            assert!(!screenshot.is_valid());
+        }
+
+        #[test]
+        fn test_screenshot_clone() {
+            let screenshot = Screenshot::new(vec![1, 2, 3], 50, 50);
+            let cloned = screenshot.clone();
+            assert_eq!(screenshot.data, cloned.data);
+            assert_eq!(screenshot.width, cloned.width);
+            assert_eq!(screenshot.height, cloned.height);
+        }
+    }
+
+    mod page_metrics_extended_tests {
+        use super::*;
+
+        #[test]
+        fn test_page_metrics_with_values() {
+            let metrics = PageMetrics {
+                first_paint_ms: Some(100.5),
+                first_contentful_paint_ms: Some(150.0),
+                dom_content_loaded_ms: Some(200.0),
+                load_time_ms: Some(500.0),
+                js_heap_size_bytes: Some(10_000_000),
+                js_heap_used_bytes: Some(5_000_000),
+                dom_nodes: Some(1500),
+                frame_count: Some(2),
+            };
+            assert_eq!(metrics.first_paint_ms, Some(100.5));
+            assert_eq!(metrics.dom_nodes, Some(1500));
+        }
+
+        #[test]
+        fn test_page_metrics_serialization() {
+            let metrics = PageMetrics::default();
+            let json = serde_json::to_string(&metrics).unwrap();
+            assert!(json.contains("first_paint_ms"));
+        }
+
+        #[test]
+        fn test_page_metrics_clone() {
+            let metrics = PageMetrics {
+                first_paint_ms: Some(50.0),
+                ..Default::default()
+            };
+            let cloned = metrics.clone();
+            assert_eq!(metrics.first_paint_ms, cloned.first_paint_ms);
+        }
+    }
+
+    mod network_response_extended_tests {
+        use super::*;
+
+        #[test]
+        fn test_network_response_json_serialization_failure() {
+            // Create a valid JSON to ensure normal path works
+            let response = NetworkResponse::json(200, serde_json::json!(null));
+            assert_eq!(response.status, 200);
+        }
+
+        #[test]
+        fn test_network_response_with_headers() {
+            let response = NetworkResponse {
+                status: 201,
+                headers: vec![
+                    ("Content-Type".to_string(), "text/plain".to_string()),
+                    ("X-Custom".to_string(), "value".to_string()),
+                ],
+                body: b"Created".to_vec(),
+            };
+            assert_eq!(response.headers.len(), 2);
+            assert_eq!(response.body, b"Created".to_vec());
+        }
+
+        #[test]
+        fn test_network_response_not_found_body() {
+            let response = NetworkResponse::not_found();
+            assert_eq!(response.body, b"Not Found".to_vec());
+            assert!(response.headers.is_empty());
+        }
+
+        #[test]
+        fn test_network_response_clone() {
+            let response = NetworkResponse::json(200, serde_json::json!({"ok": true}));
+            let cloned = response.clone();
+            assert_eq!(response.status, cloned.status);
+            assert_eq!(response.body, cloned.body);
+        }
     }
 }

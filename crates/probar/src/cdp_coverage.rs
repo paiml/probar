@@ -785,4 +785,435 @@ mod tests {
         let entry = sm.lookup(150).unwrap();
         assert_eq!(entry.line, 10);
     }
+
+    // =========================================================================
+    // Additional tests for 95% coverage
+    // =========================================================================
+
+    #[test]
+    fn test_function_byte_range_empty() {
+        let func = FunctionCoverage {
+            function_name: "empty".to_string(),
+            ranges: vec![],
+            is_block_coverage: false,
+        };
+        assert!(func.byte_range().is_none());
+    }
+
+    #[test]
+    fn test_function_byte_range_single_range() {
+        let func = FunctionCoverage {
+            function_name: "single".to_string(),
+            ranges: vec![CoverageRange {
+                start_offset: 10,
+                end_offset: 50,
+                count: 1,
+            }],
+            is_block_coverage: false,
+        };
+        assert_eq!(func.byte_range(), Some((10, 50)));
+    }
+
+    #[test]
+    fn test_script_coverage_percent_empty_functions() {
+        let script = ScriptCoverage {
+            script_id: "1".to_string(),
+            url: "test.js".to_string(),
+            functions: vec![],
+        };
+        // Empty functions should return 100%
+        assert!((script.coverage_percent() - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_coverage_report_coverage_percent_zero_total() {
+        let report = CoverageReport::new();
+        // Empty report should return 100%
+        assert!((report.coverage_percent() - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_wasm_coverage_percent_zero_total() {
+        let wasm = WasmCoverage {
+            functions_covered: 0,
+            functions_total: 0,
+            scripts: vec![],
+        };
+        // Zero total should return 100%
+        assert!((wasm.coverage_percent() - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_js_coverage_percent_zero_total() {
+        let js = JsCoverage {
+            functions_covered: 0,
+            functions_total: 0,
+            scripts: vec![],
+        };
+        // Zero total should return 100%
+        assert!((js.coverage_percent() - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_wasm_coverage_percent_partial() {
+        let wasm = WasmCoverage {
+            functions_covered: 3,
+            functions_total: 10,
+            scripts: vec![],
+        };
+        assert!((wasm.coverage_percent() - 30.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_js_coverage_percent_partial() {
+        let js = JsCoverage {
+            functions_covered: 7,
+            functions_total: 10,
+            scripts: vec![],
+        };
+        assert!((js.coverage_percent() - 70.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_line_coverage_covered_lines() {
+        let mut lc = LineCoverage::new();
+        lc.mark_covered("src/lib.rs", 10, 1);
+        lc.mark_covered("src/lib.rs", 20, 2);
+        lc.mark_covered("src/lib.rs", 30, 3);
+
+        let lines = lc.covered_lines("src/lib.rs");
+        assert_eq!(lines.len(), 3);
+        assert!(lines.contains(&10));
+        assert!(lines.contains(&20));
+        assert!(lines.contains(&30));
+    }
+
+    #[test]
+    fn test_line_coverage_covered_lines_nonexistent_file() {
+        let lc = LineCoverage::new();
+        let lines = lc.covered_lines("nonexistent.rs");
+        assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn test_line_coverage_get_count_nonexistent() {
+        let lc = LineCoverage::new();
+        assert_eq!(lc.get_count("src/lib.rs", 10), 0);
+    }
+
+    #[test]
+    fn test_line_coverage_is_covered_false() {
+        let lc = LineCoverage::new();
+        assert!(!lc.is_covered("src/lib.rs", 10));
+    }
+
+    #[test]
+    fn test_coverage_report_summary_format() {
+        let mut report = CoverageReport::new();
+        report.add_script(ScriptCoverage {
+            script_id: "1".to_string(),
+            url: "http://localhost/app.wasm".to_string(),
+            functions: vec![
+                FunctionCoverage {
+                    function_name: "covered".to_string(),
+                    ranges: vec![CoverageRange {
+                        start_offset: 0,
+                        end_offset: 50,
+                        count: 1,
+                    }],
+                    is_block_coverage: false,
+                },
+                FunctionCoverage {
+                    function_name: "uncovered".to_string(),
+                    ranges: vec![CoverageRange {
+                        start_offset: 50,
+                        end_offset: 100,
+                        count: 0,
+                    }],
+                    is_block_coverage: false,
+                },
+            ],
+        });
+
+        let summary = report.summary();
+        assert!(summary.contains("Coverage:"));
+        assert!(summary.contains("50.0%"));
+        assert!(summary.contains("1/2"));
+    }
+
+    #[test]
+    fn test_wasm_source_map_map_coverage() {
+        let mut sm = WasmSourceMap::new();
+        sm.entries.push(SourceMapEntry {
+            wasm_offset: 0,
+            source_file: "src/lib.rs".to_string(),
+            line: 1,
+            column: 0,
+        });
+        sm.entries.push(SourceMapEntry {
+            wasm_offset: 100,
+            source_file: "src/lib.rs".to_string(),
+            line: 10,
+            column: 0,
+        });
+
+        let mut report = CoverageReport::new();
+        report.add_script(ScriptCoverage {
+            script_id: "1".to_string(),
+            url: "http://localhost/app.wasm".to_string(),
+            functions: vec![FunctionCoverage {
+                function_name: "test_fn".to_string(),
+                ranges: vec![CoverageRange {
+                    start_offset: 50,
+                    end_offset: 150,
+                    count: 3,
+                }],
+                is_block_coverage: false,
+            }],
+        });
+
+        let line_coverage = sm.map_coverage(&report);
+        // Start offset 50 maps to line 1, end offset 150 maps to line 10
+        assert!(line_coverage.is_covered("src/lib.rs", 1));
+        assert!(line_coverage.is_covered("src/lib.rs", 10));
+    }
+
+    #[test]
+    fn test_wasm_source_map_map_coverage_skips_js() {
+        let sm = WasmSourceMap::new();
+
+        let mut report = CoverageReport::new();
+        report.add_script(ScriptCoverage {
+            script_id: "1".to_string(),
+            url: "http://localhost/app.js".to_string(), // Not WASM
+            functions: vec![FunctionCoverage {
+                function_name: "js_fn".to_string(),
+                ranges: vec![CoverageRange {
+                    start_offset: 0,
+                    end_offset: 100,
+                    count: 1,
+                }],
+                is_block_coverage: false,
+            }],
+        });
+
+        let line_coverage = sm.map_coverage(&report);
+        // Should not map JS files
+        assert!(line_coverage.files.is_empty());
+    }
+
+    #[test]
+    fn test_wasm_source_map_lookup_no_match() {
+        let sm = WasmSourceMap::new();
+        // Empty source map should return None
+        assert!(sm.lookup(50).is_none());
+    }
+
+    #[test]
+    fn test_wasm_source_map_lookup_exact_match() {
+        let mut sm = WasmSourceMap::new();
+        sm.entries.push(SourceMapEntry {
+            wasm_offset: 100,
+            source_file: "src/lib.rs".to_string(),
+            line: 10,
+            column: 5,
+        });
+
+        let entry = sm.lookup(100).unwrap();
+        assert_eq!(entry.wasm_offset, 100);
+        assert_eq!(entry.line, 10);
+    }
+
+    #[test]
+    fn test_script_is_wasm_case_insensitive() {
+        let wasm_script = ScriptCoverage {
+            script_id: "1".to_string(),
+            url: "http://localhost/app.WASM".to_string(),
+            functions: vec![],
+        };
+        assert!(wasm_script.is_wasm());
+    }
+
+    #[test]
+    fn test_script_is_wasm_url_contains() {
+        let wasm_script = ScriptCoverage {
+            script_id: "1".to_string(),
+            url: "http://localhost/wasm/module".to_string(),
+            functions: vec![],
+        };
+        assert!(wasm_script.is_wasm());
+    }
+
+    #[test]
+    fn test_coverage_config_new() {
+        let config = CoverageConfig::new();
+        assert!(config.call_count);
+        assert!(config.detailed);
+        assert!(!config.allow_triggered_updates);
+    }
+
+    #[test]
+    fn test_coverage_report_timestamp() {
+        let mut report = CoverageReport::new();
+        report.timestamp_ms = 1234567890;
+        assert_eq!(report.timestamp_ms, 1234567890);
+    }
+
+    #[test]
+    fn test_coverage_report_filter_by_url_no_match() {
+        let mut report = CoverageReport::new();
+        report.add_script(ScriptCoverage {
+            script_id: "1".to_string(),
+            url: "http://localhost/app.js".to_string(),
+            functions: vec![],
+        });
+
+        let filtered = report.filter_by_url("nonexistent");
+        assert!(filtered.scripts.is_empty());
+    }
+
+    #[test]
+    fn test_uncovered_functions_anonymous() {
+        let mut report = CoverageReport::new();
+        report.add_script(ScriptCoverage {
+            script_id: "1".to_string(),
+            url: "test.js".to_string(),
+            functions: vec![
+                FunctionCoverage {
+                    function_name: "".to_string(), // Anonymous
+                    ranges: vec![CoverageRange {
+                        start_offset: 0,
+                        end_offset: 50,
+                        count: 0, // Not executed
+                    }],
+                    is_block_coverage: false,
+                },
+                FunctionCoverage {
+                    function_name: "named".to_string(),
+                    ranges: vec![CoverageRange {
+                        start_offset: 50,
+                        end_offset: 100,
+                        count: 0, // Not executed
+                    }],
+                    is_block_coverage: false,
+                },
+            ],
+        });
+
+        let uncovered = report.uncovered_functions();
+        // Should only include named function
+        assert_eq!(uncovered.len(), 1);
+        assert_eq!(uncovered[0].1, "named");
+    }
+
+    #[test]
+    fn test_covered_function_struct() {
+        let func = CoveredFunction {
+            script_url: "test.js".to_string(),
+            function_name: "my_func".to_string(),
+            call_count: 5,
+        };
+        assert_eq!(func.script_url, "test.js");
+        assert_eq!(func.function_name, "my_func");
+        assert_eq!(func.call_count, 5);
+    }
+
+    #[test]
+    fn test_source_map_entry_fields() {
+        let entry = SourceMapEntry {
+            wasm_offset: 100,
+            source_file: "src/main.rs".to_string(),
+            line: 42,
+            column: 8,
+        };
+        assert_eq!(entry.wasm_offset, 100);
+        assert_eq!(entry.source_file, "src/main.rs");
+        assert_eq!(entry.line, 42);
+        assert_eq!(entry.column, 8);
+    }
+
+    #[test]
+    fn test_line_coverage_mark_covered_saturating() {
+        let mut lc = LineCoverage::new();
+        // Test saturating_add doesn't overflow
+        lc.mark_covered("src/lib.rs", 10, u32::MAX);
+        lc.mark_covered("src/lib.rs", 10, 1);
+        assert_eq!(lc.get_count("src/lib.rs", 10), u32::MAX);
+    }
+
+    #[test]
+    fn test_function_coverage_total_count_multiple_ranges() {
+        let func = FunctionCoverage {
+            function_name: "multi".to_string(),
+            ranges: vec![
+                CoverageRange {
+                    start_offset: 0,
+                    end_offset: 10,
+                    count: 5,
+                },
+                CoverageRange {
+                    start_offset: 10,
+                    end_offset: 20,
+                    count: 3,
+                },
+                CoverageRange {
+                    start_offset: 20,
+                    end_offset: 30,
+                    count: 2,
+                },
+            ],
+            is_block_coverage: true,
+        };
+        assert_eq!(func.total_count(), 10);
+        assert!(func.is_block_coverage);
+    }
+
+    #[test]
+    fn test_wasm_source_map_sources_field() {
+        let mut sm = WasmSourceMap::new();
+        sm.sources
+            .insert("src/lib.rs".to_string(), vec!["fn main() {}".to_string()]);
+
+        assert!(sm.sources.contains_key("src/lib.rs"));
+        assert_eq!(sm.sources["src/lib.rs"].len(), 1);
+    }
+
+    #[test]
+    fn test_coverage_report_serialize_deserialize() {
+        let mut report = CoverageReport::new();
+        report.timestamp_ms = 1000;
+        report.add_script(ScriptCoverage {
+            script_id: "1".to_string(),
+            url: "test.js".to_string(),
+            functions: vec![FunctionCoverage {
+                function_name: "test".to_string(),
+                ranges: vec![CoverageRange {
+                    start_offset: 0,
+                    end_offset: 50,
+                    count: 1,
+                }],
+                is_block_coverage: false,
+            }],
+        });
+
+        let json = serde_json::to_string(&report).unwrap();
+        let deserialized: CoverageReport = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.timestamp_ms, 1000);
+        assert_eq!(deserialized.scripts.len(), 1);
+        assert_eq!(deserialized.functions_covered(), 1);
+    }
+
+    #[test]
+    fn test_line_coverage_default() {
+        let lc = LineCoverage::default();
+        assert!(lc.files.is_empty());
+    }
+
+    #[test]
+    fn test_wasm_source_map_default() {
+        let sm = WasmSourceMap::default();
+        assert!(sm.entries.is_empty());
+        assert!(sm.sources.is_empty());
+    }
 }

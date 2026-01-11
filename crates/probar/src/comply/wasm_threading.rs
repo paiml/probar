@@ -907,4 +907,444 @@ fn test_007() {}
         let report = checker.tarantula_report();
         assert!(report.is_none());
     }
+
+    // =========================================================================
+    // Additional tests for 95% coverage
+    // =========================================================================
+
+    #[test]
+    fn test_suspicious_reason_display() {
+        assert_eq!(
+            format!("{}", SuspiciousReason::JsExtension),
+            ".js extension"
+        );
+        assert_eq!(
+            format!("{}", SuspiciousReason::JsContent),
+            "JS content detected"
+        );
+    }
+
+    #[test]
+    fn test_suspicious_reason_equality() {
+        assert_eq!(SuspiciousReason::JsExtension, SuspiciousReason::JsExtension);
+        assert_eq!(SuspiciousReason::JsContent, SuspiciousReason::JsContent);
+        assert_ne!(SuspiciousReason::JsExtension, SuspiciousReason::JsContent);
+    }
+
+    #[test]
+    fn test_suspicious_file_struct() {
+        let file = SuspiciousFile {
+            path: std::path::PathBuf::from("/target/evil.js"),
+            reason: SuspiciousReason::JsExtension,
+        };
+        assert_eq!(file.path.to_str().unwrap(), "/target/evil.js");
+        assert_eq!(file.reason, SuspiciousReason::JsExtension);
+    }
+
+    #[test]
+    fn test_compliance_result_warn_with_warnings() {
+        let mut result = ComplianceResult::new();
+        result.add_check(ComplianceCheck::pass("TEST-001", "Pass"));
+        result.add_check(ComplianceCheck::warn("TEST-002", "Warn", "Warning", 1));
+
+        let summary = result.summary();
+        assert!(summary.contains("COMPLIANT (with warnings)"));
+        assert!(result.compliant);
+    }
+
+    #[test]
+    fn test_compliance_result_non_compliant() {
+        let mut result = ComplianceResult::new();
+        result.add_check(ComplianceCheck::fail("TEST-001", "Fail", "Error", 1));
+
+        let summary = result.summary();
+        assert!(summary.contains("NON-COMPLIANT"));
+        assert!(!result.compliant);
+    }
+
+    #[test]
+    fn test_wasm_threading_compliance_with_lcov() {
+        let mut checker = WasmThreadingCompliance::new();
+
+        checker.with_lcov(
+            Some(Path::new("/tmp/passed.lcov")),
+            Some(Path::new("/tmp/failed.lcov")),
+        );
+
+        assert!(checker.lcov_passed.is_some());
+        assert!(checker.lcov_failed.is_some());
+    }
+
+    #[test]
+    fn test_wasm_threading_compliance_with_lcov_none() {
+        let mut checker = WasmThreadingCompliance::new();
+
+        checker.with_lcov(None, None);
+
+        assert!(checker.lcov_passed.is_none());
+        assert!(checker.lcov_failed.is_none());
+    }
+
+    #[test]
+    fn test_check_state_sync_lint_skip_on_error() {
+        let temp_dir = TempDir::new().unwrap();
+        // Create a directory that can't be linted (no .rs files)
+
+        let mut checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_state_sync_lint(temp_dir.path(), &mut result);
+
+        // Should pass or skip since there's nothing to lint
+        assert!(result.checks.len() == 1);
+    }
+
+    #[test]
+    fn test_check_mock_runtime_tests_multiple_patterns() {
+        let temp_dir = TempDir::new().unwrap();
+        let tests_dir = temp_dir.path().join("tests");
+        fs::create_dir(&tests_dir).unwrap();
+
+        // File with WasmCallbackTestHarness
+        let test_file = tests_dir.join("callback_test.rs");
+        fs::write(&test_file, "use WasmCallbackTestHarness;\nfn test() {}").unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_mock_runtime_tests(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Pass);
+    }
+
+    #[test]
+    fn test_check_property_tests_no_proptest() {
+        let temp_dir = TempDir::new().unwrap();
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&src_dir).unwrap();
+
+        // File without proptest
+        let lib_file = src_dir.join("lib.rs");
+        fs::write(&lib_file, "fn main() {}").unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_property_tests(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Warn);
+        assert!(result.checks[0]
+            .details
+            .as_ref()
+            .unwrap()
+            .contains("proptest"));
+    }
+
+    #[test]
+    fn test_check_property_tests_proptest_without_mock() {
+        let temp_dir = TempDir::new().unwrap();
+        let tests_dir = temp_dir.path().join("tests");
+        fs::create_dir(&tests_dir).unwrap();
+
+        // File with proptest but no mock runtime
+        let test_file = tests_dir.join("prop_test.rs");
+        fs::write(&test_file, "proptest! { fn test() {} }").unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_property_tests(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Warn);
+        assert!(result.checks[0]
+            .details
+            .as_ref()
+            .unwrap()
+            .contains("models"));
+    }
+
+    #[test]
+    fn test_check_property_tests_proptest_with_mock() {
+        let temp_dir = TempDir::new().unwrap();
+        let tests_dir = temp_dir.path().join("tests");
+        fs::create_dir(&tests_dir).unwrap();
+
+        // File with both proptest and mock runtime
+        let test_file = tests_dir.join("prop_test.rs");
+        fs::write(
+            &test_file,
+            "proptest! { fn test() { let r = MockWasmRuntime::new(); } }",
+        )
+        .unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_property_tests(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Pass);
+    }
+
+    #[test]
+    fn test_check_regression_tests_all_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let tests_dir = temp_dir.path().join("tests");
+        fs::create_dir(&tests_dir).unwrap();
+
+        // File with all required markers
+        let test_file = tests_dir.join("regression.rs");
+        fs::write(
+            &test_file,
+            r#"
+            // WAPR-QA-REGRESSION-005
+            fn test_005() {}
+            // WAPR-QA-REGRESSION-006
+            fn test_006() {}
+            // WAPR-QA-REGRESSION-007
+            fn test_007() {}
+            "#,
+        )
+        .unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_regression_tests(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Pass);
+    }
+
+    #[test]
+    fn test_check_regression_tests_partial() {
+        let temp_dir = TempDir::new().unwrap();
+        let tests_dir = temp_dir.path().join("tests");
+        fs::create_dir(&tests_dir).unwrap();
+
+        // File with only some markers
+        let test_file = tests_dir.join("regression.rs");
+        fs::write(&test_file, "// WAPR-QA-REGRESSION-005\nfn test() {}").unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_regression_tests(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Fail);
+    }
+
+    #[test]
+    fn test_check_target_no_target_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        // Don't create target directory
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_target_js_files(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Skip);
+    }
+
+    #[test]
+    fn test_check_target_empty_target_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let target_dir = temp_dir.path().join("target");
+        fs::create_dir(&target_dir).unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_target_js_files(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Pass);
+    }
+
+    #[test]
+    fn test_find_suspicious_files_js_content_detection() {
+        let temp_dir = TempDir::new().unwrap();
+        let target_dir = temp_dir.path().join("target");
+        fs::create_dir(&target_dir).unwrap();
+
+        // Create a file that looks like JS but has different extension
+        let hidden_js = target_dir.join("sneaky.txt");
+        fs::write(&hidden_js, "function test() { console.log('hidden'); }").unwrap();
+
+        let suspicious = find_suspicious_files_in_target(&target_dir);
+        // Should detect JS content in the .txt file
+        assert!(suspicious
+            .iter()
+            .any(|s| s.reason == SuspiciousReason::JsContent));
+    }
+
+    #[test]
+    fn test_find_suspicious_files_binary_skip() {
+        let temp_dir = TempDir::new().unwrap();
+        let target_dir = temp_dir.path().join("target");
+        fs::create_dir(&target_dir).unwrap();
+
+        // Create a binary file
+        let wasm_file = target_dir.join("app.wasm");
+        fs::write(&wasm_file, &[0u8, 1, 2, 3, 97, 115, 109]).unwrap();
+
+        let suspicious = find_suspicious_files_in_target(&target_dir);
+        // WASM file should not be flagged
+        assert!(suspicious.is_empty());
+    }
+
+    #[test]
+    fn test_find_suspicious_files_nested_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let target_dir = temp_dir.path().join("target");
+        let nested_dir = target_dir.join("debug").join("build");
+        fs::create_dir_all(&nested_dir).unwrap();
+
+        // Create JS file in nested directory
+        let js_file = nested_dir.join("backdoor.js");
+        fs::write(&js_file, "alert('pwned');").unwrap();
+
+        let suspicious = find_suspicious_files_in_target(&target_dir);
+        assert!(!suspicious.is_empty());
+        assert!(suspicious
+            .iter()
+            .any(|s| s.reason == SuspiciousReason::JsExtension));
+    }
+
+    #[test]
+    fn test_check_file_for_js_content_not_text() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create a binary file with non-ASCII characters
+        let binary_file = temp_dir.path().join("binary.dat");
+        fs::write(&binary_file, &[0u8, 255, 128, 64, 32]).unwrap();
+
+        let result = check_file_for_js_content(&binary_file);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_check_file_for_js_content_single_keyword() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create file with only one JS keyword (not enough)
+        let file = temp_dir.path().join("single.txt");
+        fs::write(&file, "function main").unwrap();
+
+        let result = check_file_for_js_content(&file);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_check_file_for_js_content_multiple_keywords() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create file with multiple JS keywords
+        let file = temp_dir.path().join("js_content.txt");
+        fs::write(&file, "function test() { const x = 1; let y = 2; }").unwrap();
+
+        let result = check_file_for_js_content(&file);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SuspiciousReason::JsContent);
+    }
+
+    #[test]
+    fn test_count_pattern_in_dir_nested() {
+        let temp_dir = TempDir::new().unwrap();
+        let sub_dir = temp_dir.path().join("src").join("nested");
+        fs::create_dir_all(&sub_dir).unwrap();
+
+        // File in nested directory
+        let nested_file = sub_dir.join("test.rs");
+        fs::write(
+            &nested_file,
+            "MockWasmRuntime MockWasmRuntime MockWasmRuntime",
+        )
+        .unwrap();
+
+        assert_eq!(count_pattern_in_dir(temp_dir.path(), "MockWasmRuntime"), 3);
+    }
+
+    #[test]
+    fn test_count_pattern_in_dir_skips_target() {
+        let temp_dir = TempDir::new().unwrap();
+        let target_dir = temp_dir.path().join("target");
+        fs::create_dir(&target_dir).unwrap();
+
+        // File in target should be skipped
+        let target_file = target_dir.join("test.rs");
+        fs::write(&target_file, "MockWasmRuntime").unwrap();
+
+        assert_eq!(count_pattern_in_dir(temp_dir.path(), "MockWasmRuntime"), 0);
+    }
+
+    #[test]
+    fn test_count_pattern_in_dir_skips_hidden() {
+        let temp_dir = TempDir::new().unwrap();
+        let hidden_dir = temp_dir.path().join(".hidden");
+        fs::create_dir(&hidden_dir).unwrap();
+
+        // File in hidden directory should be skipped
+        let hidden_file = hidden_dir.join("test.rs");
+        fs::write(&hidden_file, "MockWasmRuntime").unwrap();
+
+        assert_eq!(count_pattern_in_dir(temp_dir.path(), "MockWasmRuntime"), 0);
+    }
+
+    #[test]
+    fn test_compliance_check_skip_reason() {
+        let check = ComplianceCheck::skip("TEST-001", "Skipped", "Not applicable");
+        assert_eq!(check.status, ComplianceStatus::Skip);
+        assert_eq!(check.details.unwrap(), "Not applicable");
+        assert_eq!(check.issue_count, 0);
+    }
+
+    #[test]
+    fn test_compliance_status_variants() {
+        let pass = ComplianceStatus::Pass;
+        let fail = ComplianceStatus::Fail;
+        let warn = ComplianceStatus::Warn;
+        let skip = ComplianceStatus::Skip;
+
+        assert_eq!(pass.to_string(), "PASS");
+        assert_eq!(fail.to_string(), "FAIL");
+        assert_eq!(warn.to_string(), "WARN");
+        assert_eq!(skip.to_string(), "SKIP");
+    }
+
+    #[test]
+    fn test_wasm_threading_compliance_default() {
+        let checker = WasmThreadingCompliance::default();
+        assert!(checker.lcov_passed.is_none());
+        assert!(checker.lcov_failed.is_none());
+    }
+
+    #[test]
+    fn test_compliance_result_default() {
+        let result = ComplianceResult::default();
+        assert!(result.checks.is_empty());
+        // Default derive uses bool::default() = false, unlike new() which sets true
+        assert!(!result.compliant);
+        assert_eq!(result.files_analyzed, 0);
+    }
+
+    #[test]
+    fn test_multiple_suspicious_js_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let target_dir = temp_dir.path().join("target");
+        let debug_dir = target_dir.join("debug");
+        fs::create_dir_all(&debug_dir).unwrap();
+
+        // Create multiple suspicious JS files
+        for i in 0..6 {
+            let js_file = debug_dir.join(format!("file{i}.js"));
+            fs::write(&js_file, format!("console.log({i});")).unwrap();
+        }
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_target_js_files(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Fail);
+        // Should show "..." for more than 5 files
+        assert!(result.checks[0].details.as_ref().unwrap().contains("..."));
+    }
 }

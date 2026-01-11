@@ -817,6 +817,7 @@ fn to_pascal_case(s: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -964,5 +965,456 @@ mod tests {
 
         let streaming = TileStrategy::Streaming { window: 32 };
         assert_eq!(streaming.optimal_workgroup_size(), (32, 1, 1));
+    }
+
+    // ========================================================================
+    // Additional comprehensive tests for 95%+ coverage
+    // ========================================================================
+
+    #[test]
+    fn test_tensor_type_rust() {
+        assert_eq!(TensorType::F32.to_rust(), "f32");
+        assert_eq!(TensorType::F16.to_rust(), "half::f16");
+        assert_eq!(TensorType::I32.to_rust(), "i32");
+        assert_eq!(TensorType::U32.to_rust(), "u32");
+    }
+
+    #[test]
+    fn test_tensor_type_byte_size() {
+        assert_eq!(TensorType::F32.byte_size(), 4);
+        assert_eq!(TensorType::F16.byte_size(), 2);
+        assert_eq!(TensorType::I32.byte_size(), 4);
+        assert_eq!(TensorType::U32.byte_size(), 4);
+    }
+
+    #[test]
+    fn test_tensor_type_clone() {
+        let t = TensorType::F32;
+        let cloned = t;
+        assert_eq!(t, cloned);
+    }
+
+    #[test]
+    fn test_tensor_binding_default_values() {
+        let binding = TensorBinding::new("test", TensorType::I32, &[10, 20]);
+        assert_eq!(binding.group, 0);
+        assert_eq!(binding.binding, 0);
+        assert!(binding.read_only);
+    }
+
+    #[test]
+    fn test_tensor_binding_to_wgsl_binding_read_only() {
+        let binding = TensorBinding::new("data", TensorType::F32, &[100]).at(1, 2);
+        let wgsl = binding.to_wgsl_binding();
+        assert!(wgsl.contains("@group(1) @binding(2)"));
+        assert!(wgsl.contains("var<storage, read>"));
+        assert!(wgsl.contains("data"));
+        assert!(wgsl.contains("f32"));
+    }
+
+    #[test]
+    fn test_tensor_binding_to_wgsl_binding_read_write() {
+        let binding = TensorBinding::new("output", TensorType::U32, &[50])
+            .at(0, 0)
+            .writable();
+        let wgsl = binding.to_wgsl_binding();
+        assert!(wgsl.contains("var<storage, read_write>"));
+    }
+
+    #[test]
+    fn test_tensor_binding_clone() {
+        let binding = TensorBinding::new("test", TensorType::F32, &[1, 2, 3])
+            .at(1, 2)
+            .writable();
+        let cloned = binding.clone();
+        assert_eq!(binding.name, cloned.name);
+        assert_eq!(binding.shape, cloned.shape);
+        assert_eq!(binding.read_only, cloned.read_only);
+    }
+
+    #[test]
+    fn test_tile_strategy_none() {
+        let strategy = TileStrategy::None;
+        assert_eq!(strategy.optimal_workgroup_size(), (64, 1, 1));
+    }
+
+    #[test]
+    fn test_tile_strategy_clone() {
+        let strategy = TileStrategy::Simple2D {
+            tile_x: 8,
+            tile_y: 8,
+        };
+        let cloned = strategy.clone();
+        assert!(matches!(
+            cloned,
+            TileStrategy::Simple2D {
+                tile_x: 8,
+                tile_y: 8
+            }
+        ));
+    }
+
+    #[test]
+    fn test_elementwise_op_sqrt() {
+        assert_eq!(ElementwiseOp::Sqrt.to_wgsl_expr("val"), "sqrt(val)");
+    }
+
+    #[test]
+    fn test_elementwise_op_abs() {
+        assert_eq!(ElementwiseOp::Abs.to_wgsl_expr("v"), "abs(v)");
+    }
+
+    #[test]
+    fn test_elementwise_op_sigmoid() {
+        assert_eq!(
+            ElementwiseOp::Sigmoid.to_wgsl_expr("x"),
+            "1.0 / (1.0 + exp(-x))"
+        );
+    }
+
+    #[test]
+    fn test_elementwise_op_tanh() {
+        assert_eq!(ElementwiseOp::Tanh.to_wgsl_expr("x"), "tanh(x)");
+    }
+
+    #[test]
+    fn test_elementwise_op_mul_scalar() {
+        assert_eq!(ElementwiseOp::MulScalar(3).to_wgsl_expr("y"), "(y * 3.0)");
+        assert_eq!(ElementwiseOp::MulScalar(-2).to_wgsl_expr("x"), "(x * -2.0)");
+    }
+
+    #[test]
+    fn test_elementwise_op_clamp() {
+        assert_eq!(ElementwiseOp::Clamp.to_wgsl_expr("x"), "clamp(x, 0.0, 1.0)");
+    }
+
+    #[test]
+    fn test_elementwise_op_eq() {
+        assert_eq!(ElementwiseOp::Log, ElementwiseOp::Log);
+        assert_ne!(ElementwiseOp::Log, ElementwiseOp::Exp);
+        assert_eq!(ElementwiseOp::AddScalar(5), ElementwiseOp::AddScalar(5));
+        assert_ne!(ElementwiseOp::AddScalar(5), ElementwiseOp::AddScalar(6));
+    }
+
+    #[test]
+    fn test_reduce_kind_identity() {
+        assert_eq!(ReduceKind::Sum.identity(), "0.0");
+        assert_eq!(ReduceKind::Mean.identity(), "0.0");
+        assert_eq!(ReduceKind::Max.identity(), "-3.402823e+38");
+        assert_eq!(ReduceKind::Min.identity(), "3.402823e+38");
+    }
+
+    #[test]
+    fn test_reduce_kind_combine_op() {
+        assert_eq!(ReduceKind::Sum.combine_op(), "+");
+        assert_eq!(ReduceKind::Mean.combine_op(), "+");
+        assert_eq!(ReduceKind::Max.combine_op(), "max");
+        assert_eq!(ReduceKind::Min.combine_op(), "min");
+    }
+
+    #[test]
+    fn test_reduce_kind_eq() {
+        assert_eq!(ReduceKind::Sum, ReduceKind::Sum);
+        assert_ne!(ReduceKind::Sum, ReduceKind::Max);
+    }
+
+    #[test]
+    fn test_tile_op_load_shared() {
+        let op = TileOp::LoadShared {
+            src: "audio".into(),
+            tile_size: (32, 32),
+        };
+        match op {
+            TileOp::LoadShared { src, tile_size } => {
+                assert_eq!(src, "audio");
+                assert_eq!(tile_size, (32, 32));
+            }
+            _ => panic!("Expected LoadShared"),
+        }
+    }
+
+    #[test]
+    fn test_tile_op_mma() {
+        let op = TileOp::Mma {
+            a: "A".into(),
+            b: "B".into(),
+            c: "C".into(),
+        };
+        match op {
+            TileOp::Mma { a, b, c } => {
+                assert_eq!(a, "A");
+                assert_eq!(b, "B");
+                assert_eq!(c, "C");
+            }
+            _ => panic!("Expected Mma"),
+        }
+    }
+
+    #[test]
+    fn test_tile_op_reduce() {
+        let op = TileOp::Reduce {
+            kind: ReduceKind::Max,
+            input: "values".into(),
+            output: "max_val".into(),
+        };
+        match op {
+            TileOp::Reduce {
+                kind,
+                input,
+                output,
+            } => {
+                assert_eq!(kind, ReduceKind::Max);
+                assert_eq!(input, "values");
+                assert_eq!(output, "max_val");
+            }
+            _ => panic!("Expected Reduce"),
+        }
+    }
+
+    #[test]
+    fn test_tile_op_barrier() {
+        let op = TileOp::Barrier;
+        assert!(matches!(op, TileOp::Barrier));
+    }
+
+    #[test]
+    fn test_tile_op_clone() {
+        let op = TileOp::Elementwise {
+            op: ElementwiseOp::Relu,
+            operands: vec!["x".into(), "y".into()],
+            output: Some("z".into()),
+        };
+        let cloned = op.clone();
+        assert!(matches!(cloned, TileOp::Elementwise { .. }));
+    }
+
+    #[test]
+    fn test_compute_brick_tile_strategy() {
+        let brick = ComputeBrick::new("test").tile_strategy(TileStrategy::Cooperative {
+            m: 16,
+            n: 16,
+            k: 8,
+        });
+
+        // The tile_strategy is stored internally
+        assert_eq!(brick.name(), "test");
+    }
+
+    #[test]
+    fn test_compute_brick_shared_memory() {
+        let brick = ComputeBrick::new("test")
+            .shared("tile_a", TensorType::F32, 256)
+            .shared("tile_b", TensorType::F32, 128);
+
+        let wgsl = brick.to_wgsl();
+        assert!(wgsl.contains("var<workgroup> tile_a"));
+        assert!(wgsl.contains("var<workgroup> tile_b"));
+    }
+
+    #[test]
+    fn test_compute_brick_verification_no_outputs() {
+        let brick = ComputeBrick::new("test").input("input", TensorType::F32, &[1024]);
+
+        let result = brick.verify();
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_compute_brick_verification_invalid_load_tensor() {
+        let brick = ComputeBrick::new("test")
+            .input("input", TensorType::F32, &[1024])
+            .output("output", TensorType::F32, &[1024])
+            .op(TileOp::LoadShared {
+                src: "nonexistent".into(),
+                tile_size: (64, 1),
+            });
+
+        let result = brick.verify();
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_compute_brick_verification_invalid_store_tensor() {
+        let brick = ComputeBrick::new("test")
+            .input("input", TensorType::F32, &[1024])
+            .output("output", TensorType::F32, &[1024])
+            .op(TileOp::StoreShared {
+                dst: "nonexistent".into(),
+            });
+
+        let result = brick.verify();
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_compute_brick_wgsl_barrier() {
+        let brick = ComputeBrick::new("test")
+            .input("input", TensorType::F32, &[64])
+            .output("output", TensorType::F32, &[64])
+            .op(TileOp::Barrier);
+
+        let wgsl = brick.to_wgsl();
+        assert!(wgsl.contains("workgroupBarrier()"));
+    }
+
+    #[test]
+    fn test_compute_brick_wgsl_mma() {
+        let brick = ComputeBrick::new("matmul")
+            .input("A", TensorType::F32, &[64, 64])
+            .input("B", TensorType::F32, &[64, 64])
+            .output("C", TensorType::F32, &[64, 64])
+            .op(TileOp::Mma {
+                a: "A".into(),
+                b: "B".into(),
+                c: "C".into(),
+            });
+
+        let wgsl = brick.to_wgsl();
+        assert!(wgsl.contains("Matrix multiply"));
+    }
+
+    #[test]
+    fn test_compute_brick_wgsl_reduce() {
+        let brick = ComputeBrick::new("reduce")
+            .input("values", TensorType::F32, &[1024])
+            .output("result", TensorType::F32, &[1])
+            .op(TileOp::Reduce {
+                kind: ReduceKind::Sum,
+                input: "values".into(),
+                output: "result".into(),
+            });
+
+        let wgsl = brick.to_wgsl();
+        assert!(wgsl.contains("Reduce"));
+    }
+
+    #[test]
+    fn test_compute_brick_wgsl_elementwise_no_output() {
+        let brick = ComputeBrick::new("test")
+            .input("x", TensorType::F32, &[64])
+            .output("y", TensorType::F32, &[64])
+            .op(TileOp::LoadShared {
+                src: "x".into(),
+                tile_size: (64, 1),
+            })
+            .op(TileOp::Elementwise {
+                op: ElementwiseOp::Log,
+                operands: vec!["x".into()],
+                output: None, // Output defaults to first operand
+            });
+
+        let wgsl = brick.to_wgsl();
+        assert!(wgsl.contains("log(val_x)"));
+    }
+
+    #[test]
+    fn test_compute_brick_wgsl_store_fallback() {
+        let brick = ComputeBrick::new("test")
+            .input("input", TensorType::F32, &[64])
+            .output("output", TensorType::F32, &[64])
+            .op(TileOp::LoadShared {
+                src: "input".into(),
+                tile_size: (64, 1),
+            })
+            .op(TileOp::StoreShared {
+                dst: "output".into(),
+            });
+
+        let wgsl = brick.to_wgsl();
+        assert!(wgsl.contains("output[gid]"));
+    }
+
+    #[test]
+    fn test_compute_brick_implements_brick() {
+        let brick = ComputeBrick::new("test")
+            .input("in", TensorType::F32, &[32])
+            .output("out", TensorType::F32, &[32]);
+
+        assert_eq!(brick.brick_name(), "ComputeBrick");
+        assert!(brick.assertions().is_empty());
+        assert_eq!(brick.budget().total_ms, 100);
+        assert!(brick.to_html().is_empty());
+        assert!(brick.to_css().is_empty());
+    }
+
+    #[test]
+    fn test_to_pascal_case_variants() {
+        assert_eq!(to_pascal_case("simple"), "Simple");
+        assert_eq!(to_pascal_case("two_words"), "TwoWords");
+        assert_eq!(to_pascal_case("three-part-name"), "ThreePartName");
+        assert_eq!(to_pascal_case("mixed_style-here"), "MixedStyleHere");
+        assert_eq!(to_pascal_case("with space"), "WithSpace");
+    }
+
+    #[test]
+    fn test_compute_brick_multiple_inputs() {
+        let brick = ComputeBrick::new("multi")
+            .input("a", TensorType::F32, &[100])
+            .input("b", TensorType::I32, &[100])
+            .input("c", TensorType::U32, &[100])
+            .output("result", TensorType::F32, &[100]);
+
+        assert_eq!(brick.inputs().len(), 3);
+        assert_eq!(brick.inputs()[0].binding, 0);
+        assert_eq!(brick.inputs()[1].binding, 1);
+        assert_eq!(brick.inputs()[2].binding, 2);
+    }
+
+    #[test]
+    fn test_compute_brick_multiple_outputs() {
+        let brick = ComputeBrick::new("multi_out")
+            .input("in", TensorType::F32, &[50])
+            .output("out1", TensorType::F32, &[50])
+            .output("out2", TensorType::F32, &[25]);
+
+        assert_eq!(brick.outputs().len(), 2);
+        assert_eq!(brick.outputs()[0].binding, 0);
+        assert_eq!(brick.outputs()[1].binding, 1);
+        assert_eq!(brick.outputs()[0].group, 1);
+        assert_eq!(brick.outputs()[1].group, 1);
+    }
+
+    #[test]
+    fn test_compute_brick_clone() {
+        let brick = ComputeBrick::new("test")
+            .workgroup_size(128, 4, 1)
+            .input("in", TensorType::F16, &[256])
+            .output("out", TensorType::F16, &[256])
+            .shared("cache", TensorType::F16, 512);
+
+        let cloned = brick.clone();
+        assert_eq!(brick.name(), cloned.name());
+        assert_eq!(brick.get_workgroup_size(), cloned.get_workgroup_size());
+    }
+
+    #[test]
+    fn test_js_dispatch_no_outputs() {
+        let brick = ComputeBrick::new("no_out").input("in", TensorType::F32, &[10]);
+
+        let js = brick.to_dispatch_js();
+        // Should still generate dispatch function but no numWorkgroups calculation
+        assert!(js.contains("dispatchNoOut"));
+    }
+
+    #[test]
+    fn test_rust_bindings_multiple_io() {
+        let brick = ComputeBrick::new("complex")
+            .input("in1", TensorType::F32, &[100])
+            .input("in2", TensorType::I32, &[50])
+            .output("out1", TensorType::F32, &[100])
+            .output("out2", TensorType::U32, &[25]);
+
+        let rust = brick.to_rust_bindings();
+        assert!(rust.contains("Input: in1"));
+        assert!(rust.contains("Input: in2"));
+        assert!(rust.contains("Output: out1"));
+        assert!(rust.contains("Output: out2"));
+    }
+
+    #[test]
+    fn test_tensor_binding_empty_shape() {
+        let binding = TensorBinding::new("scalar", TensorType::F32, &[]);
+        assert_eq!(binding.element_count(), 1); // Product of empty vec is 1
+        assert_eq!(binding.byte_size(), 4);
     }
 }

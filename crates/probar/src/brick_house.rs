@@ -437,6 +437,7 @@ impl JidokaAlert {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::brick::BrickAssertion;
@@ -660,5 +661,265 @@ mod tests {
         let debug_str = format!("{:?}", entry);
         assert!(debug_str.contains("test"));
         assert!(debug_str.contains("100"));
+    }
+
+    #[test]
+    fn test_brick_house_to_css() {
+        let brick1 = Arc::new(SimpleBrick { name: "brick1" });
+        let brick2 = Arc::new(SimpleBrick { name: "brick2" });
+        let mut house = BrickHouse::new("test", 1000);
+        house.add_brick(brick1, 100).unwrap();
+        house.add_brick(brick2, 100).unwrap();
+
+        let css = house.to_css();
+        assert!(css.contains("brick1"));
+        assert!(css.contains("brick2"));
+    }
+
+    #[test]
+    fn test_brick_house_last_report_none() {
+        let house = BrickHouse::new("test", 1000);
+        assert!(house.last_report().is_none());
+    }
+
+    #[test]
+    fn test_brick_house_render_populates_report() {
+        let brick = Arc::new(SimpleBrick { name: "test" });
+        let mut house = BrickHouse::new("test-house", 1000);
+        house.add_brick(brick, 100).unwrap();
+
+        let _ = house.render().unwrap();
+
+        let report = house.last_report();
+        assert!(report.is_some());
+        let report = report.unwrap();
+        assert_eq!(report.house_name, "test-house");
+        assert!(report.brick_timings.contains_key("test"));
+    }
+
+    #[test]
+    fn test_budget_report_violations() {
+        let violation = BudgetViolation {
+            brick_name: "slow".into(),
+            budget: BrickBudget::uniform(100),
+            actual: Duration::from_millis(150),
+            phase: Some(BrickPhase::Paint),
+        };
+        let report = BudgetReport {
+            house_name: "test".into(),
+            total_budget_ms: 1000,
+            total_used_ms: 150,
+            brick_timings: HashMap::new(),
+            violations: vec![violation],
+            timestamp: std::time::SystemTime::now(),
+        };
+
+        assert!(!report.within_budget());
+        assert_eq!(report.violations().len(), 1);
+    }
+
+    #[test]
+    fn test_brick_house_builder_debug() {
+        let builder = BrickHouseBuilder::new("test-app").budget_ms(500);
+        let debug_str = format!("{:?}", builder);
+        assert!(debug_str.contains("test-app"));
+        assert!(debug_str.contains("500"));
+    }
+
+    #[test]
+    fn test_brick_house_debug() {
+        let mut house = BrickHouse::new("test-house", 1000);
+        let brick = Arc::new(SimpleBrick { name: "test" });
+        house.add_brick(brick, 100).unwrap();
+
+        let debug_str = format!("{:?}", house);
+        assert!(debug_str.contains("test-house"));
+        assert!(debug_str.contains("1000"));
+    }
+
+    #[test]
+    fn test_jidoka_alert_zero_budget() {
+        let violation = BudgetViolation {
+            brick_name: "test".into(),
+            budget: BrickBudget::uniform(0),
+            actual: Duration::from_millis(10),
+            phase: None,
+        };
+
+        let alert = JidokaAlert::from_violation("house", &violation);
+        assert_eq!(alert.overage_percent(), 0.0);
+    }
+
+    #[test]
+    fn test_jidoka_alert_fields() {
+        let violation = BudgetViolation {
+            brick_name: "slow-brick".into(),
+            budget: BrickBudget::uniform(100),
+            actual: Duration::from_millis(200),
+            phase: Some(BrickPhase::Layout),
+        };
+
+        let alert = JidokaAlert::from_violation("my-house", &violation);
+        assert_eq!(alert.house_name, "my-house");
+        assert_eq!(alert.brick_name, "slow-brick");
+        assert_eq!(alert.budget_ms, 100);
+        assert_eq!(alert.actual_ms, 200);
+        assert!(alert.phase.is_some());
+        assert!(alert.stack_trace.is_none());
+        assert_eq!(alert.overage_percent(), 100.0);
+    }
+
+    #[test]
+    fn test_brick_entry_debug_no_render_time() {
+        let brick = Arc::new(SimpleBrick { name: "test" });
+        let entry = BrickEntry {
+            brick,
+            allocated_ms: 100,
+            last_render_time: None,
+        };
+        let debug_str = format!("{:?}", entry);
+        assert!(debug_str.contains("None"));
+    }
+
+    // Test for a brick that fails verification
+    struct FailingBrick {
+        name: &'static str,
+    }
+
+    impl Brick for FailingBrick {
+        fn brick_name(&self) -> &'static str {
+            self.name
+        }
+
+        fn assertions(&self) -> &[BrickAssertion] {
+            &[BrickAssertion::TextVisible]
+        }
+
+        fn budget(&self) -> BrickBudget {
+            BrickBudget::uniform(16)
+        }
+
+        fn verify(&self) -> BrickVerification {
+            BrickVerification {
+                passed: vec![],
+                failed: vec![(BrickAssertion::TextVisible, "Text not visible".to_string())],
+                verification_time: Duration::from_micros(1),
+            }
+        }
+
+        fn to_html(&self) -> String {
+            format!("<div class=\"{}\">{}</div>", self.name, self.name)
+        }
+
+        fn to_css(&self) -> String {
+            format!(".{} {{ display: block; }}", self.name)
+        }
+
+        fn can_render(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn test_brick_house_render_failing_brick() {
+        let brick = Arc::new(FailingBrick { name: "failing" });
+        let mut house = BrickHouse::new("test-house", 1000);
+        house.add_brick(brick, 100).unwrap();
+
+        let result = house.render();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_brick_house_can_render_with_failing_brick() {
+        let brick = Arc::new(FailingBrick { name: "failing" });
+        let mut house = BrickHouse::new("test-house", 1000);
+        house.add_brick(brick, 100).unwrap();
+
+        assert!(!house.can_render());
+    }
+
+    #[test]
+    fn test_brick_house_multiple_bricks_render() {
+        let brick1 = Arc::new(SimpleBrick { name: "header" });
+        let brick2 = Arc::new(SimpleBrick { name: "content" });
+        let brick3 = Arc::new(SimpleBrick { name: "footer" });
+
+        let mut house = BrickHouse::new("page", 1000);
+        house.add_brick(brick1, 100).unwrap();
+        house.add_brick(brick2, 200).unwrap();
+        house.add_brick(brick3, 100).unwrap();
+
+        let html = house.render().unwrap();
+        assert!(html.contains("header"));
+        assert!(html.contains("content"));
+        assert!(html.contains("footer"));
+    }
+
+    #[test]
+    fn test_brick_house_builder_with_many_bricks() {
+        let brick1 = Arc::new(SimpleBrick { name: "a" });
+        let brick2 = Arc::new(SimpleBrick { name: "b" });
+        let brick3 = Arc::new(SimpleBrick { name: "c" });
+
+        let house = BrickHouseBuilder::new("multi")
+            .budget_ms(1000)
+            .brick(brick1, 100)
+            .brick(brick2, 200)
+            .brick(brick3, 300)
+            .build()
+            .unwrap();
+
+        assert_eq!(house.brick_count(), 3);
+        assert_eq!(house.remaining_budget_ms(), 400);
+    }
+
+    #[test]
+    fn test_budget_report_utilization_100_percent() {
+        let report = BudgetReport {
+            house_name: "test".into(),
+            total_budget_ms: 100,
+            total_used_ms: 100,
+            brick_timings: HashMap::new(),
+            violations: vec![],
+            timestamp: std::time::SystemTime::now(),
+        };
+        assert_eq!(report.utilization(), 100.0);
+    }
+
+    #[test]
+    fn test_budget_report_utilization_over_budget() {
+        let report = BudgetReport {
+            house_name: "test".into(),
+            total_budget_ms: 100,
+            total_used_ms: 200,
+            brick_timings: HashMap::new(),
+            violations: vec![],
+            timestamp: std::time::SystemTime::now(),
+        };
+        assert_eq!(report.utilization(), 200.0);
+        // Over budget but no violations means it's not within budget
+        assert!(!report.within_budget());
+    }
+
+    #[test]
+    fn test_brick_house_empty_render() {
+        let mut house = BrickHouse::new("empty", 1000);
+        let html = house.render().unwrap();
+        assert!(html.is_empty());
+    }
+
+    #[test]
+    fn test_brick_house_empty_css() {
+        let house = BrickHouse::new("empty", 1000);
+        let css = house.to_css();
+        assert!(css.is_empty());
+    }
+
+    #[test]
+    fn test_brick_house_verify_all_empty() {
+        let house = BrickHouse::new("empty", 1000);
+        let verifications = house.verify_all();
+        assert!(verifications.is_empty());
     }
 }

@@ -317,6 +317,35 @@ mod tests {
     }
 
     #[test]
+    fn test_brick_verification_error_multiple_failures() {
+        let err = BrickVerificationError {
+            brick_name: "ComplexBrick".to_string(),
+            failures: vec![
+                ("MinWidth".to_string(), "too narrow".to_string()),
+                ("MinHeight".to_string(), "too short".to_string()),
+                ("Contrast".to_string(), "insufficient".to_string()),
+            ],
+            duration: Duration::from_micros(500),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("ComplexBrick"));
+        assert!(display.contains("MinWidth"));
+        assert!(display.contains("MinHeight"));
+        assert!(display.contains("Contrast"));
+    }
+
+    #[test]
+    fn test_brick_verification_error_is_error() {
+        let err = BrickVerificationError {
+            brick_name: "Test".to_string(),
+            failures: vec![],
+            duration: Duration::ZERO,
+        };
+        // Verify it implements std::error::Error
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
     fn test_budget_exceeded_error_display() {
         let err = BudgetExceededError {
             brick_name: "TestBrick".to_string(),
@@ -332,6 +361,34 @@ mod tests {
     }
 
     #[test]
+    fn test_budget_exceeded_error_phases() {
+        for phase in ["measure", "layout", "paint", "total"] {
+            let err = BudgetExceededError {
+                brick_name: "PhaseBrick".to_string(),
+                phase: phase.to_string(),
+                actual_ms: 25.0,
+                budget_ms: 10.0,
+            };
+            let display = format!("{}", err);
+            assert!(display.contains(phase));
+            assert!(display.contains("25.00"));
+            assert!(display.contains("10.00"));
+        }
+    }
+
+    #[test]
+    fn test_budget_exceeded_error_is_error() {
+        let err = BudgetExceededError {
+            brick_name: "Test".to_string(),
+            phase: "render".to_string(),
+            actual_ms: 1.0,
+            budget_ms: 0.5,
+        };
+        // Verify it implements std::error::Error
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
     fn test_assertion_result() {
         let result = BrickAssertionResult {
             name: "MinWidth".to_string(),
@@ -340,5 +397,363 @@ mod tests {
         };
         assert!(result.passed);
         assert!(result.reason.is_none());
+    }
+
+    #[test]
+    fn test_assertion_result_failed() {
+        let result = BrickAssertionResult {
+            name: "ContrastRatio".to_string(),
+            passed: false,
+            reason: Some("Ratio 3.2 below minimum 4.5".to_string()),
+        };
+        assert!(!result.passed);
+        assert_eq!(
+            result.reason.as_deref(),
+            Some("Ratio 3.2 below minimum 4.5")
+        );
+    }
+
+    #[test]
+    fn test_assertion_result_debug() {
+        let result = BrickAssertionResult {
+            name: "Test".to_string(),
+            passed: true,
+            reason: None,
+        };
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("BrickAssertionResult"));
+        assert!(debug.contains("Test"));
+    }
+
+    #[test]
+    fn test_assertion_result_clone() {
+        let result = BrickAssertionResult {
+            name: "Original".to_string(),
+            passed: true,
+            reason: Some("reason".to_string()),
+        };
+        let cloned = result.clone();
+        assert_eq!(result.name, cloned.name);
+        assert_eq!(result.passed, cloned.passed);
+        assert_eq!(result.reason, cloned.reason);
+    }
+}
+
+#[cfg(all(test, feature = "compute-blocks"))]
+mod compute_block_tests {
+    use super::*;
+    use presentar_core::{BrickAssertion, BrickBudget, BrickVerification};
+
+    // Mock Brick for testing
+    struct MockBrick {
+        name: &'static str,
+        valid: bool,
+        budget: BrickBudget,
+        can_render: bool,
+    }
+
+    impl MockBrick {
+        fn new_valid() -> Self {
+            Self {
+                name: "MockBrick",
+                valid: true,
+                budget: BrickBudget {
+                    measure_ms: 4,
+                    layout_ms: 4,
+                    paint_ms: 4,
+                    total_ms: 16,
+                },
+                can_render: true,
+            }
+        }
+
+        fn new_invalid() -> Self {
+            Self {
+                name: "InvalidBrick",
+                valid: false,
+                budget: BrickBudget {
+                    measure_ms: 4,
+                    layout_ms: 4,
+                    paint_ms: 4,
+                    total_ms: 16,
+                },
+                can_render: false,
+            }
+        }
+
+        fn with_budget(mut self, total_ms: u32) -> Self {
+            self.budget.total_ms = total_ms;
+            self
+        }
+    }
+
+    impl Brick for MockBrick {
+        fn brick_name(&self) -> &'static str {
+            self.name
+        }
+
+        fn assertions(&self) -> &[BrickAssertion] {
+            &[]
+        }
+
+        fn budget(&self) -> BrickBudget {
+            self.budget.clone()
+        }
+
+        fn verify(&self) -> BrickVerification {
+            if self.valid {
+                BrickVerification {
+                    passed: vec![BrickAssertion::TextVisible],
+                    failed: vec![],
+                    verification_time: Duration::from_micros(100),
+                }
+            } else {
+                BrickVerification {
+                    passed: vec![],
+                    failed: vec![(BrickAssertion::TextVisible, "Text not visible".to_string())],
+                    verification_time: Duration::from_micros(100),
+                }
+            }
+        }
+
+        fn to_html(&self) -> String {
+            "<div>Mock</div>".to_string()
+        }
+
+        fn to_css(&self) -> String {
+            ".mock {}".to_string()
+        }
+
+        fn can_render(&self) -> bool {
+            self.can_render
+        }
+    }
+
+    #[test]
+    fn test_brick_test_assertion_new() {
+        let brick = MockBrick::new_valid();
+        let assertion = BrickTestAssertion::new(&brick);
+        assert!(!assertion.soft);
+        assert!(assertion.errors.is_empty());
+    }
+
+    #[test]
+    fn test_brick_test_assertion_soft() {
+        let brick = MockBrick::new_valid();
+        let assertion = BrickTestAssertion::new(&brick).soft();
+        assert!(assertion.soft);
+    }
+
+    #[test]
+    fn test_brick_test_assertion_to_be_valid_passes() {
+        let brick = MockBrick::new_valid();
+        let mut assertion = BrickTestAssertion::new(&brick);
+        assertion.to_be_valid();
+        assert!(assertion.errors.is_empty());
+    }
+
+    #[test]
+    fn test_brick_test_assertion_to_be_valid_soft_collects_error() {
+        let brick = MockBrick::new_invalid();
+        let mut assertion = BrickTestAssertion::new(&brick).soft();
+        assertion.to_be_valid();
+        assert_eq!(assertion.errors.len(), 1);
+        assert!(assertion.errors[0].contains("InvalidBrick"));
+    }
+
+    #[test]
+    #[should_panic(expected = "InvalidBrick")]
+    fn test_brick_test_assertion_to_be_valid_panics() {
+        let brick = MockBrick::new_invalid();
+        let mut assertion = BrickTestAssertion::new(&brick);
+        assertion.to_be_valid();
+    }
+
+    #[test]
+    fn test_brick_test_assertion_to_have_budget_under_passes() {
+        let brick = MockBrick::new_valid().with_budget(10);
+        let mut assertion = BrickTestAssertion::new(&brick);
+        assertion.to_have_budget_under(20);
+        assert!(assertion.errors.is_empty());
+    }
+
+    #[test]
+    fn test_brick_test_assertion_to_have_budget_under_soft_collects_error() {
+        let brick = MockBrick::new_valid().with_budget(30);
+        let mut assertion = BrickTestAssertion::new(&brick).soft();
+        assertion.to_have_budget_under(20);
+        assert_eq!(assertion.errors.len(), 1);
+        assert!(assertion.errors[0].contains("30ms"));
+        assert!(assertion.errors[0].contains("20ms"));
+    }
+
+    #[test]
+    #[should_panic(expected = "budget")]
+    fn test_brick_test_assertion_to_have_budget_under_panics() {
+        let brick = MockBrick::new_valid().with_budget(30);
+        let mut assertion = BrickTestAssertion::new(&brick);
+        assertion.to_have_budget_under(20);
+    }
+
+    #[test]
+    fn test_brick_test_assertion_to_pass_all_assertions_passes() {
+        let brick = MockBrick::new_valid();
+        let mut assertion = BrickTestAssertion::new(&brick);
+        assertion.to_pass_all_assertions();
+        assert!(assertion.errors.is_empty());
+    }
+
+    #[test]
+    fn test_brick_test_assertion_to_pass_all_assertions_soft_collects_error() {
+        let brick = MockBrick::new_invalid();
+        let mut assertion = BrickTestAssertion::new(&brick).soft();
+        assertion.to_pass_all_assertions();
+        assert_eq!(assertion.errors.len(), 1);
+        assert!(assertion.errors[0].contains("1 failed"));
+    }
+
+    #[test]
+    #[should_panic(expected = "failed assertions")]
+    fn test_brick_test_assertion_to_pass_all_assertions_panics() {
+        let brick = MockBrick::new_invalid();
+        let mut assertion = BrickTestAssertion::new(&brick);
+        assertion.to_pass_all_assertions();
+    }
+
+    #[test]
+    fn test_brick_test_assertion_to_be_renderable_passes() {
+        let brick = MockBrick::new_valid();
+        let mut assertion = BrickTestAssertion::new(&brick);
+        assertion.to_be_renderable();
+        assert!(assertion.errors.is_empty());
+    }
+
+    #[test]
+    fn test_brick_test_assertion_to_be_renderable_soft_collects_error() {
+        let brick = MockBrick::new_invalid();
+        let mut assertion = BrickTestAssertion::new(&brick).soft();
+        assertion.to_be_renderable();
+        assert_eq!(assertion.errors.len(), 1);
+        assert!(assertion.errors[0].contains("cannot render"));
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot render")]
+    fn test_brick_test_assertion_to_be_renderable_panics() {
+        let brick = MockBrick::new_invalid();
+        let mut assertion = BrickTestAssertion::new(&brick);
+        assertion.to_be_renderable();
+    }
+
+    #[test]
+    fn test_brick_test_assertion_errors() {
+        let brick = MockBrick::new_invalid();
+        let mut assertion = BrickTestAssertion::new(&brick).soft();
+        assertion.to_be_valid();
+        assertion.to_be_renderable();
+        assert_eq!(assertion.errors().len(), 2);
+    }
+
+    #[test]
+    fn test_brick_test_assertion_assert_no_errors_passes() {
+        let brick = MockBrick::new_valid();
+        let assertion = BrickTestAssertion::new(&brick).soft();
+        assertion.assert_no_errors(); // Should not panic
+    }
+
+    #[test]
+    #[should_panic(expected = "soft assertion failures")]
+    fn test_brick_test_assertion_assert_no_errors_panics() {
+        let brick = MockBrick::new_invalid();
+        let mut assertion = BrickTestAssertion::new(&brick).soft();
+        assertion.to_be_valid();
+        assertion.assert_no_errors();
+    }
+
+    #[test]
+    fn test_brick_test_assertion_chaining() {
+        let brick = MockBrick::new_valid().with_budget(10);
+        let mut assertion = BrickTestAssertion::new(&brick);
+        assertion
+            .to_be_valid()
+            .to_have_budget_under(20)
+            .to_pass_all_assertions()
+            .to_be_renderable();
+        assert!(assertion.errors.is_empty());
+    }
+
+    #[test]
+    fn test_assert_brick_valid_passes() {
+        let brick = MockBrick::new_valid();
+        let result = assert_brick_valid(&brick);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_assert_brick_valid_fails() {
+        let brick = MockBrick::new_invalid();
+        let result = assert_brick_valid(&brick);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.brick_name, "InvalidBrick");
+        assert!(!err.failures.is_empty());
+    }
+
+    #[test]
+    fn test_assert_brick_budget_passes() {
+        let brick = MockBrick::new_valid().with_budget(1000);
+        let result = assert_brick_budget(
+            &brick,
+            || {
+                // Fast operation
+                std::hint::black_box(1 + 1);
+            },
+            "total",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_assert_brick_budget_measure_phase() {
+        let brick = MockBrick::new_valid();
+        let result = assert_brick_budget(&brick, || {}, "measure");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_assert_brick_budget_layout_phase() {
+        let brick = MockBrick::new_valid();
+        let result = assert_brick_budget(&brick, || {}, "layout");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_assert_brick_budget_paint_phase() {
+        let brick = MockBrick::new_valid();
+        let result = assert_brick_budget(&brick, || {}, "paint");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_assert_brick_budget_unknown_phase() {
+        let brick = MockBrick::new_valid();
+        let result = assert_brick_budget(&brick, || {}, "unknown");
+        assert!(result.is_ok()); // Falls back to total_ms
+    }
+
+    #[test]
+    fn test_brick_verification_score_valid() {
+        let brick = MockBrick::new_valid();
+        let score = brick_verification_score(&brick);
+        assert!(score > 0.0);
+        assert!(score <= 1.0);
+    }
+
+    #[test]
+    fn test_brick_verification_score_invalid() {
+        let brick = MockBrick::new_invalid();
+        let score = brick_verification_score(&brick);
+        assert!(score >= 0.0);
+        assert!(score < 1.0);
     }
 }

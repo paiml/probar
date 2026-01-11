@@ -956,4 +956,468 @@ mod tests {
             assert!(loaded.verify_checksum());
         }
     }
+
+    mod verification_result_tests {
+        use super::*;
+
+        #[test]
+        fn test_success() {
+            let result = VerificationResult::success(100, 5);
+            assert!(result.passed);
+            assert_eq!(result.frames_verified, 100);
+            assert_eq!(result.checkpoints_verified, 5);
+            assert!(result.divergence_frame.is_none());
+            assert!(result.divergence_details.is_none());
+        }
+
+        #[test]
+        fn test_failure() {
+            let result = VerificationResult::failure(50, "State mismatch");
+            assert!(!result.passed);
+            assert_eq!(result.frames_verified, 50);
+            assert_eq!(result.divergence_frame, Some(50));
+            assert!(result
+                .divergence_details
+                .as_ref()
+                .unwrap()
+                .contains("State mismatch"));
+        }
+    }
+
+    mod additional_replay_tests {
+        use super::*;
+
+        #[test]
+        fn test_replay_header_default_fps() {
+            let header = ReplayHeader::new("game", "1.0", 0);
+            assert_eq!(header.fps, 60);
+        }
+
+        #[test]
+        fn test_replay_header_created_at() {
+            let header = ReplayHeader::new("game", "1.0", 0);
+            assert!(header.created_at > 0);
+        }
+
+        #[test]
+        fn test_replay_header_checksum_empty() {
+            let header = ReplayHeader::new("game", "1.0", 0);
+            assert!(header.checksum.is_empty());
+        }
+
+        #[test]
+        fn test_timed_input_event_types() {
+            let events = vec![
+                InputEvent::key_press("A"),
+                InputEvent::key_release("B"),
+                InputEvent::mouse_click(100.0, 200.0),
+            ];
+
+            for (i, event) in events.into_iter().enumerate() {
+                let timed = TimedInput::new(i as u64, event);
+                assert_eq!(timed.frame, i as u64);
+            }
+        }
+
+        #[test]
+        fn test_replay_inputs_at_frame_none() {
+            let header = ReplayHeader::new("game", "1.0", 0);
+            let replay = Replay::new(header);
+            let inputs = replay.inputs_at_frame(0);
+            assert!(inputs.is_empty());
+        }
+
+        #[test]
+        fn test_replay_checkpoint_none() {
+            let header = ReplayHeader::new("game", "1.0", 0);
+            let replay = Replay::new(header);
+            assert!(replay.checkpoint_at_or_before(0).is_none());
+        }
+
+        #[test]
+        fn test_replay_verify_checksum_mismatch() {
+            let header = ReplayHeader::new("game", "1.0", 42);
+            let mut replay = Replay::new(header);
+            replay.add_input(0, InputEvent::key_press("A"));
+            replay.finalize();
+
+            // Tamper with checksum
+            replay.header.checksum = "invalid".to_string();
+            assert!(!replay.verify_checksum());
+        }
+    }
+
+    mod additional_recorder_tests {
+        use super::*;
+
+        #[test]
+        fn test_recorder_record_inputs() {
+            let mut recorder = ReplayRecorder::new("game", "1.0", 42);
+            let events = vec![
+                InputEvent::key_press("A"),
+                InputEvent::key_press("B"),
+                InputEvent::key_press("C"),
+            ];
+            recorder.record_inputs(&events);
+
+            let replay = recorder.finalize();
+            assert_eq!(replay.inputs.len(), 3);
+        }
+
+        #[test]
+        fn test_recorder_checkpoint() {
+            let mut recorder = ReplayRecorder::new("game", "1.0", 42);
+            recorder.checkpoint("hash_at_0");
+            recorder.next_frame(None);
+            recorder.checkpoint("hash_at_1");
+
+            let replay = recorder.finalize();
+            assert_eq!(replay.checkpoints.len(), 2);
+        }
+
+        #[test]
+        fn test_recorder_checkpoint_with_data() {
+            let mut recorder = ReplayRecorder::new("game", "1.0", 42);
+            let mut data = HashMap::new();
+            data.insert("score".to_string(), serde_json::json!(100));
+            data.insert("level".to_string(), serde_json::json!(5));
+            recorder.checkpoint_with_data("hash", data);
+
+            let replay = recorder.finalize();
+            assert_eq!(replay.checkpoints.len(), 1);
+            assert!(replay.checkpoints[0].state_data.is_some());
+        }
+
+        #[test]
+        fn test_recorder_with_fps() {
+            let recorder = ReplayRecorder::new("game", "1.0", 42).with_fps(30);
+            let replay = recorder.finalize();
+            assert_eq!(replay.header.fps, 30);
+        }
+
+        #[test]
+        fn test_recorder_not_recording() {
+            let mut recorder = ReplayRecorder::new("game", "1.0", 42);
+            recorder.stop();
+            assert!(!recorder.is_recording());
+
+            // Should not record after stop
+            recorder.record_input(InputEvent::key_press("A"));
+            let replay = recorder.finalize();
+            assert!(replay.inputs.is_empty());
+        }
+    }
+
+    mod additional_player_tests {
+        use super::*;
+
+        fn create_simple_replay(total_frames: u64) -> Replay {
+            let header = ReplayHeader::new("game", "1.0", 42);
+            let mut replay = Replay::new(header);
+            replay.header.total_frames = total_frames;
+            replay
+        }
+
+        #[test]
+        fn test_player_with_speed() {
+            let replay = create_simple_replay(100);
+            let player = ReplayPlayer::new(replay).with_speed(2.0);
+            assert!((player.speed - 2.0).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn test_player_total_frames() {
+            let replay = create_simple_replay(100);
+            let player = ReplayPlayer::new(replay);
+            assert_eq!(player.total_frames(), 100);
+        }
+
+        #[test]
+        fn test_player_progress_zero_frames() {
+            let replay = create_simple_replay(0);
+            let player = ReplayPlayer::new(replay);
+            assert!((player.progress() - 1.0).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn test_player_seek_beyond_total() {
+            let replay = create_simple_replay(50);
+            let mut player = ReplayPlayer::new(replay);
+            player.seek(100);
+            assert_eq!(player.current_frame(), 50);
+            assert!(!player.is_playing());
+        }
+
+        #[test]
+        fn test_player_resume_at_end() {
+            let replay = create_simple_replay(10);
+            let mut player = ReplayPlayer::new(replay);
+
+            // Play to end
+            while player.is_playing() {
+                let _ = player.get_frame_inputs();
+            }
+
+            player.resume();
+            // Should still not be playing since we're at the end
+            assert!(!player.is_playing());
+        }
+
+        #[test]
+        fn test_player_replay_accessor() {
+            let replay = create_simple_replay(50);
+            let player = ReplayPlayer::new(replay);
+            let accessed_replay = player.replay();
+            assert_eq!(accessed_replay.header.total_frames, 50);
+        }
+
+        #[test]
+        fn test_player_expected_checkpoint_none() {
+            let replay = create_simple_replay(50);
+            let player = ReplayPlayer::new(replay);
+            // At frame 0, previous frame would be -1, no checkpoint
+            assert!(player.expected_checkpoint().is_none());
+        }
+
+        #[test]
+        fn test_player_verify_state_no_checkpoint() {
+            let replay = create_simple_replay(50);
+            let player = ReplayPlayer::new(replay);
+            // Should be Ok since there's no checkpoint to verify against
+            assert!(player.verify_state("any_hash").is_ok());
+        }
+
+        #[test]
+        fn test_player_inputs_with_gaps() {
+            let header = ReplayHeader::new("game", "1.0", 42);
+            let mut replay = Replay::new(header);
+
+            // Inputs at frames 0, 10, 20
+            replay.add_input(0, InputEvent::key_press("A"));
+            replay.add_input(10, InputEvent::key_press("B"));
+            replay.add_input(20, InputEvent::key_press("C"));
+            replay.header.total_frames = 25;
+
+            let mut player = ReplayPlayer::new(replay);
+
+            // Frame 0: has A
+            let inputs = player.get_frame_inputs();
+            assert_eq!(inputs.len(), 1);
+
+            // Frames 1-9: no inputs
+            for _ in 1..10 {
+                let inputs = player.get_frame_inputs();
+                assert!(inputs.is_empty());
+            }
+
+            // Frame 10: has B
+            let inputs = player.get_frame_inputs();
+            assert_eq!(inputs.len(), 1);
+        }
+
+        #[test]
+        fn test_player_seek_updates_input_index() {
+            let header = ReplayHeader::new("game", "1.0", 42);
+            let mut replay = Replay::new(header);
+
+            replay.add_input(0, InputEvent::key_press("A"));
+            replay.add_input(5, InputEvent::key_press("B"));
+            replay.add_input(10, InputEvent::key_press("C"));
+            replay.header.total_frames = 15;
+
+            let mut player = ReplayPlayer::new(replay);
+
+            // Seek to frame 7 (between B and C)
+            player.seek(7);
+
+            // Advance, should get no input
+            let inputs = player.get_frame_inputs();
+            assert!(inputs.is_empty());
+
+            // Continue to frame 10, should get C
+            let _ = player.get_frame_inputs(); // frame 8
+            let _ = player.get_frame_inputs(); // frame 9
+            let inputs = player.get_frame_inputs(); // frame 10
+            assert_eq!(inputs.len(), 1);
+        }
+    }
+
+    mod additional_file_io_tests {
+        use super::*;
+        use tempfile::TempDir;
+
+        #[test]
+        fn test_save_yaml_creates_parent_dirs() {
+            let temp_dir = TempDir::new().unwrap();
+            let path = temp_dir
+                .path()
+                .join("subdir")
+                .join("deep")
+                .join("replay.yaml");
+
+            let header = ReplayHeader::new("game", "1.0", 42);
+            let replay = Replay::new(header);
+
+            replay.save_yaml(&path).unwrap();
+            assert!(path.exists());
+        }
+
+        #[test]
+        fn test_save_json_creates_parent_dirs() {
+            let temp_dir = TempDir::new().unwrap();
+            let path = temp_dir
+                .path()
+                .join("subdir")
+                .join("deep")
+                .join("replay.json");
+
+            let header = ReplayHeader::new("game", "1.0", 42);
+            let replay = Replay::new(header);
+
+            replay.save_json(&path).unwrap();
+            assert!(path.exists());
+        }
+
+        #[test]
+        fn test_load_yaml_not_found() {
+            let result = Replay::load_yaml(Path::new("/nonexistent/replay.yaml"));
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_load_json_not_found() {
+            let result = Replay::load_json(Path::new("/nonexistent/replay.json"));
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_load_yaml_invalid() {
+            let temp_dir = TempDir::new().unwrap();
+            let path = temp_dir.path().join("invalid.yaml");
+            std::fs::write(&path, "not: valid: yaml: {{{").unwrap();
+
+            let result = Replay::load_yaml(&path);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_load_json_invalid() {
+            let temp_dir = TempDir::new().unwrap();
+            let path = temp_dir.path().join("invalid.json");
+            std::fs::write(&path, "not valid json {{{").unwrap();
+
+            let result = Replay::load_json(&path);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_replay_with_metadata_yaml() {
+            let temp_dir = TempDir::new().unwrap();
+            let path = temp_dir.path().join("replay.yaml");
+
+            let header = ReplayHeader::new("game", "1.0", 42);
+            let mut replay = Replay::new(header);
+            replay.set_metadata("player", "Alice");
+            replay.set_metadata("score", "1000");
+            replay.finalize();
+
+            replay.save_yaml(&path).unwrap();
+            let loaded = Replay::load_yaml(&path).unwrap();
+
+            assert_eq!(loaded.metadata.get("player"), Some(&"Alice".to_string()));
+            assert_eq!(loaded.metadata.get("score"), Some(&"1000".to_string()));
+        }
+
+        #[test]
+        fn test_replay_with_checkpoints_json() {
+            let temp_dir = TempDir::new().unwrap();
+            let path = temp_dir.path().join("replay.json");
+
+            let header = ReplayHeader::new("game", "1.0", 42);
+            let mut replay = Replay::new(header);
+
+            let mut data = HashMap::new();
+            data.insert("level".to_string(), serde_json::json!(3));
+            replay.add_checkpoint(StateCheckpoint::with_data(60, "hash1", data));
+
+            replay.finalize();
+            replay.save_json(&path).unwrap();
+
+            let loaded = Replay::load_json(&path).unwrap();
+            assert_eq!(loaded.checkpoints.len(), 1);
+            assert!(loaded.checkpoints[0].state_data.is_some());
+        }
+    }
+
+    mod additional_edge_case_tests {
+        use super::*;
+
+        #[test]
+        fn test_replay_format_version() {
+            assert_eq!(REPLAY_FORMAT_VERSION, 1);
+        }
+
+        #[test]
+        fn test_state_checkpoint_without_data() {
+            let cp = StateCheckpoint::new(100, "hash");
+            assert!(cp.state_data.is_none());
+            assert_eq!(cp.frame, 100);
+            assert_eq!(cp.state_hash, "hash");
+        }
+
+        #[test]
+        fn test_replay_checksum_with_checkpoints() {
+            let header = ReplayHeader::new("game", "1.0", 42);
+            let mut replay = Replay::new(header);
+
+            replay.add_checkpoint(StateCheckpoint::new(10, "hash1"));
+            replay.add_checkpoint(StateCheckpoint::new(20, "hash2"));
+
+            let checksum1 = replay.compute_checksum();
+
+            replay.add_checkpoint(StateCheckpoint::new(30, "hash3"));
+            let checksum2 = replay.compute_checksum();
+
+            assert_ne!(checksum1, checksum2);
+        }
+
+        #[test]
+        fn test_replay_total_frames_from_checkpoint() {
+            let header = ReplayHeader::new("game", "1.0", 42);
+            let mut replay = Replay::new(header);
+
+            assert_eq!(replay.header.total_frames, 0);
+
+            replay.add_checkpoint(StateCheckpoint::new(100, "hash"));
+            assert_eq!(replay.header.total_frames, 101);
+        }
+
+        #[test]
+        fn test_replay_total_frames_from_input() {
+            let header = ReplayHeader::new("game", "1.0", 42);
+            let mut replay = Replay::new(header);
+
+            replay.add_input(50, InputEvent::key_press("A"));
+            assert_eq!(replay.header.total_frames, 51);
+        }
+
+        #[test]
+        fn test_player_skipped_inputs() {
+            let header = ReplayHeader::new("game", "1.0", 42);
+            let mut replay = Replay::new(header);
+
+            // Add input at frame 0
+            replay.add_input(0, InputEvent::key_press("A"));
+            replay.header.total_frames = 5;
+
+            let mut player = ReplayPlayer::new(replay);
+
+            // Seek past frame 0
+            player.seek(3);
+
+            // Input at frame 0 should be skipped
+            let inputs = player.get_frame_inputs();
+            assert!(inputs.is_empty());
+        }
+    }
 }

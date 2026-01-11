@@ -508,8 +508,13 @@ impl Brick for EventBrick {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+
+    // ============================================================
+    // EventType tests
+    // ============================================================
 
     #[test]
     fn test_event_type_js_name() {
@@ -517,6 +522,53 @@ mod tests {
         assert_eq!(EventType::KeyDown.js_name(), "keydown");
         assert_eq!(EventType::Custom("my-event").js_name(), "my-event");
     }
+
+    #[test]
+    fn test_event_type_js_name_all_variants() {
+        // Test all EventType variants for js_name
+        assert_eq!(EventType::Click.js_name(), "click");
+        assert_eq!(EventType::DoubleClick.js_name(), "dblclick");
+        assert_eq!(EventType::MouseDown.js_name(), "mousedown");
+        assert_eq!(EventType::MouseUp.js_name(), "mouseup");
+        assert_eq!(EventType::MouseEnter.js_name(), "mouseenter");
+        assert_eq!(EventType::MouseLeave.js_name(), "mouseleave");
+        assert_eq!(EventType::KeyDown.js_name(), "keydown");
+        assert_eq!(EventType::KeyUp.js_name(), "keyup");
+        assert_eq!(EventType::KeyPress.js_name(), "keypress");
+        assert_eq!(EventType::Input.js_name(), "input");
+        assert_eq!(EventType::Change.js_name(), "change");
+        assert_eq!(EventType::Submit.js_name(), "submit");
+        assert_eq!(EventType::Focus.js_name(), "focus");
+        assert_eq!(EventType::Blur.js_name(), "blur");
+        assert_eq!(EventType::Scroll.js_name(), "scroll");
+        assert_eq!(EventType::TouchStart.js_name(), "touchstart");
+        assert_eq!(EventType::TouchEnd.js_name(), "touchend");
+        assert_eq!(EventType::TouchMove.js_name(), "touchmove");
+        assert_eq!(EventType::Custom("custom-event").js_name(), "custom-event");
+    }
+
+    #[test]
+    fn test_event_type_debug_and_clone() {
+        let event = EventType::Click;
+        let cloned = event;
+        assert_eq!(format!("{:?}", cloned), "Click");
+
+        let custom = EventType::Custom("test");
+        let custom_clone = custom;
+        assert_eq!(custom_clone.js_name(), "test");
+    }
+
+    #[test]
+    fn test_event_type_equality() {
+        assert_eq!(EventType::Click, EventType::Click);
+        assert_ne!(EventType::Click, EventType::DoubleClick);
+        assert_eq!(EventType::Custom("a"), EventType::Custom("a"));
+        assert_ne!(EventType::Custom("a"), EventType::Custom("b"));
+    }
+
+    // ============================================================
+    // EventHandler tests
+    // ============================================================
 
     #[test]
     fn test_event_handler_dispatch_state() {
@@ -537,6 +589,52 @@ mod tests {
     }
 
     #[test]
+    fn test_event_handler_call_wasm_with_args() {
+        let handler = EventHandler::call_wasm_with_args(
+            "process_data",
+            vec!["arg1".to_string(), "arg2".to_string(), "123".to_string()],
+        );
+        let js = handler.to_js(0);
+
+        assert!(js.contains("window.wasm.process_data(arg1, arg2, 123)"));
+    }
+
+    #[test]
+    fn test_event_handler_call_wasm_with_empty_args() {
+        let handler = EventHandler::call_wasm_with_args("func", vec![]);
+        let js = handler.to_js(0);
+
+        assert!(js.contains("window.wasm.func()"));
+    }
+
+    #[test]
+    fn test_event_handler_post_to_worker() {
+        let handler = EventHandler::post_to_worker("myWorker", "start");
+        let js = handler.to_js(0);
+
+        assert!(js.contains("myWorker.postMessage"));
+        assert!(js.contains("type: 'start'"));
+    }
+
+    #[test]
+    fn test_event_handler_post_message_with_fields() {
+        let handler = EventHandler::PostMessage {
+            worker: "worker".to_string(),
+            message_type: "update".to_string(),
+            fields: vec![
+                ("data".to_string(), "e.target.value".to_string()),
+                ("count".to_string(), "42".to_string()),
+            ],
+        };
+        let js = handler.to_js(0);
+
+        assert!(js.contains("worker.postMessage"));
+        assert!(js.contains("type: 'update'"));
+        assert!(js.contains("data: e.target.value"));
+        assert!(js.contains("count: 42"));
+    }
+
+    #[test]
     fn test_event_handler_update_element() {
         let handler = EventHandler::update_element("#status", "textContent", "'Ready'");
         let js = handler.to_js(0);
@@ -544,7 +642,114 @@ mod tests {
         assert!(js.contains("#status"));
         assert!(js.contains("textContent"));
         assert!(js.contains("'Ready'"));
+        assert!(js.contains("querySelector"));
     }
+
+    #[test]
+    fn test_event_handler_toggle_class() {
+        let handler = EventHandler::toggle_class("#menu", "active");
+        let js = handler.to_js(0);
+
+        assert!(js.contains("querySelector('#menu')"));
+        assert!(js.contains("classList.toggle('active')"));
+    }
+
+    #[test]
+    fn test_event_handler_prevent_default() {
+        let js = EventHandler::PreventDefault.to_js(0);
+
+        assert!(js.contains("e.preventDefault()"));
+        assert!(js.contains("e.stopPropagation()"));
+    }
+
+    #[test]
+    fn test_event_handler_chain() {
+        let handler = EventHandler::chain(vec![
+            EventHandler::PreventDefault,
+            EventHandler::dispatch_state("clicked"),
+        ]);
+
+        let js = handler.to_js(0);
+
+        assert!(js.contains("preventDefault"));
+        assert!(js.contains("dispatchEvent"));
+    }
+
+    #[test]
+    fn test_event_handler_chain_empty() {
+        let handler = EventHandler::chain(vec![]);
+        let js = handler.to_js(0);
+        assert!(js.is_empty());
+    }
+
+    #[test]
+    fn test_event_handler_chain_multiple() {
+        let handler = EventHandler::chain(vec![
+            EventHandler::PreventDefault,
+            EventHandler::dispatch_state("state1"),
+            EventHandler::call_wasm("func1"),
+            EventHandler::toggle_class("#el", "class1"),
+        ]);
+
+        let js = handler.to_js(0);
+
+        assert!(js.contains("preventDefault"));
+        assert!(js.contains("state1"));
+        assert!(js.contains("func1"));
+        assert!(js.contains("class1"));
+    }
+
+    #[test]
+    fn test_event_handler_conditional() {
+        let handler = EventHandler::when(
+            "isRecording",
+            EventHandler::dispatch_state("stop"),
+            Some(EventHandler::dispatch_state("start")),
+        );
+
+        let js = handler.to_js(0);
+
+        assert!(js.contains("if (isRecording)"));
+        assert!(js.contains("stop"));
+        assert!(js.contains("else"));
+        assert!(js.contains("start"));
+    }
+
+    #[test]
+    fn test_event_handler_conditional_without_else() {
+        let handler = EventHandler::when("condition", EventHandler::call_wasm("action"), None);
+
+        let js = handler.to_js(0);
+
+        assert!(js.contains("if (condition)"));
+        assert!(js.contains("action"));
+        assert!(!js.contains("else"));
+    }
+
+    #[test]
+    fn test_event_handler_to_js_with_indent() {
+        let handler = EventHandler::dispatch_state("test");
+
+        let js_0 = handler.to_js(0);
+        let js_1 = handler.to_js(1);
+        let js_2 = handler.to_js(2);
+
+        assert!(!js_0.starts_with(' '));
+        assert!(js_1.starts_with("    "));
+        assert!(js_2.starts_with("        "));
+    }
+
+    #[test]
+    fn test_event_handler_debug_and_clone() {
+        let handler = EventHandler::dispatch_state("test");
+        let cloned = handler.clone();
+
+        assert!(format!("{:?}", cloned).contains("DispatchState"));
+    }
+
+    // ============================================================
+    // EventBinding tests
+    // ============================================================
 
     #[test]
     fn test_event_binding_basic() {
@@ -578,6 +783,89 @@ mod tests {
     }
 
     #[test]
+    fn test_event_binding_once() {
+        let binding = EventBinding::new(
+            "#init",
+            EventType::Click,
+            EventHandler::call_wasm("initialize"),
+        )
+        .once();
+
+        let js = binding.to_js();
+
+        assert!(js.contains("once: true"));
+    }
+
+    #[test]
+    fn test_event_binding_all_options() {
+        let binding = EventBinding::new(
+            "#element",
+            EventType::TouchStart,
+            EventHandler::PreventDefault,
+        )
+        .capture()
+        .once()
+        .passive();
+
+        let js = binding.to_js();
+
+        assert!(js.contains("capture: true"));
+        assert!(js.contains("once: true"));
+        assert!(js.contains("passive: true"));
+    }
+
+    #[test]
+    fn test_event_binding_no_options() {
+        let binding = EventBinding::new(
+            "#simple",
+            EventType::Click,
+            EventHandler::dispatch_state("click"),
+        );
+
+        let js = binding.to_js();
+
+        // Should not contain options object when no options set
+        assert!(!js.contains("capture:"));
+        assert!(!js.contains("once:"));
+        assert!(!js.contains("passive:"));
+    }
+
+    #[test]
+    fn test_event_binding_debug_and_clone() {
+        let binding = EventBinding::new(
+            "#test",
+            EventType::Click,
+            EventHandler::dispatch_state("test"),
+        );
+        let cloned = binding.clone();
+
+        assert_eq!(cloned.selector, "#test");
+        assert!(format!("{:?}", cloned).contains("EventBinding"));
+    }
+
+    #[test]
+    fn test_event_binding_fields() {
+        let binding = EventBinding::new(
+            "#target",
+            EventType::MouseEnter,
+            EventHandler::toggle_class("#target", "hover"),
+        )
+        .capture()
+        .once()
+        .passive();
+
+        assert_eq!(binding.selector, "#target");
+        assert_eq!(binding.event_type, EventType::MouseEnter);
+        assert!(binding.capture);
+        assert!(binding.once);
+        assert!(binding.passive);
+    }
+
+    // ============================================================
+    // EventBrick tests
+    // ============================================================
+
+    #[test]
     fn test_event_brick_generation() {
         let events = EventBrick::new()
             .on(
@@ -595,31 +883,230 @@ mod tests {
     }
 
     #[test]
-    fn test_event_handler_chain() {
-        let handler = EventHandler::chain(vec![
-            EventHandler::PreventDefault,
-            EventHandler::dispatch_state("clicked"),
-        ]);
-
-        let js = handler.to_js(0);
-
-        assert!(js.contains("preventDefault"));
-        assert!(js.contains("dispatchEvent"));
+    fn test_event_brick_new() {
+        let brick = EventBrick::new();
+        assert!(brick.selectors().is_empty());
     }
 
     #[test]
-    fn test_event_handler_conditional() {
+    fn test_event_brick_default() {
+        let brick = EventBrick::default();
+        assert!(brick.selectors().is_empty());
+    }
+
+    #[test]
+    fn test_event_brick_on() {
+        let brick = EventBrick::new()
+            .on("#a", EventType::Click, EventHandler::PreventDefault)
+            .on("#b", EventType::Focus, EventHandler::call_wasm("onFocus"));
+
+        let selectors = brick.selectors();
+        assert_eq!(selectors.len(), 2);
+        assert!(selectors.contains(&"#a"));
+        assert!(selectors.contains(&"#b"));
+    }
+
+    #[test]
+    fn test_event_brick_on_with() {
+        let binding = EventBinding::new(
+            "#custom",
+            EventType::TouchEnd,
+            EventHandler::dispatch_state("touch"),
+        )
+        .passive()
+        .once();
+
+        let brick = EventBrick::new().on_with(binding);
+
+        let js = brick.to_event_js();
+        assert!(js.contains("#custom"));
+        assert!(js.contains("touchend"));
+        assert!(js.contains("passive: true"));
+        assert!(js.contains("once: true"));
+    }
+
+    #[test]
+    fn test_event_brick_on_window() {
+        let brick = EventBrick::new()
+            .on_window(EventType::Scroll, EventHandler::call_wasm("onScroll"))
+            .on_window(EventType::KeyDown, EventHandler::dispatch_state("keydown"));
+
+        let js = brick.to_event_js();
+
+        assert!(js.contains("window.addEventListener('scroll'"));
+        assert!(js.contains("window.addEventListener('keydown'"));
+    }
+
+    #[test]
+    fn test_event_brick_selectors() {
+        let brick = EventBrick::new()
+            .on("#one", EventType::Click, EventHandler::PreventDefault)
+            .on(".two", EventType::Input, EventHandler::call_wasm("input"))
+            .on(
+                "[data-id]",
+                EventType::Change,
+                EventHandler::dispatch_state("change"),
+            );
+
+        let selectors = brick.selectors();
+        assert_eq!(selectors.len(), 3);
+        assert!(selectors.contains(&"#one"));
+        assert!(selectors.contains(&".two"));
+        assert!(selectors.contains(&"[data-id]"));
+    }
+
+    #[test]
+    fn test_event_brick_to_event_js_empty() {
+        let brick = EventBrick::new();
+        let js = brick.to_event_js();
+
+        assert!(js.contains("Event Handlers"));
+        assert!(js.contains("Generated by probar"));
+    }
+
+    #[test]
+    fn test_event_brick_debug_and_clone() {
+        let brick = EventBrick::new().on("#test", EventType::Click, EventHandler::PreventDefault);
+
+        let cloned = brick.clone();
+        assert_eq!(cloned.selectors().len(), 1);
+        assert!(format!("{:?}", cloned).contains("EventBrick"));
+    }
+
+    // ============================================================
+    // Brick trait implementation tests
+    // ============================================================
+
+    #[test]
+    fn test_event_brick_brick_name() {
+        let brick = EventBrick::new();
+        assert_eq!(brick.brick_name(), "EventBrick");
+    }
+
+    #[test]
+    fn test_event_brick_assertions() {
+        let brick = EventBrick::new();
+        assert!(brick.assertions().is_empty());
+    }
+
+    #[test]
+    fn test_event_brick_budget() {
+        let brick = EventBrick::new();
+        let budget = brick.budget();
+        assert_eq!(budget.as_duration(), Duration::from_millis(100));
+    }
+
+    #[test]
+    fn test_event_brick_verify() {
+        let brick = EventBrick::new();
+        let verification = brick.verify();
+
+        assert!(verification.is_valid());
+        assert_eq!(verification.passed.len(), 1);
+        assert!(verification.failed.is_empty());
+    }
+
+    #[test]
+    fn test_event_brick_to_html() {
+        let brick = EventBrick::new();
+        assert!(brick.to_html().is_empty());
+    }
+
+    #[test]
+    fn test_event_brick_to_css() {
+        let brick = EventBrick::new();
+        assert!(brick.to_css().is_empty());
+    }
+
+    // ============================================================
+    // Integration tests
+    // ============================================================
+
+    #[test]
+    fn test_complex_event_brick() {
+        let brick = EventBrick::new()
+            .on(
+                "#record-btn",
+                EventType::Click,
+                EventHandler::chain(vec![
+                    EventHandler::PreventDefault,
+                    EventHandler::when(
+                        "window.isRecording",
+                        EventHandler::chain(vec![
+                            EventHandler::call_wasm("stop_recording"),
+                            EventHandler::toggle_class("#record-btn", "recording"),
+                            EventHandler::update_element("#status", "textContent", "'Stopped'"),
+                        ]),
+                        Some(EventHandler::chain(vec![
+                            EventHandler::call_wasm("start_recording"),
+                            EventHandler::toggle_class("#record-btn", "recording"),
+                            EventHandler::update_element("#status", "textContent", "'Recording'"),
+                        ])),
+                    ),
+                ]),
+            )
+            .on(
+                "#clear-btn",
+                EventType::Click,
+                EventHandler::chain(vec![
+                    EventHandler::call_wasm("clear_transcript"),
+                    EventHandler::update_element("#transcript", "textContent", "''"),
+                ]),
+            )
+            .on_window(
+                EventType::KeyDown,
+                EventHandler::when(
+                    "e.key === 'Escape'",
+                    EventHandler::call_wasm("cancel_recording"),
+                    None,
+                ),
+            );
+
+        let js = brick.to_event_js();
+
+        // Verify structure
+        assert!(js.contains("#record-btn"));
+        assert!(js.contains("#clear-btn"));
+        assert!(js.contains("window.addEventListener('keydown'"));
+        assert!(js.contains("window.isRecording"));
+        assert!(js.contains("stop_recording"));
+        assert!(js.contains("start_recording"));
+        assert!(js.contains("e.key === 'Escape'"));
+    }
+
+    #[test]
+    fn test_event_binding_with_custom_event() {
+        let binding = EventBinding::new(
+            "#custom-element",
+            EventType::Custom("my-custom-event"),
+            EventHandler::post_to_worker("customWorker", "handle"),
+        );
+
+        let js = binding.to_js();
+
+        assert!(js.contains("my-custom-event"));
+        assert!(js.contains("#custom-element"));
+        assert!(js.contains("customWorker.postMessage"));
+    }
+
+    #[test]
+    fn test_nested_conditional_handlers() {
         let handler = EventHandler::when(
-            "isRecording",
-            EventHandler::dispatch_state("stop"),
-            Some(EventHandler::dispatch_state("start")),
+            "conditionA",
+            EventHandler::when(
+                "conditionB",
+                EventHandler::call_wasm("bothTrue"),
+                Some(EventHandler::call_wasm("onlyATrue")),
+            ),
+            Some(EventHandler::call_wasm("aFalse")),
         );
 
         let js = handler.to_js(0);
 
-        assert!(js.contains("if (isRecording)"));
-        assert!(js.contains("stop"));
-        assert!(js.contains("else"));
-        assert!(js.contains("start"));
+        assert!(js.contains("if (conditionA)"));
+        assert!(js.contains("if (conditionB)"));
+        assert!(js.contains("bothTrue"));
+        assert!(js.contains("onlyATrue"));
+        assert!(js.contains("aFalse"));
     }
 }

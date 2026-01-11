@@ -1285,4 +1285,319 @@ mod tests {
 
         assert!((full.completion_percent() - 100.0).abs() < 0.01);
     }
+
+    // =========================================================================
+    // Additional tests for 95% coverage
+    // =========================================================================
+
+    #[test]
+    fn test_console_severity_display() {
+        assert_eq!(format!("{}", ConsoleSeverity::Log), "log");
+        assert_eq!(format!("{}", ConsoleSeverity::Info), "info");
+        assert_eq!(format!("{}", ConsoleSeverity::Warn), "warn");
+        assert_eq!(format!("{}", ConsoleSeverity::Error), "error");
+    }
+
+    #[test]
+    fn test_console_message_with_timestamp() {
+        let msg = ConsoleMessage::new(ConsoleSeverity::Info, "Message").with_timestamp(1234.56);
+        assert!((msg.timestamp - 1234.56).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_console_message_with_stack_trace() {
+        let msg = ConsoleMessage::new(ConsoleSeverity::Error, "Error occurred")
+            .with_stack_trace("at main.js:10:5\nat app.js:20:10");
+        assert!(msg.stack_trace.is_some());
+        assert!(msg.stack_trace.unwrap().contains("main.js"));
+    }
+
+    #[test]
+    fn test_console_message_display_without_source() {
+        let msg = ConsoleMessage::new(ConsoleSeverity::Log, "Simple message");
+        let display = format!("{}", msg);
+        assert!(display.contains("[log]"));
+        assert!(display.contains("Simple message"));
+        assert!(!display.contains(":")); // No source location
+    }
+
+    #[test]
+    fn test_console_message_contains_case_insensitive() {
+        let msg = ConsoleMessage::new(ConsoleSeverity::Error, "Connection TIMEOUT");
+        assert!(msg.contains("timeout"));
+        assert!(msg.contains("TIMEOUT"));
+        assert!(msg.contains("Timeout"));
+        assert!(!msg.contains("xyz"));
+    }
+
+    #[test]
+    fn test_console_validation_error_display_console_errors() {
+        let err = ConsoleValidationError::ConsoleErrors(vec![
+            "Error 1".to_string(),
+            "Error 2".to_string(),
+        ]);
+        let display = format!("{}", err);
+        assert!(display.contains("Console errors detected"));
+        assert!(display.contains("Error 1"));
+        assert!(display.contains("Error 2"));
+    }
+
+    #[test]
+    fn test_console_validation_error_display_too_many_warnings() {
+        let err = ConsoleValidationError::TooManyWarnings { count: 15, max: 5 };
+        let display = format!("{}", err);
+        assert!(display.contains("15"));
+        assert!(display.contains("5"));
+        assert!(display.contains("Too many console warnings"));
+    }
+
+    #[test]
+    fn test_console_validation_error_display_matching_error_found() {
+        let err = ConsoleValidationError::MatchingErrorFound {
+            pattern: "null pointer".to_string(),
+            message: "Cannot read property of null pointer".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("null pointer"));
+        assert!(display.contains("Cannot read property"));
+    }
+
+    #[test]
+    fn test_console_validation_error_display_parse_error() {
+        let err = ConsoleValidationError::ParseError("Invalid JSON".to_string());
+        let display = format!("{}", err);
+        assert!(display.contains("Parse error"));
+        assert!(display.contains("Invalid JSON"));
+    }
+
+    #[test]
+    fn test_console_validation_error_is_error() {
+        let err: &dyn std::error::Error = &ConsoleValidationError::ParseError("test".to_string());
+        assert!(err.to_string().contains("test"));
+    }
+
+    #[test]
+    fn test_checklist_error_display() {
+        let err = ChecklistError::IncompleteChecklist(vec![
+            "Missing check 1".to_string(),
+            "Missing check 2".to_string(),
+        ]);
+        let display = format!("{}", err);
+        assert!(display.contains("E2E test checklist incomplete"));
+        assert!(display.contains("Missing check 1"));
+        assert!(display.contains("Missing check 2"));
+    }
+
+    #[test]
+    fn test_checklist_error_is_error() {
+        let err: &dyn std::error::Error =
+            &ChecklistError::IncompleteChecklist(vec!["test".to_string()]);
+        assert!(err.to_string().contains("test"));
+    }
+
+    #[test]
+    fn test_e2e_checklist_with_strict_mode() {
+        let mode = WasmStrictMode::production();
+        let checklist = E2ETestChecklist::new().with_strict_mode(mode);
+        // Production mode requires code execution and console checking
+        assert!(!checklist.wasm_executed);
+        assert!(!checklist.console_checked);
+    }
+
+    #[test]
+    fn test_e2e_checklist_with_strict_mode_minimal() {
+        let mode = WasmStrictMode::minimal();
+        let checklist = E2ETestChecklist::new().with_strict_mode(mode);
+        // Minimal mode still requires code execution
+        assert!(!checklist.wasm_executed);
+    }
+
+    #[test]
+    fn test_e2e_checklist_add_note() {
+        let mut checklist = E2ETestChecklist::new();
+        checklist.add_note("First note");
+        checklist.add_note("Second note");
+        assert_eq!(checklist.notes.len(), 2);
+        assert_eq!(checklist.notes[0], "First note");
+        assert_eq!(checklist.notes[1], "Second note");
+    }
+
+    #[test]
+    fn test_console_capture_stop() {
+        let mut capture = ConsoleCapture::new();
+        capture.start();
+        assert!(capture.is_capturing);
+        capture.stop();
+        assert!(!capture.is_capturing);
+    }
+
+    #[test]
+    fn test_console_capture_messages_getter() {
+        let mut capture = ConsoleCapture::new();
+        capture.start();
+        capture.record(ConsoleMessage::new(ConsoleSeverity::Log, "msg1"));
+        capture.record(ConsoleMessage::new(ConsoleSeverity::Info, "msg2"));
+
+        let messages = capture.messages();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].text, "msg1");
+        assert_eq!(messages[1].text, "msg2");
+    }
+
+    #[test]
+    fn test_strict_mode_max_wasm_size() {
+        let prod = WasmStrictMode::production();
+        assert_eq!(prod.max_wasm_size, Some(5_000_000));
+
+        let dev = WasmStrictMode::development();
+        assert!(dev.max_wasm_size.is_none());
+
+        let minimal = WasmStrictMode::minimal();
+        assert!(minimal.max_wasm_size.is_none());
+    }
+
+    #[test]
+    fn test_strict_mode_cache_hits() {
+        let prod = WasmStrictMode::production();
+        assert!(prod.require_cache_hits);
+
+        let dev = WasmStrictMode::development();
+        assert!(!dev.require_cache_hits);
+    }
+
+    #[test]
+    fn test_parse_logs_invalid_json() {
+        let result = ConsoleCapture::parse_logs("not json");
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ConsoleValidationError::ParseError(_)
+        ));
+    }
+
+    #[test]
+    fn test_parse_logs_empty_array() {
+        let result = ConsoleCapture::parse_logs("[]").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_parse_logs_missing_fields() {
+        let json = r#"[{"severity": "log"}]"#;
+        let result = ConsoleCapture::parse_logs(json).unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].text.is_empty());
+        assert_eq!(result[0].line, 0);
+    }
+
+    #[test]
+    fn test_console_capture_validate_passes_when_ok() {
+        let mut capture = ConsoleCapture::with_strict_mode(WasmStrictMode::default());
+        capture.start();
+        capture.record(ConsoleMessage::new(ConsoleSeverity::Log, "Info"));
+        capture.record(ConsoleMessage::new(ConsoleSeverity::Info, "Debug info"));
+
+        assert!(capture.validate().is_ok());
+    }
+
+    #[test]
+    fn test_console_capture_validate_warnings_at_limit() {
+        let mut capture = ConsoleCapture::with_strict_mode(WasmStrictMode {
+            max_console_warnings: 2,
+            fail_on_console_error: false,
+            ..Default::default()
+        });
+        capture.start();
+        capture.record(ConsoleMessage::new(ConsoleSeverity::Warn, "Warn 1"));
+        capture.record(ConsoleMessage::new(ConsoleSeverity::Warn, "Warn 2"));
+
+        // Exactly at limit should pass
+        assert!(capture.validate().is_ok());
+    }
+
+    #[test]
+    fn test_wasm_strict_mode_default_values() {
+        let mode = WasmStrictMode::default();
+        assert!(mode.require_code_execution);
+        assert!(mode.fail_on_console_error);
+        assert!(mode.verify_custom_elements);
+        assert!(!mode.test_both_threading_modes);
+        assert!(!mode.simulate_low_memory);
+        assert!(mode.verify_coop_coep_headers);
+        assert!(mode.validate_replay_hash);
+        assert_eq!(mode.max_console_warnings, 0);
+        assert!(!mode.require_cache_hits);
+        assert!(mode.max_wasm_size.is_none());
+        assert!(mode.require_panic_free);
+    }
+
+    #[test]
+    fn test_console_capture_default() {
+        let capture = ConsoleCapture::default();
+        assert!(!capture.is_capturing);
+        assert!(capture.messages.is_empty());
+    }
+
+    #[test]
+    fn test_e2e_checklist_validate_partial() {
+        let checklist = E2ETestChecklist::new()
+            .with_wasm_executed()
+            .with_console_checked();
+        // Missing components_registered
+        let result = checklist.validate();
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        match err {
+            ChecklistError::IncompleteChecklist(failures) => {
+                assert!(failures
+                    .iter()
+                    .any(|f| f.contains("Component registration")));
+            }
+        }
+    }
+
+    #[test]
+    fn test_e2e_checklist_completion_percent_partial() {
+        let checklist = E2ETestChecklist::new()
+            .with_wasm_executed()
+            .with_components_registered();
+        // 2 out of 5 = 40%
+        assert!((checklist.completion_percent() - 40.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_e2e_checklist_default() {
+        let checklist = E2ETestChecklist::default();
+        assert!(!checklist.wasm_executed);
+        assert!(!checklist.components_registered);
+        assert!(!checklist.console_checked);
+        assert!(!checklist.network_verified);
+        assert!(!checklist.error_paths_tested);
+        assert!(checklist.notes.is_empty());
+    }
+
+    #[test]
+    fn test_console_message_new_sets_defaults() {
+        let msg = ConsoleMessage::new(ConsoleSeverity::Info, "test");
+        assert_eq!(msg.severity, ConsoleSeverity::Info);
+        assert_eq!(msg.text, "test");
+        assert!(msg.source.is_empty());
+        assert_eq!(msg.line, 0);
+        assert_eq!(msg.column, 0);
+        assert_eq!(msg.timestamp, 0.0);
+        assert!(msg.stack_trace.is_none());
+    }
+
+    #[test]
+    fn test_wasm_strict_mode_require_panic_free() {
+        let prod = WasmStrictMode::production();
+        assert!(prod.require_panic_free);
+
+        let dev = WasmStrictMode::development();
+        assert!(!dev.require_panic_free);
+
+        let minimal = WasmStrictMode::minimal();
+        assert!(!minimal.require_panic_free);
+    }
 }

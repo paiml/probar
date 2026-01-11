@@ -1325,4 +1325,422 @@ mod tests {
         let validator = ZeroJsValidator::new();
         assert!(validator.matches_allowed_pattern(Path::new("exact.js"), &["exact.js".to_string()]));
     }
+
+    #[test]
+    fn test_pattern_matching_no_match() {
+        let validator = ZeroJsValidator::new();
+        assert!(
+            !validator.matches_allowed_pattern(Path::new("other.js"), &["exact.js".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_result_display_with_all_violations() {
+        let result = ZeroJsValidationResult {
+            valid: false,
+            unauthorized_js_files: vec![PathBuf::from("bad.js")],
+            unauthorized_css_files: vec![],
+            unauthorized_html_files: vec![],
+            forbidden_directories: vec![PathBuf::from("node_modules")],
+            forbidden_tooling_files: vec![],
+            inline_scripts_detected: vec![InlineScriptViolation {
+                file: PathBuf::from("index.html"),
+                line: 5,
+                preview: "alert('hi')".into(),
+                is_wasm_generated: false,
+            }],
+            external_scripts_without_manifest: vec![],
+            dangerous_patterns: vec![DangerousPatternViolation {
+                file: PathBuf::from("code.js"),
+                line: 10,
+                pattern: "eval(".into(),
+                context: "eval(input)".into(),
+            }],
+            verified_js_files: vec![],
+        };
+
+        let display = format!("{result}");
+        assert!(display.contains("FAILED"));
+        assert!(display.contains("bad.js"));
+        assert!(display.contains("node_modules"));
+        assert!(display.contains("alert"));
+        assert!(display.contains("eval"));
+    }
+
+    #[test]
+    fn test_config_with_allowed_css() {
+        let temp = TempDir::new().unwrap();
+        std::fs::write(temp.path().join("styles.css"), "body { color: red; }").unwrap();
+
+        let config = ZeroJsConfig {
+            allowed_css_patterns: vec!["*.css".to_string()],
+            ..Default::default()
+        };
+        let validator = ZeroJsValidator::with_config(config);
+        let result = validator.validate_directory(temp.path()).unwrap();
+
+        assert!(result.unauthorized_css_files.is_empty());
+    }
+
+    #[test]
+    fn test_css_file_not_allowed() {
+        let temp = TempDir::new().unwrap();
+        std::fs::write(temp.path().join("styles.css"), "body { color: red; }").unwrap();
+
+        let validator = ZeroJsValidator::new();
+        let result = validator.validate_directory(temp.path()).unwrap();
+
+        assert!(!result.unauthorized_css_files.is_empty());
+    }
+
+    #[test]
+    fn test_html_with_external_script() {
+        let html = r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="external.js"></script>
+</head>
+<body></body>
+</html>
+"#;
+        let validator = ZeroJsValidator::new();
+        let violations = validator.validate_html_content(html, Path::new("test.html"));
+
+        // External scripts are not inline scripts, so no violations here
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn test_html_with_wasm_marker() {
+        let html = r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <script>
+        // __PROBAR_WASM_GENERATED__
+        init();
+    </script>
+</head>
+<body></body>
+</html>
+"#;
+        let validator = ZeroJsValidator::new();
+        let violations = validator.validate_html_content(html, Path::new("test.html"));
+
+        // WASM-generated inline scripts are allowed
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn test_inline_script_violation_is_wasm_generated() {
+        let violation = InlineScriptViolation {
+            file: PathBuf::from("test.html"),
+            line: 5,
+            preview: "WebAssembly.instantiate".into(),
+            is_wasm_generated: true,
+        };
+        assert!(violation.is_wasm_generated);
+    }
+
+    #[test]
+    fn test_forbidden_directories_all() {
+        // Test all forbidden directory names
+        for dir_name in FORBIDDEN_DIRECTORIES {
+            let temp = TempDir::new().unwrap();
+            let forbidden = temp.path().join(dir_name);
+            std::fs::create_dir(&forbidden).unwrap();
+
+            let validator = ZeroJsValidator::new();
+            let result = validator.validate_directory(temp.path()).unwrap();
+
+            assert!(
+                !result.is_valid(),
+                "Directory '{}' should be forbidden",
+                dir_name
+            );
+        }
+    }
+
+    #[test]
+    fn test_forbidden_tooling_files_all() {
+        // Test a selection of forbidden tooling files
+        let tooling_files = &[
+            "package-lock.json",
+            "yarn.lock",
+            "pnpm-lock.yaml",
+            "bun.lockb",
+            "jsconfig.json",
+            ".babelrc",
+            "rollup.config.js",
+            "vite.config.js",
+            "esbuild.config.js",
+            ".eslintrc.js",
+            ".prettierrc.js",
+        ];
+
+        for file_name in tooling_files {
+            let temp = TempDir::new().unwrap();
+            std::fs::write(temp.path().join(file_name), "{}").unwrap();
+
+            let validator = ZeroJsValidator::new();
+            let result = validator.validate_directory(temp.path()).unwrap();
+
+            assert!(
+                !result.is_valid(),
+                "File '{}' should be forbidden",
+                file_name
+            );
+        }
+    }
+
+    #[test]
+    fn test_dangerous_patterns_all() {
+        // Test all dangerous patterns
+        let code_samples = &[
+            "eval('code');",
+            "new Function('return 1');",
+            "Function('code')();",
+            "document.write('html');",
+            "el.innerHTML = x;",
+            "el.outerHTML = y;",
+            "obj.__proto__.bad = true;",
+            "Foo.prototype.constructor = Bar;",
+            "with (obj) {}",
+            r#"setTimeout("code", 1);"#,
+            r#"setInterval("tick", 1);"#,
+        ];
+
+        let validator = ZeroJsValidator::new();
+
+        for code in code_samples {
+            let violations = validator.validate_js_content(code, Path::new("test.js"));
+            assert!(
+                !violations.is_empty(),
+                "Pattern should be detected in: {}",
+                code
+            );
+        }
+    }
+
+    #[test]
+    fn test_zero_js_error_std_error() {
+        let err = ZeroJsError::CdpError("test".into());
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn test_validation_result_is_valid_comprehensive() {
+        let mut result = ZeroJsValidationResult::default();
+        result.valid = true;
+        assert!(result.is_valid());
+
+        result.unauthorized_js_files.push(PathBuf::from("a.js"));
+        assert!(!result.is_valid());
+
+        result.unauthorized_js_files.clear();
+        result.unauthorized_css_files.push(PathBuf::from("a.css"));
+        assert!(!result.is_valid());
+
+        result.unauthorized_css_files.clear();
+        result.unauthorized_html_files.push(PathBuf::from("a.html"));
+        assert!(!result.is_valid());
+
+        result.unauthorized_html_files.clear();
+        result
+            .forbidden_directories
+            .push(PathBuf::from("node_modules"));
+        assert!(!result.is_valid());
+
+        result.forbidden_directories.clear();
+        result
+            .forbidden_tooling_files
+            .push(PathBuf::from("package.json"));
+        assert!(!result.is_valid());
+
+        result.forbidden_tooling_files.clear();
+        result.inline_scripts_detected.push(InlineScriptViolation {
+            file: PathBuf::from("x.html"),
+            line: 1,
+            preview: "".into(),
+            is_wasm_generated: false,
+        });
+        assert!(!result.is_valid());
+
+        result.inline_scripts_detected.clear();
+        result
+            .external_scripts_without_manifest
+            .push("ext.js".into());
+        assert!(!result.is_valid());
+
+        result.external_scripts_without_manifest.clear();
+        result.dangerous_patterns.push(DangerousPatternViolation {
+            file: PathBuf::from("code.js"),
+            line: 1,
+            pattern: "eval(".into(),
+            context: "".into(),
+        });
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_file_without_extension() {
+        let temp = TempDir::new().unwrap();
+        std::fs::write(temp.path().join("Makefile"), "all:\n\techo hello").unwrap();
+
+        let validator = ZeroJsValidator::new();
+        let result = validator.validate_directory(temp.path()).unwrap();
+
+        // File without JS extension should be fine
+        assert!(result.unauthorized_js_files.is_empty());
+    }
+
+    #[test]
+    fn test_file_with_unknown_extension() {
+        let temp = TempDir::new().unwrap();
+        std::fs::write(temp.path().join("data.xyz"), "some data").unwrap();
+
+        let validator = ZeroJsValidator::new();
+        let result = validator.validate_directory(temp.path()).unwrap();
+
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_htm_extension() {
+        let temp = TempDir::new().unwrap();
+        let html = r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <script>alert('test')</script>
+</head>
+<body></body>
+</html>
+"#;
+        std::fs::write(temp.path().join("page.htm"), html).unwrap();
+
+        let validator = ZeroJsValidator::with_config(ZeroJsConfig {
+            allow_wasm_inline_scripts: false,
+            ..Default::default()
+        });
+        let result = validator.validate_directory(temp.path()).unwrap();
+
+        assert!(!result.inline_scripts_detected.is_empty());
+    }
+
+    #[test]
+    fn test_allowed_js_with_manifest_requirement() {
+        let temp = TempDir::new().unwrap();
+        let js_path = temp.path().join("app.worker.js");
+        let manifest_path = temp.path().join("app.worker.js.manifest.json");
+
+        std::fs::write(&js_path, "self.onmessage = function() {}").unwrap();
+        std::fs::write(
+            &manifest_path,
+            r#"{"manifest_version": 1, "output_hash": "abc", "generation": {}}"#,
+        )
+        .unwrap();
+
+        let config = ZeroJsConfig::default().with_allowed_js("*.worker.js");
+        let validator = ZeroJsValidator::with_config(config);
+        let result = validator.validate_directory(temp.path()).unwrap();
+
+        assert!(result.is_valid());
+        assert!(!result.verified_js_files.is_empty());
+    }
+
+    #[test]
+    fn test_allowed_js_without_manifest_fails() {
+        let temp = TempDir::new().unwrap();
+        let js_path = temp.path().join("app.worker.js");
+        std::fs::write(&js_path, "self.onmessage = function() {}").unwrap();
+
+        let config = ZeroJsConfig::default().with_allowed_js("*.worker.js");
+        let validator = ZeroJsValidator::with_config(config);
+        let result = validator.validate_directory(temp.path()).unwrap();
+
+        // Without manifest, even allowed patterns fail
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_verified_js_with_dangerous_patterns() {
+        let temp = TempDir::new().unwrap();
+        let js_path = temp.path().join("worker.js");
+        let manifest_path = temp.path().join("worker.js.manifest.json");
+
+        // JS with dangerous pattern
+        std::fs::write(&js_path, "const x = eval('1')").unwrap();
+        std::fs::write(
+            &manifest_path,
+            r#"{"manifest_version": 1, "output_hash": "abc", "generation": {}}"#,
+        )
+        .unwrap();
+
+        let config = ZeroJsConfig::default().with_allowed_js("*.js");
+        let validator = ZeroJsValidator::with_config(ZeroJsConfig {
+            require_manifest: false,
+            ..config
+        });
+        let result = validator.validate_directory(temp.path()).unwrap();
+
+        // File is verified but has dangerous patterns
+        assert!(!result.verified_js_files.is_empty());
+        assert!(!result.dangerous_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_skip_path_nested() {
+        let temp = TempDir::new().unwrap();
+        let vendor = temp.path().join("vendor").join("external");
+        std::fs::create_dir_all(&vendor).unwrap();
+        std::fs::write(vendor.join("lib.js"), "var x = 1;").unwrap();
+
+        let config = ZeroJsConfig::default().with_skip_path(temp.path().join("vendor"));
+        let validator = ZeroJsValidator::with_config(config);
+        let result = validator.validate_directory(temp.path()).unwrap();
+
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_multiple_inline_scripts() {
+        let html = r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <script>first();</script>
+    <script>second();</script>
+    <script>third();</script>
+</head>
+<body></body>
+</html>
+"#;
+        let validator = ZeroJsValidator::with_config(ZeroJsConfig {
+            allow_wasm_inline_scripts: false,
+            ..Default::default()
+        });
+        let violations = validator.validate_html_content(html, Path::new("test.html"));
+
+        assert_eq!(violations.len(), 3);
+    }
+
+    #[test]
+    fn test_html_script_not_closed() {
+        let html = r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <script>unclosed
+"#;
+        let validator = ZeroJsValidator::with_config(ZeroJsConfig {
+            allow_wasm_inline_scripts: false,
+            ..Default::default()
+        });
+        let violations = validator.validate_html_content(html, Path::new("test.html"));
+
+        // Script tag not closed - no violation recorded since no </script>
+        assert!(violations.is_empty());
+    }
 }

@@ -825,4 +825,317 @@ mod tests {
         // time_ms should be > 0 for now() or paused should be false
         assert!(options.time_ms > 0 || !options.paused);
     }
+
+    // =========================================================================
+    // Additional tests for 95% coverage
+    // =========================================================================
+
+    #[test]
+    fn test_clock_controller_inner() {
+        let controller = ClockController::new();
+        let inner = controller.inner();
+        assert!(!inner.is_installed());
+    }
+
+    #[test]
+    fn test_clock_controller_uninstall() {
+        let controller = ClockController::new();
+        controller.install(ClockOptions::fixed(1000)).unwrap();
+        assert_eq!(controller.state(), ClockState::Paused);
+
+        controller.uninstall();
+        assert_eq!(controller.state(), ClockState::System);
+    }
+
+    #[test]
+    fn test_clock_controller_pause_at() {
+        let controller = ClockController::new();
+        controller.install(ClockOptions::now()).unwrap();
+
+        controller.pause_at(5000);
+        assert_eq!(controller.state(), ClockState::Paused);
+        assert_eq!(controller.now_ms(), 5000);
+    }
+
+    #[test]
+    fn test_clock_controller_set_fixed_time() {
+        let controller = ClockController::new();
+        controller.install(ClockOptions::now()).unwrap();
+
+        controller.set_fixed_time(9999);
+        assert_eq!(controller.now_ms(), 9999);
+    }
+
+    #[test]
+    fn test_clock_controller_set_fixed_time_iso() {
+        let controller = ClockController::new();
+        controller.install(ClockOptions::now()).unwrap();
+
+        controller
+            .set_fixed_time_iso("2024-06-15T12:30:00Z")
+            .unwrap();
+        // Time should be around mid-2024
+        assert!(controller.now_ms() > 1_718_000_000_000);
+    }
+
+    #[test]
+    fn test_clock_controller_set_fixed_time_iso_error() {
+        let controller = ClockController::new();
+        controller.install(ClockOptions::now()).unwrap();
+
+        let result = controller.set_fixed_time_iso("invalid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_fake_clock_now_ms_not_installed() {
+        let clock = FakeClock::new();
+        // When not installed, should return system time
+        let time = clock.now_ms();
+        let system_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        // Should be within 1 second of system time
+        assert!((time as i64 - system_time as i64).abs() < 1000);
+    }
+
+    #[test]
+    fn test_fake_clock_now_ms_running() {
+        let clock = FakeClock::new();
+        clock
+            .install(ClockOptions {
+                time_ms: 1000,
+                paused: false, // Running, not paused
+            })
+            .unwrap();
+
+        // Running clock should advance with real time
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let time = clock.now_ms();
+        // Should be at least 1000 + ~50ms
+        assert!(time >= 1040);
+    }
+
+    #[test]
+    fn test_fake_clock_pause_not_installed() {
+        let clock = FakeClock::new();
+        // Pause on not installed clock should be no-op
+        clock.pause();
+        assert!(!clock.is_paused());
+    }
+
+    #[test]
+    fn test_fake_clock_resume_not_installed() {
+        let clock = FakeClock::new();
+        // Resume on not installed clock should be no-op
+        clock.resume();
+        assert!(!clock.is_paused());
+    }
+
+    #[test]
+    fn test_fake_clock_pause_already_paused() {
+        let clock = FakeClock::new();
+        clock.install(ClockOptions::fixed(1000)).unwrap(); // Already paused
+
+        clock.pause(); // Should be no-op
+        assert!(clock.is_paused());
+        assert_eq!(clock.now_ms(), 1000);
+    }
+
+    #[test]
+    fn test_fake_clock_resume_not_paused() {
+        let clock = FakeClock::new();
+        clock
+            .install(ClockOptions {
+                time_ms: 1000,
+                paused: false,
+            })
+            .unwrap();
+
+        clock.resume(); // Should be no-op since not paused
+        assert!(!clock.is_paused());
+    }
+
+    #[test]
+    fn test_fake_clock_clone() {
+        let clock = FakeClock::new();
+        clock.install(ClockOptions::fixed(5000)).unwrap();
+
+        let cloned = clock.clone();
+        assert!(cloned.is_installed());
+        assert!(cloned.is_paused());
+        assert_eq!(cloned.now_ms(), 5000);
+    }
+
+    #[test]
+    fn test_clock_options_serialize_deserialize() {
+        let options = ClockOptions {
+            time_ms: 1234567890,
+            paused: true,
+        };
+
+        let json = serde_json::to_string(&options).unwrap();
+        let deserialized: ClockOptions = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.time_ms, 1234567890);
+        assert!(deserialized.paused);
+    }
+
+    #[test]
+    fn test_clock_state_serialize_deserialize() {
+        let state = ClockState::Paused;
+        let json = serde_json::to_string(&state).unwrap();
+        let deserialized: ClockState = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ClockState::Paused);
+
+        let state2 = ClockState::Running;
+        let json2 = serde_json::to_string(&state2).unwrap();
+        let deserialized2: ClockState = serde_json::from_str(&json2).unwrap();
+        assert_eq!(deserialized2, ClockState::Running);
+    }
+
+    #[test]
+    fn test_clock_error_display_invalid_format() {
+        let err = ClockError::InvalidFormat("bad date".to_string());
+        let display = err.to_string();
+        assert!(display.contains("Invalid datetime format"));
+        assert!(display.contains("bad date"));
+    }
+
+    #[test]
+    fn test_clock_error_is_error() {
+        let err: &dyn std::error::Error = &ClockError::NotInstalled;
+        assert!(err.to_string().contains("not installed"));
+    }
+
+    #[test]
+    fn test_parse_iso_date_only_without_t() {
+        let ms = parse_iso_to_ms("2024-03-15").unwrap();
+        // Should be March 15, 2024 00:00:00 UTC
+        assert!(ms > 1_710_000_000_000);
+    }
+
+    #[test]
+    fn test_parse_iso_with_trailing_z() {
+        let ms1 = parse_iso_to_ms("2024-01-15T10:30:00Z").unwrap();
+        let ms2 = parse_iso_to_ms("2024-01-15T10:30:00").unwrap();
+        assert_eq!(ms1, ms2);
+    }
+
+    #[test]
+    fn test_parse_iso_with_whitespace() {
+        let ms = parse_iso_to_ms("  2024-01-15T10:30:00Z  ").unwrap();
+        assert!(ms > 1_705_000_000_000);
+    }
+
+    #[test]
+    fn test_parse_iso_partial_time() {
+        // Only hours
+        let ms = parse_iso_to_ms("2024-01-15T10").unwrap();
+        assert!(ms > 1_705_000_000_000);
+    }
+
+    #[test]
+    fn test_days_since_unix_epoch() {
+        // 1970-01-01 should be day 0
+        let days = days_since_unix_epoch(1970, 1, 1);
+        assert_eq!(days, 0);
+
+        // 1970-01-02 should be day 1
+        let days = days_since_unix_epoch(1970, 1, 2);
+        assert_eq!(days, 1);
+
+        // 1971-01-01 should be day 365
+        let days = days_since_unix_epoch(1971, 1, 1);
+        assert_eq!(days, 365);
+    }
+
+    #[test]
+    fn test_days_since_unix_epoch_leap_year() {
+        // 2000 is a leap year
+        let days_2000 = days_since_unix_epoch(2000, 12, 31);
+        let days_2001 = days_since_unix_epoch(2001, 1, 1);
+        assert_eq!(days_2001 - days_2000, 1);
+
+        // Leap year should have 366 days
+        let start_2000 = days_since_unix_epoch(2000, 1, 1);
+        let start_2001 = days_since_unix_epoch(2001, 1, 1);
+        assert_eq!(start_2001 - start_2000, 366);
+    }
+
+    #[test]
+    fn test_is_leap_year_comprehensive() {
+        // Standard leap years
+        assert!(is_leap_year(2020));
+        assert!(is_leap_year(2024));
+        assert!(is_leap_year(2028));
+
+        // Non-leap years
+        assert!(!is_leap_year(2019));
+        assert!(!is_leap_year(2021));
+        assert!(!is_leap_year(2023));
+
+        // Century years
+        assert!(!is_leap_year(1900)); // Divisible by 100 but not 400
+        assert!(!is_leap_year(2100));
+        assert!(is_leap_year(2000)); // Divisible by 400
+    }
+
+    #[test]
+    fn test_clock_controller_default() {
+        let controller = ClockController::default();
+        assert_eq!(controller.state(), ClockState::System);
+    }
+
+    #[test]
+    fn test_fake_clock_default() {
+        let clock = FakeClock::default();
+        assert!(!clock.is_installed());
+        assert!(!clock.is_paused());
+    }
+
+    #[test]
+    fn test_fast_forward_preserves_paused_state() {
+        let clock = FakeClock::new();
+        clock.install(ClockOptions::fixed(1000)).unwrap();
+        assert!(clock.is_paused());
+
+        clock.fast_forward_ms(500);
+        assert_eq!(clock.now_ms(), 1500);
+        // Still paused after fast forward
+        assert!(clock.is_paused());
+    }
+
+    #[test]
+    fn test_set_fixed_time_pauses_clock() {
+        let clock = FakeClock::new();
+        clock
+            .install(ClockOptions {
+                time_ms: 1000,
+                paused: false,
+            })
+            .unwrap();
+        assert!(!clock.is_paused());
+
+        clock.set_fixed_time(5000);
+        assert!(clock.is_paused());
+        assert_eq!(clock.now_ms(), 5000);
+    }
+
+    #[test]
+    fn test_clock_state_equality() {
+        assert_eq!(ClockState::Running, ClockState::Running);
+        assert_eq!(ClockState::Paused, ClockState::Paused);
+        assert_eq!(ClockState::System, ClockState::System);
+        assert_ne!(ClockState::Running, ClockState::Paused);
+    }
+
+    #[test]
+    fn test_parse_iso_short_date() {
+        // Short date without enough parts should error
+        let result = parse_iso_to_ms("2024-01");
+        assert!(result.is_err());
+    }
 }

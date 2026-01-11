@@ -670,6 +670,7 @@ impl Default for CielabColor {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -863,5 +864,446 @@ mod tests {
             CollectorError::Failed("test".into()).to_string(),
             "Collection failed: test"
         );
+    }
+
+    // ========================================================================
+    // Additional comprehensive tests for 95%+ coverage
+    // ========================================================================
+
+    #[test]
+    fn test_collector_error_disabled() {
+        assert_eq!(
+            CollectorError::Disabled.to_string(),
+            "Collector is disabled"
+        );
+    }
+
+    #[test]
+    fn test_collector_error_timeout() {
+        assert_eq!(CollectorError::Timeout.to_string(), "Collection timed out");
+    }
+
+    #[test]
+    fn test_collector_error_eq() {
+        assert_eq!(CollectorError::NotAvailable, CollectorError::NotAvailable);
+        assert_eq!(CollectorError::Disabled, CollectorError::Disabled);
+        assert_eq!(CollectorError::Timeout, CollectorError::Timeout);
+        assert_eq!(
+            CollectorError::Failed("a".into()),
+            CollectorError::Failed("a".into())
+        );
+        assert_ne!(
+            CollectorError::Failed("a".into()),
+            CollectorError::Failed("b".into())
+        );
+    }
+
+    #[test]
+    fn test_collector_error_clone() {
+        let err = CollectorError::Failed("test".into());
+        let cloned = err.clone();
+        assert_eq!(err, cloned);
+    }
+
+    #[test]
+    fn test_collector_error_is_error() {
+        let err = CollectorError::Timeout;
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn test_ring_buffer_is_empty() {
+        let buf: RingBuffer<i32> = RingBuffer::new(5);
+        assert!(buf.is_empty());
+
+        let mut buf2: RingBuffer<i32> = RingBuffer::new(5);
+        buf2.push(1);
+        assert!(!buf2.is_empty());
+    }
+
+    #[test]
+    fn test_ring_buffer_capacity_getter() {
+        let buf: RingBuffer<i32> = RingBuffer::new(10);
+        assert_eq!(buf.capacity(), 10);
+    }
+
+    #[test]
+    fn test_ring_buffer_first_last_empty() {
+        let buf: RingBuffer<i32> = RingBuffer::new(5);
+        assert!(buf.first().is_none());
+        assert!(buf.last().is_none());
+    }
+
+    #[test]
+    fn test_ring_buffer_get() {
+        let mut buf: RingBuffer<i32> = RingBuffer::new(5);
+        buf.push(10);
+        buf.push(20);
+        buf.push(30);
+
+        assert_eq!(buf.get(0), Some(&10));
+        assert_eq!(buf.get(1), Some(&20));
+        assert_eq!(buf.get(2), Some(&30));
+        assert_eq!(buf.get(3), None);
+    }
+
+    #[test]
+    fn test_ring_buffer_clear() {
+        let mut buf: RingBuffer<i32> = RingBuffer::new(5);
+        buf.push(1);
+        buf.push(2);
+        buf.push(3);
+
+        assert_eq!(buf.len(), 3);
+        buf.clear();
+        assert_eq!(buf.len(), 0);
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn test_ring_buffer_is_full() {
+        let mut buf: RingBuffer<i32> = RingBuffer::new(3);
+        assert!(!buf.is_full());
+
+        buf.push(1);
+        assert!(!buf.is_full());
+
+        buf.push(2);
+        assert!(!buf.is_full());
+
+        buf.push(3);
+        assert!(buf.is_full());
+
+        buf.push(4); // Evicts oldest
+        assert!(buf.is_full());
+    }
+
+    #[test]
+    fn test_ring_buffer_iter_mut() {
+        let mut buf: RingBuffer<i32> = RingBuffer::new(5);
+        buf.push(1);
+        buf.push(2);
+        buf.push(3);
+
+        for val in buf.iter_mut() {
+            *val *= 2;
+        }
+
+        let values: Vec<_> = buf.iter().copied().collect();
+        assert_eq!(values, vec![2, 4, 6]);
+    }
+
+    #[test]
+    fn test_ring_buffer_fill_default() {
+        let mut buf: RingBuffer<i32> = RingBuffer::new(5);
+        buf.push(1);
+        buf.push(2);
+
+        assert_eq!(buf.len(), 2);
+        buf.fill_default();
+        assert_eq!(buf.len(), 5);
+        assert!(buf.is_full());
+    }
+
+    #[test]
+    fn test_ring_buffer_average_empty() {
+        let buf: RingBuffer<f32> = RingBuffer::new(5);
+        assert!((buf.average() - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_ring_buffer_min_max_empty() {
+        let buf: RingBuffer<f32> = RingBuffer::new(5);
+        assert!(buf.min().is_none());
+        assert!(buf.max().is_none());
+    }
+
+    #[test]
+    fn test_ring_buffer_clone() {
+        let mut buf: RingBuffer<i32> = RingBuffer::new(3);
+        buf.push(1);
+        buf.push(2);
+
+        let cloned = buf.clone();
+        assert_eq!(buf.len(), cloned.len());
+        assert_eq!(buf.to_vec(), cloned.to_vec());
+    }
+
+    #[test]
+    fn test_panel_id_eq() {
+        assert_eq!(PanelId::Waveform, PanelId::Waveform);
+        assert_eq!(PanelId::Custom(1), PanelId::Custom(1));
+        assert_ne!(PanelId::Custom(1), PanelId::Custom(2));
+        assert_ne!(PanelId::Waveform, PanelId::Spectrogram);
+    }
+
+    #[test]
+    fn test_panel_id_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(PanelId::Waveform);
+        set.insert(PanelId::Spectrogram);
+        set.insert(PanelId::Waveform); // Duplicate
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_panel_id_all_variants() {
+        let ids = [
+            PanelId::Waveform,
+            PanelId::Spectrogram,
+            PanelId::Transcription,
+            PanelId::Metrics,
+            PanelId::VuMeter,
+            PanelId::Status,
+            PanelId::Custom(0),
+        ];
+        for id in ids {
+            // Just verify they can be created and compared
+            assert_eq!(id, id);
+        }
+    }
+
+    #[test]
+    fn test_panel_state_default() {
+        let state = PanelState::default();
+        assert!(state.focused.is_none());
+        assert!(state.exploded.is_none());
+        assert_eq!(state.visible.len(), 4);
+        assert!(state.visible.contains(&PanelId::Waveform));
+        assert!(state.visible.contains(&PanelId::Transcription));
+        assert!(state.visible.contains(&PanelId::Metrics));
+        assert!(state.visible.contains(&PanelId::Status));
+    }
+
+    #[test]
+    fn test_panel_state_with_panels() {
+        let panels = vec![PanelId::Spectrogram, PanelId::VuMeter];
+        let state = PanelState::with_panels(panels);
+        assert_eq!(state.visible.len(), 2);
+        assert_eq!(state.focused, Some(PanelId::Spectrogram));
+    }
+
+    #[test]
+    fn test_panel_state_with_panels_empty() {
+        let state = PanelState::with_panels(vec![]);
+        assert!(state.visible.is_empty());
+        assert!(state.focused.is_none());
+    }
+
+    #[test]
+    fn test_panel_state_focus_next_empty() {
+        let mut state = PanelState::with_panels(vec![]);
+        state.focus_next();
+        assert!(state.focused.is_none());
+    }
+
+    #[test]
+    fn test_panel_state_focus_prev_empty() {
+        let mut state = PanelState::with_panels(vec![]);
+        state.focus_prev();
+        assert!(state.focused.is_none());
+    }
+
+    #[test]
+    fn test_panel_state_focus_next_no_current_focus() {
+        let mut state = PanelState::with_panels(vec![PanelId::Waveform, PanelId::Metrics]);
+        state.focused = None;
+
+        state.focus_next();
+        assert_eq!(state.focused, Some(PanelId::Waveform));
+    }
+
+    #[test]
+    fn test_panel_state_focus_prev_no_current_focus() {
+        let mut state = PanelState::with_panels(vec![PanelId::Waveform, PanelId::Metrics]);
+        state.focused = None;
+
+        state.focus_prev();
+        assert_eq!(state.focused, Some(PanelId::Waveform));
+    }
+
+    #[test]
+    fn test_panel_state_focus_prev_at_start() {
+        let mut state = PanelState::with_panels(vec![PanelId::Waveform, PanelId::Metrics]);
+        state.focused = Some(PanelId::Waveform);
+
+        state.focus_prev();
+        assert_eq!(state.focused, Some(PanelId::Metrics)); // Wraps to end
+    }
+
+    #[test]
+    fn test_panel_state_toggle_explode_no_focus() {
+        let mut state = PanelState::default();
+        state.focused = None;
+
+        state.toggle_explode();
+        // exploded should be set to None (focused)
+        assert!(state.exploded.is_none());
+    }
+
+    #[test]
+    fn test_panel_state_is_focused() {
+        let mut state = PanelState::default();
+        state.focused = Some(PanelId::Waveform);
+
+        assert!(state.is_focused(PanelId::Waveform));
+        assert!(!state.is_focused(PanelId::Metrics));
+    }
+
+    #[test]
+    fn test_panel_state_is_exploded() {
+        let mut state = PanelState::default();
+        state.exploded = Some(PanelId::Transcription);
+
+        assert!(state.is_exploded(PanelId::Transcription));
+        assert!(!state.is_exploded(PanelId::Waveform));
+    }
+
+    #[test]
+    fn test_panel_state_focus_invalid_panel() {
+        let mut state = PanelState::default();
+        state.focused = Some(PanelId::Waveform);
+
+        // Try to focus a panel not in visible list
+        state.focus(PanelId::VuMeter);
+        // Focus should remain unchanged
+        assert_eq!(state.focused, Some(PanelId::Waveform));
+    }
+
+    #[test]
+    fn test_panel_state_add_panel_duplicate() {
+        let mut state = PanelState::default();
+        let initial_len = state.visible.len();
+
+        state.add_panel(PanelId::Waveform); // Already in list
+        assert_eq!(state.visible.len(), initial_len);
+    }
+
+    #[test]
+    fn test_panel_state_remove_panel_updates_focus() {
+        let mut state = PanelState::default();
+        state.focused = Some(PanelId::Metrics);
+
+        state.remove_panel(PanelId::Metrics);
+        // Focus should move to first visible
+        assert_eq!(state.focused, Some(PanelId::Waveform));
+    }
+
+    #[test]
+    fn test_panel_state_remove_panel_clears_exploded() {
+        let mut state = PanelState::default();
+        state.exploded = Some(PanelId::Metrics);
+
+        state.remove_panel(PanelId::Metrics);
+        assert!(state.exploded.is_none());
+    }
+
+    #[test]
+    fn test_panel_state_clone() {
+        let state = PanelState::default();
+        let cloned = state.clone();
+        assert_eq!(state.visible.len(), cloned.visible.len());
+    }
+
+    #[test]
+    fn test_cielab_default() {
+        let color = CielabColor::default();
+        assert!((color.l - 50.0).abs() < 0.001);
+        assert!((color.a - 0.0).abs() < 0.001);
+        assert!((color.b - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_cielab_lerp_clamp() {
+        let c1 = CielabColor::new(0.0, 0.0, 0.0);
+        let c2 = CielabColor::new(100.0, 100.0, 100.0);
+
+        // t < 0 should clamp to 0
+        let result = c1.lerp(&c2, -0.5);
+        assert!((result.l - 0.0).abs() < 0.001);
+
+        // t > 1 should clamp to 1
+        let result = c1.lerp(&c2, 1.5);
+        assert!((result.l - 100.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_cielab_percent_gradient_clamp() {
+        // Below 0 should clamp
+        let color = CielabColor::percent_gradient(-0.5);
+        assert!(color.a < 0.0); // Should be green
+
+        // Above 1 should clamp
+        let color = CielabColor::percent_gradient(1.5);
+        assert!(color.a > 0.0); // Should be red
+    }
+
+    #[test]
+    fn test_cielab_percent_gradient_midpoint() {
+        // Test the transition point (0.5)
+        let color = CielabColor::percent_gradient(0.5);
+        // At 0.5, should be yellow-ish
+        assert!(color.l > 90.0);
+    }
+
+    #[test]
+    fn test_cielab_meter_gradient_clamp() {
+        let low = CielabColor::meter_gradient(-1.0);
+        let high = CielabColor::meter_gradient(2.0);
+        // Should clamp to valid range
+        assert!(low.b < 0.0); // Blue
+        assert!(high.a > 0.0); // Red
+    }
+
+    #[test]
+    fn test_cielab_meter_gradient_transitions() {
+        // Test at boundary points
+        let at_033 = CielabColor::meter_gradient(0.33);
+        let at_066 = CielabColor::meter_gradient(0.66);
+
+        // Both should be valid colors
+        assert!(at_033.l > 0.0);
+        assert!(at_066.l > 0.0);
+    }
+
+    #[test]
+    fn test_cielab_to_rgb_edge_cases() {
+        // Test with low L (dark)
+        let dark = CielabColor::new(5.0, 0.0, 0.0);
+        let (r, g, b) = dark.to_rgb();
+        // Should be very dark
+        assert!(r < 20);
+        assert!(g < 20);
+        assert!(b < 20);
+    }
+
+    #[test]
+    fn test_cielab_eq() {
+        let c1 = CielabColor::new(50.0, 10.0, -20.0);
+        let c2 = CielabColor::new(50.0, 10.0, -20.0);
+        let c3 = CielabColor::new(51.0, 10.0, -20.0);
+
+        assert_eq!(c1, c2);
+        assert_ne!(c1, c3);
+    }
+
+    #[test]
+    fn test_cielab_clone() {
+        let c1 = CielabColor::new(75.0, 25.0, -50.0);
+        let c2 = c1;
+        assert_eq!(c1, c2);
+    }
+
+    #[test]
+    fn test_ring_buffer_f64() {
+        let mut buf: RingBuffer<f64> = RingBuffer::new(3);
+        buf.push(1.5);
+        buf.push(2.5);
+        buf.push(3.5);
+
+        assert!((buf.average() - 2.5).abs() < 0.001);
+        assert!((buf.min().unwrap() - 1.5).abs() < 0.001);
+        assert!((buf.max().unwrap() - 3.5).abs() < 0.001);
     }
 }

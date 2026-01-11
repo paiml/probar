@@ -508,6 +508,7 @@ impl Default for DeterministicClock {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -704,5 +705,571 @@ mod tests {
         assert_eq!(float_val, StateValue::Float(3.14));
         assert_eq!(string_val, StateValue::String("hello".into()));
         assert_eq!(bool_val, StateValue::Bool(true));
+    }
+
+    // ========================================================================
+    // Additional comprehensive tests for 95%+ coverage
+    // ========================================================================
+
+    #[test]
+    fn test_brick_state_default() {
+        let state = BrickState::default();
+        assert!(state.tensors.is_empty());
+        assert!(state.shapes.is_empty());
+        assert!(state.metadata.is_empty());
+        assert_eq!(state.version, 0);
+    }
+
+    #[test]
+    fn test_brick_state_get_tensor_nonexistent() {
+        let state = BrickState::new();
+        assert!(state.get_tensor("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_brick_state_get_metadata_nonexistent() {
+        let state = BrickState::new();
+        assert!(state.get_metadata("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_brick_state_tensor_missing_shape() {
+        let mut state = BrickState::new();
+        state.tensors.insert("data".into(), vec![1.0, 2.0]);
+        // No shape entry - get_tensor should return None
+        assert!(state.get_tensor("data").is_none());
+    }
+
+    #[test]
+    fn test_brick_state_clone() {
+        let mut state = BrickState::new();
+        state.set_tensor("t1", vec![1.0], vec![1]);
+        state.set_metadata("m1", StateValue::Bool(true));
+        state.version = 5;
+
+        let cloned = state.clone();
+        assert_eq!(cloned.version, 5);
+        assert_eq!(cloned.get_tensor("t1").unwrap().0, &[1.0]);
+        assert_eq!(cloned.get_metadata("m1"), Some(&StateValue::Bool(true)));
+    }
+
+    #[test]
+    fn test_state_value_clone() {
+        let val = StateValue::String("test".into());
+        let cloned = val.clone();
+        assert_eq!(val, cloned);
+    }
+
+    #[test]
+    fn test_state_value_partial_eq() {
+        assert_ne!(StateValue::Int(1), StateValue::Int(2));
+        assert_ne!(StateValue::Float(1.0), StateValue::Float(2.0));
+        assert_ne!(StateValue::Bool(true), StateValue::Bool(false));
+        assert_ne!(
+            StateValue::String("a".into()),
+            StateValue::String("b".into())
+        );
+    }
+
+    #[test]
+    fn test_execution_trace_clone() {
+        let trace = ExecutionTrace {
+            operation: "test".into(),
+            input_summary: "in".into(),
+            output_summary: "out".into(),
+            duration: Duration::from_secs(1),
+            state_version_before: 0,
+            state_version_after: 1,
+        };
+        let cloned = trace.clone();
+        assert_eq!(trace.operation, cloned.operation);
+        assert_eq!(trace.duration, cloned.duration);
+    }
+
+    #[test]
+    fn test_brick_history_default() {
+        let history = BrickHistory::default();
+        assert!(history.is_empty());
+        assert_eq!(history.len(), 0);
+        assert_eq!(history.position(), 0);
+    }
+
+    #[test]
+    fn test_brick_history_is_empty() {
+        let mut history = BrickHistory::new(10);
+        assert!(history.is_empty());
+
+        let state = BrickState::new();
+        let trace = ExecutionTrace {
+            operation: "op".into(),
+            input_summary: String::new(),
+            output_summary: String::new(),
+            duration: Duration::ZERO,
+            state_version_before: 0,
+            state_version_after: 1,
+        };
+        history.record(state, trace);
+        assert!(!history.is_empty());
+    }
+
+    #[test]
+    fn test_brick_history_step_back_empty() {
+        let mut history = BrickHistory::new(10);
+        assert!(history.step_back().is_none());
+    }
+
+    #[test]
+    fn test_brick_history_step_back_at_start() {
+        let mut history = BrickHistory::new(10);
+
+        let state = BrickState::new();
+        let trace = ExecutionTrace {
+            operation: "op".into(),
+            input_summary: String::new(),
+            output_summary: String::new(),
+            duration: Duration::ZERO,
+            state_version_before: 0,
+            state_version_after: 1,
+        };
+        history.record(state, trace);
+
+        // Move to position 0
+        history.position = 0;
+        assert!(history.step_back().is_none());
+    }
+
+    #[test]
+    fn test_brick_history_step_forward_at_end() {
+        let mut history = BrickHistory::new(10);
+
+        let state = BrickState::new();
+        let trace = ExecutionTrace {
+            operation: "op".into(),
+            input_summary: String::new(),
+            output_summary: String::new(),
+            duration: Duration::ZERO,
+            state_version_before: 0,
+            state_version_after: 1,
+        };
+        history.record(state, trace);
+
+        // Position is already at end (1)
+        assert!(history.step_forward().is_none());
+    }
+
+    #[test]
+    fn test_brick_history_goto_invalid() {
+        let mut history = BrickHistory::new(10);
+        assert!(history.goto(100).is_none());
+    }
+
+    #[test]
+    fn test_brick_history_current_empty() {
+        let history = BrickHistory::new(10);
+        assert!(history.current().is_none());
+    }
+
+    #[test]
+    fn test_brick_history_current_at_start() {
+        let mut history = BrickHistory::new(10);
+
+        let mut state = BrickState::new();
+        state.set_metadata("val", StateValue::Int(1));
+        let trace = ExecutionTrace {
+            operation: "op".into(),
+            input_summary: String::new(),
+            output_summary: String::new(),
+            duration: Duration::ZERO,
+            state_version_before: 0,
+            state_version_after: 1,
+        };
+        history.record(state, trace);
+
+        // Position is 1
+        let current = history.current();
+        assert!(current.is_some());
+        assert_eq!(
+            current.unwrap().get_metadata("val"),
+            Some(&StateValue::Int(1))
+        );
+    }
+
+    #[test]
+    fn test_brick_history_current_position_zero() {
+        let mut history = BrickHistory::new(10);
+
+        let state = BrickState::new();
+        let trace = ExecutionTrace {
+            operation: "op".into(),
+            input_summary: String::new(),
+            output_summary: String::new(),
+            duration: Duration::ZERO,
+            state_version_before: 0,
+            state_version_after: 1,
+        };
+        history.record(state, trace);
+
+        // Force position to 0 (should return first)
+        history.position = 0;
+        assert!(history.current().is_some());
+    }
+
+    #[test]
+    fn test_brick_history_trace_at() {
+        let mut history = BrickHistory::new(10);
+
+        let state = BrickState::new();
+        let trace = ExecutionTrace {
+            operation: "test_op".into(),
+            input_summary: "input".into(),
+            output_summary: "output".into(),
+            duration: Duration::from_secs(2),
+            state_version_before: 0,
+            state_version_after: 1,
+        };
+        history.record(state, trace);
+
+        let retrieved = history.trace_at(0);
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().operation, "test_op");
+    }
+
+    #[test]
+    fn test_brick_history_trace_at_invalid() {
+        let history = BrickHistory::new(10);
+        assert!(history.trace_at(100).is_none());
+    }
+
+    #[test]
+    fn test_brick_history_traces() {
+        let mut history = BrickHistory::new(10);
+
+        for i in 0..3 {
+            let state = BrickState::new();
+            let trace = ExecutionTrace {
+                operation: format!("op_{}", i),
+                input_summary: String::new(),
+                output_summary: String::new(),
+                duration: Duration::ZERO,
+                state_version_before: i as u64,
+                state_version_after: (i + 1) as u64,
+            };
+            history.record(state, trace);
+        }
+
+        let traces = history.traces();
+        assert_eq!(traces.len(), 3);
+        assert_eq!(traces[0].operation, "op_0");
+        assert_eq!(traces[2].operation, "op_2");
+    }
+
+    #[test]
+    fn test_brick_history_record_truncates_forward() {
+        let mut history = BrickHistory::new(10);
+
+        // Record 5 states
+        for i in 0..5 {
+            let mut state = BrickState::new();
+            state.set_metadata("i", StateValue::Int(i));
+            let trace = ExecutionTrace {
+                operation: format!("op_{}", i),
+                input_summary: String::new(),
+                output_summary: String::new(),
+                duration: Duration::ZERO,
+                state_version_before: i as u64,
+                state_version_after: (i + 1) as u64,
+            };
+            history.record(state, trace);
+        }
+
+        // Go back to position 2
+        history.goto(2);
+
+        // Record a new state - should truncate forward
+        let mut new_state = BrickState::new();
+        new_state.set_metadata("new", StateValue::Bool(true));
+        let trace = ExecutionTrace {
+            operation: "new_op".into(),
+            input_summary: String::new(),
+            output_summary: String::new(),
+            duration: Duration::ZERO,
+            state_version_before: 2,
+            state_version_after: 3,
+        };
+        history.record(new_state, trace);
+
+        // Should now have 3 states (0, 1, new)
+        assert_eq!(history.len(), 3);
+    }
+
+    #[test]
+    fn test_brick_history_capacity_eviction() {
+        let mut history = BrickHistory::new(3); // Small capacity
+
+        // Record more than capacity
+        for i in 0..5 {
+            let mut state = BrickState::new();
+            state.set_metadata("i", StateValue::Int(i));
+            let trace = ExecutionTrace {
+                operation: format!("op_{}", i),
+                input_summary: String::new(),
+                output_summary: String::new(),
+                duration: Duration::ZERO,
+                state_version_before: i as u64,
+                state_version_after: (i + 1) as u64,
+            };
+            history.record(state, trace);
+        }
+
+        // Should only have 3 states (oldest evicted)
+        assert_eq!(history.len(), 3);
+
+        // First state should be i=2 (0 and 1 evicted)
+        let first = history.goto(0).unwrap();
+        assert_eq!(first.get_metadata("i"), Some(&StateValue::Int(2)));
+    }
+
+    #[test]
+    fn test_guard_severity_values() {
+        assert_eq!(GuardSeverity::Warning, GuardSeverity::Warning);
+        assert_eq!(GuardSeverity::Error, GuardSeverity::Error);
+        assert_eq!(GuardSeverity::Critical, GuardSeverity::Critical);
+        assert_ne!(GuardSeverity::Warning, GuardSeverity::Error);
+    }
+
+    #[test]
+    fn test_invariant_guard_debug() {
+        fn check(_: &BrickState) -> bool {
+            true
+        }
+        let guard = InvariantGuard::new("test", check, GuardSeverity::Warning);
+        let debug_str = format!("{:?}", guard);
+        assert!(debug_str.contains("InvariantGuard"));
+        assert!(debug_str.contains("test"));
+    }
+
+    #[test]
+    fn test_guarded_brick() {
+        use super::super::{Brick, BrickAssertion, BrickBudget, BrickVerification};
+
+        struct TestBrick;
+        impl Brick for TestBrick {
+            fn brick_name(&self) -> &'static str {
+                "TestBrick"
+            }
+            fn assertions(&self) -> &[BrickAssertion] {
+                &[]
+            }
+            fn budget(&self) -> BrickBudget {
+                BrickBudget::uniform(16)
+            }
+            fn verify(&self) -> BrickVerification {
+                BrickVerification {
+                    passed: vec![],
+                    failed: vec![],
+                    verification_time: Duration::ZERO,
+                }
+            }
+            fn to_html(&self) -> String {
+                String::new()
+            }
+            fn to_css(&self) -> String {
+                String::new()
+            }
+        }
+
+        fn check_positive(state: &BrickState) -> bool {
+            match state.get_metadata("count") {
+                Some(StateValue::Int(n)) => *n >= 0,
+                _ => true,
+            }
+        }
+
+        let guard = InvariantGuard::new("positive", check_positive, GuardSeverity::Error);
+        let guarded = GuardedBrick::new(TestBrick).guard(guard);
+
+        assert_eq!(guarded.inner().brick_name(), "TestBrick");
+        assert_eq!(guarded.guards().len(), 1);
+    }
+
+    #[test]
+    fn test_guarded_brick_check_guards_pass() {
+        use super::super::{Brick, BrickAssertion, BrickBudget, BrickVerification};
+
+        struct TestBrick;
+        impl Brick for TestBrick {
+            fn brick_name(&self) -> &'static str {
+                "TestBrick"
+            }
+            fn assertions(&self) -> &[BrickAssertion] {
+                &[]
+            }
+            fn budget(&self) -> BrickBudget {
+                BrickBudget::uniform(16)
+            }
+            fn verify(&self) -> BrickVerification {
+                BrickVerification {
+                    passed: vec![],
+                    failed: vec![],
+                    verification_time: Duration::ZERO,
+                }
+            }
+            fn to_html(&self) -> String {
+                String::new()
+            }
+            fn to_css(&self) -> String {
+                String::new()
+            }
+        }
+
+        fn always_pass(_: &BrickState) -> bool {
+            true
+        }
+
+        let guard = InvariantGuard::new("always_pass", always_pass, GuardSeverity::Error);
+        let guarded = GuardedBrick::new(TestBrick).guard(guard);
+
+        let state = BrickState::new();
+        assert!(guarded.check_guards(&state).is_ok());
+    }
+
+    #[test]
+    fn test_guarded_brick_check_guards_fail() {
+        use super::super::{Brick, BrickAssertion, BrickBudget, BrickVerification};
+
+        struct TestBrick;
+        impl Brick for TestBrick {
+            fn brick_name(&self) -> &'static str {
+                "TestBrick"
+            }
+            fn assertions(&self) -> &[BrickAssertion] {
+                &[]
+            }
+            fn budget(&self) -> BrickBudget {
+                BrickBudget::uniform(16)
+            }
+            fn verify(&self) -> BrickVerification {
+                BrickVerification {
+                    passed: vec![],
+                    failed: vec![],
+                    verification_time: Duration::ZERO,
+                }
+            }
+            fn to_html(&self) -> String {
+                String::new()
+            }
+            fn to_css(&self) -> String {
+                String::new()
+            }
+        }
+
+        fn always_fail(_: &BrickState) -> bool {
+            false
+        }
+
+        let guard = InvariantGuard::new("always_fail", always_fail, GuardSeverity::Critical);
+        let guarded = GuardedBrick::new(TestBrick).guard(guard);
+
+        let state = BrickState::new();
+        let result = guarded.check_guards(&state);
+        assert!(result.is_err());
+
+        let violation = result.unwrap_err();
+        assert_eq!(violation.guard_name, "always_fail");
+        assert_eq!(violation.severity, GuardSeverity::Critical);
+    }
+
+    #[test]
+    fn test_guard_violation_display() {
+        let violation = GuardViolation {
+            guard_name: "test_guard",
+            severity: GuardSeverity::Error,
+        };
+        let display = format!("{}", violation);
+        assert!(display.contains("test_guard"));
+        assert!(display.contains("Error"));
+    }
+
+    #[test]
+    fn test_guard_violation_error_trait() {
+        let violation = GuardViolation {
+            guard_name: "test",
+            severity: GuardSeverity::Warning,
+        };
+        let _: &dyn std::error::Error = &violation;
+    }
+
+    #[test]
+    fn test_deterministic_rng_default() {
+        let rng = DeterministicRng::default();
+        assert_eq!(rng.state(), 42);
+    }
+
+    #[test]
+    fn test_deterministic_rng_f32_range() {
+        let mut rng = DeterministicRng::new(123);
+        for _ in 0..100 {
+            let val = rng.next_f32();
+            assert!((0.0..1.0).contains(&val));
+        }
+    }
+
+    #[test]
+    fn test_deterministic_rng_state() {
+        let mut rng = DeterministicRng::new(999);
+        let _ = rng.next_u64();
+        let state = rng.state();
+        assert_ne!(state, 999); // State should have changed
+    }
+
+    #[test]
+    fn test_deterministic_rng_restore() {
+        let mut rng1 = DeterministicRng::new(100);
+        let mut rng2 = DeterministicRng::new(999);
+
+        // Get some values from rng1
+        for _ in 0..10 {
+            rng1.next_u64();
+        }
+
+        // Save state and restore to rng2
+        let saved_state = rng1.state();
+        rng2.restore(saved_state);
+
+        // Both should now produce same sequence
+        for _ in 0..10 {
+            assert_eq!(rng1.next_u64(), rng2.next_u64());
+        }
+    }
+
+    #[test]
+    fn test_deterministic_rng_clone() {
+        let mut rng1 = DeterministicRng::new(555);
+        for _ in 0..5 {
+            rng1.next_u64();
+        }
+
+        let mut rng2 = rng1.clone();
+
+        // Both should produce same sequence from here
+        for _ in 0..10 {
+            assert_eq!(rng1.next_u64(), rng2.next_u64());
+        }
+    }
+
+    #[test]
+    fn test_deterministic_clock_default() {
+        let clock = DeterministicClock::default();
+        assert_eq!(clock.now_ns(), 0);
+        // Default tick is 10ms
+    }
+
+    #[test]
+    fn test_deterministic_clock_clone() {
+        let mut clock1 = DeterministicClock::new(100, 50);
+        clock1.advance(5);
+
+        let clock2 = clock1.clone();
+        assert_eq!(clock1.now_ns(), clock2.now_ns());
     }
 }

@@ -694,6 +694,7 @@ fn to_snake_case(s: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -800,5 +801,405 @@ mod tests {
         assert_eq!(to_snake_case("helloWorld"), "hello_world");
         assert_eq!(to_snake_case("HelloWorld"), "hello_world");
         assert_eq!(to_snake_case("model-url"), "model_url");
+    }
+
+    // ========================================================================
+    // Additional comprehensive tests for 95%+ coverage
+    // ========================================================================
+
+    #[test]
+    fn test_field_type_float32array() {
+        assert_eq!(FieldType::Float32Array.to_typescript(), "Float32Array");
+        assert_eq!(FieldType::Float32Array.to_rust(), "js_sys::Float32Array");
+    }
+
+    #[test]
+    fn test_field_type_object_typescript() {
+        let fields = vec![
+            MessageField::new("name", FieldType::String),
+            MessageField::new("count", FieldType::Number),
+        ];
+        let object_type = FieldType::Object(fields);
+        let ts = object_type.to_typescript();
+        assert!(ts.contains("name: string"));
+        assert!(ts.contains("count: number"));
+        assert!(ts.starts_with("{ "));
+        assert!(ts.ends_with(" }"));
+    }
+
+    #[test]
+    fn test_field_type_object_rust() {
+        let fields = vec![MessageField::new("data", FieldType::String)];
+        let object_type = FieldType::Object(fields);
+        assert_eq!(object_type.to_rust(), "serde_json::Value");
+    }
+
+    #[test]
+    fn test_field_type_optional_typescript() {
+        let optional = FieldType::Optional(Box::new(FieldType::Number));
+        assert_eq!(optional.to_typescript(), "number | undefined");
+    }
+
+    #[test]
+    fn test_field_type_optional_rust() {
+        let optional = FieldType::Optional(Box::new(FieldType::Boolean));
+        assert_eq!(optional.to_rust(), "Option<bool>");
+    }
+
+    #[test]
+    fn test_message_field_new() {
+        let field = MessageField::new("testField", FieldType::Number);
+        assert_eq!(field.name, "testField");
+        assert_eq!(field.field_type, FieldType::Number);
+        assert!(field.required);
+    }
+
+    #[test]
+    fn test_message_field_optional() {
+        let field = MessageField::optional("optionalField", FieldType::String);
+        assert_eq!(field.name, "optionalField");
+        assert!(!field.required);
+        assert!(matches!(field.field_type, FieldType::Optional(_)));
+    }
+
+    #[test]
+    fn test_brick_worker_message_new() {
+        let msg = BrickWorkerMessage::new("testMsg", BrickWorkerMessageDirection::ToWorker);
+        assert_eq!(msg.name, "testMsg");
+        assert_eq!(msg.direction, BrickWorkerMessageDirection::ToWorker);
+        assert!(msg.fields.is_empty());
+        assert!(msg.trace_context); // Default is true
+    }
+
+    #[test]
+    fn test_brick_worker_message_field() {
+        let msg = BrickWorkerMessage::new("msg", BrickWorkerMessageDirection::ToWorker)
+            .field("url", FieldType::String)
+            .field("count", FieldType::Number);
+        assert_eq!(msg.fields.len(), 2);
+        assert_eq!(msg.fields[0].name, "url");
+        assert_eq!(msg.fields[1].name, "count");
+    }
+
+    #[test]
+    fn test_brick_worker_message_optional_field() {
+        let msg = BrickWorkerMessage::new("msg", BrickWorkerMessageDirection::ToWorker)
+            .optional_field("extra", FieldType::String);
+        assert_eq!(msg.fields.len(), 1);
+        assert!(!msg.fields[0].required);
+    }
+
+    #[test]
+    fn test_brick_worker_message_without_trace() {
+        let msg =
+            BrickWorkerMessage::new("msg", BrickWorkerMessageDirection::ToWorker).without_trace();
+        assert!(!msg.trace_context);
+    }
+
+    #[test]
+    fn test_brick_worker_message_js_type_name() {
+        let msg = BrickWorkerMessage::new("InitModel", BrickWorkerMessageDirection::ToWorker);
+        assert_eq!(msg.js_type_name(), "initmodel");
+    }
+
+    #[test]
+    fn test_brick_worker_message_rust_type_name() {
+        let msg = BrickWorkerMessage::new("init_model", BrickWorkerMessageDirection::ToWorker);
+        assert_eq!(msg.rust_type_name(), "InitModel");
+
+        let msg2 = BrickWorkerMessage::new("load-audio", BrickWorkerMessageDirection::ToWorker);
+        assert_eq!(msg2.rust_type_name(), "LoadAudio");
+    }
+
+    #[test]
+    fn test_worker_transition_new() {
+        let transition = WorkerTransition::new("state1", "event", "state2");
+        assert_eq!(transition.from, "state1");
+        assert_eq!(transition.message, "event");
+        assert_eq!(transition.to, "state2");
+        assert!(transition.action.is_none());
+    }
+
+    #[test]
+    fn test_worker_transition_with_action() {
+        let transition = WorkerTransition::new("s1", "e", "s2").with_action("doSomething()");
+        assert_eq!(transition.action, Some("doSomething()".to_string()));
+    }
+
+    #[test]
+    fn test_worker_brick_state() {
+        let worker = WorkerBrick::new("test")
+            .state("custom_state")
+            .state("another_state");
+
+        assert!(worker.states.contains(&"custom_state".to_string()));
+        assert!(worker.states.contains(&"another_state".to_string()));
+    }
+
+    #[test]
+    fn test_worker_brick_state_dedup() {
+        let worker = WorkerBrick::new("test").state("custom").state("custom"); // Duplicate
+
+        // Should only contain unique states
+        let count = worker.states.iter().filter(|s| *s == "custom").count();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_worker_brick_initial() {
+        let worker = WorkerBrick::new("test").initial("ready");
+        assert_eq!(worker.initial_state, "ready");
+    }
+
+    #[test]
+    fn test_worker_brick_transition_auto_adds_states() {
+        let worker = WorkerBrick::new("test").transition("new_from", "event", "new_to");
+
+        assert!(worker.states.contains(&"new_from".to_string()));
+        assert!(worker.states.contains(&"new_to".to_string()));
+    }
+
+    #[test]
+    fn test_worker_brick_transition_with_action() {
+        let worker = WorkerBrick::new("test").transition_with_action(
+            "s1",
+            "evt",
+            "s2",
+            "console.log('hello')",
+        );
+
+        assert_eq!(worker.transitions.len(), 1);
+        assert_eq!(
+            worker.transitions[0].action,
+            Some("console.log('hello')".to_string())
+        );
+        assert!(worker.states.contains(&"s1".to_string()));
+        assert!(worker.states.contains(&"s2".to_string()));
+    }
+
+    #[test]
+    fn test_worker_brick_to_worker_messages() {
+        let worker = WorkerBrick::new("test")
+            .message(BrickWorkerMessage::new(
+                "to1",
+                BrickWorkerMessageDirection::ToWorker,
+            ))
+            .message(BrickWorkerMessage::new(
+                "from1",
+                BrickWorkerMessageDirection::FromWorker,
+            ))
+            .message(BrickWorkerMessage::new(
+                "bi1",
+                BrickWorkerMessageDirection::Bidirectional,
+            ));
+
+        let to_msgs = worker.to_worker_messages();
+        assert_eq!(to_msgs.len(), 2); // ToWorker + Bidirectional
+    }
+
+    #[test]
+    fn test_worker_brick_from_worker_messages() {
+        let worker = WorkerBrick::new("test")
+            .message(BrickWorkerMessage::new(
+                "to1",
+                BrickWorkerMessageDirection::ToWorker,
+            ))
+            .message(BrickWorkerMessage::new(
+                "from1",
+                BrickWorkerMessageDirection::FromWorker,
+            ))
+            .message(BrickWorkerMessage::new(
+                "bi1",
+                BrickWorkerMessageDirection::Bidirectional,
+            ));
+
+        let from_msgs = worker.from_worker_messages();
+        assert_eq!(from_msgs.len(), 2); // FromWorker + Bidirectional
+    }
+
+    #[test]
+    fn test_worker_brick_js_with_no_transitions() {
+        let worker = WorkerBrick::new("test").message(BrickWorkerMessage::new(
+            "ping",
+            BrickWorkerMessageDirection::ToWorker,
+        ));
+
+        let js = worker.to_worker_js();
+        assert!(js.contains("no state change"));
+    }
+
+    #[test]
+    fn test_worker_brick_js_with_action() {
+        let worker = WorkerBrick::new("test")
+            .message(BrickWorkerMessage::new(
+                "start",
+                BrickWorkerMessageDirection::ToWorker,
+            ))
+            .transition_with_action("uninitialized", "start", "running", "startProcessing()");
+
+        let js = worker.to_worker_js();
+        assert!(js.contains("startProcessing()"));
+    }
+
+    #[test]
+    fn test_worker_brick_rust_bindings_empty_fields() {
+        let worker = WorkerBrick::new("test")
+            .message(BrickWorkerMessage::new(
+                "ping",
+                BrickWorkerMessageDirection::ToWorker,
+            ))
+            .message(BrickWorkerMessage::new(
+                "pong",
+                BrickWorkerMessageDirection::FromWorker,
+            ))
+            .transition("uninitialized", "ping", "ready");
+
+        let rust = worker.to_rust_bindings();
+        assert!(rust.contains("Ping,"));
+        assert!(rust.contains("Pong,"));
+    }
+
+    #[test]
+    fn test_worker_brick_rust_bindings_with_fields() {
+        let worker = WorkerBrick::new("test")
+            .message(
+                BrickWorkerMessage::new("result", BrickWorkerMessageDirection::FromWorker)
+                    .field("text", FieldType::String)
+                    .field("confidence", FieldType::Number),
+            )
+            .transition("uninitialized", "init", "ready");
+
+        let rust = worker.to_rust_bindings();
+        assert!(rust.contains("text: String"));
+        assert!(rust.contains("confidence: f64"));
+    }
+
+    #[test]
+    fn test_worker_brick_typescript_defs() {
+        let worker = WorkerBrick::new("test").message(
+            BrickWorkerMessage::new("config", BrickWorkerMessageDirection::ToWorker)
+                .field("url", FieldType::String)
+                .optional_field("timeout", FieldType::Number),
+        );
+
+        let ts = worker.to_typescript_defs();
+        assert!(ts.contains("interface ConfigMessage"));
+        assert!(ts.contains("type: 'config'"));
+        assert!(ts.contains("url: string"));
+        assert!(ts.contains("timeout?:")); // Optional field
+        assert!(ts.contains("_trace?: TraceContext"));
+    }
+
+    #[test]
+    fn test_worker_brick_implements_brick() {
+        let worker = WorkerBrick::new("test")
+            .message(BrickWorkerMessage::new(
+                "init",
+                BrickWorkerMessageDirection::ToWorker,
+            ))
+            .transition("uninitialized", "init", "ready");
+
+        assert_eq!(worker.brick_name(), "WorkerBrick");
+        assert!(worker.assertions().is_empty());
+        assert_eq!(worker.budget().total_ms, 1000);
+        assert!(worker.to_html().is_empty());
+        assert!(worker.to_css().is_empty());
+        assert!(worker.test_id().is_none());
+    }
+
+    #[test]
+    fn test_worker_brick_verify_invalid_from_state() {
+        let mut worker = WorkerBrick::new("test");
+        worker
+            .transitions
+            .push(WorkerTransition::new("nonexistent", "event", "ready"));
+        // Don't add the state to states list
+
+        let result = worker.verify();
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_worker_brick_verify_invalid_to_state() {
+        let mut worker = WorkerBrick::new("test");
+        worker.states.push("from_state".to_string());
+        worker
+            .transitions
+            .push(WorkerTransition::new("from_state", "event", "nonexistent"));
+        // Don't add "nonexistent" to states
+
+        let result = worker.verify();
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_worker_brick_verify_message_no_transition() {
+        let worker = WorkerBrick::new("test").message(BrickWorkerMessage::new(
+            "orphan",
+            BrickWorkerMessageDirection::ToWorker,
+        ));
+
+        let result = worker.verify();
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_to_pascal_case_space_separator() {
+        assert_eq!(to_pascal_case("hello world"), "HelloWorld");
+    }
+
+    #[test]
+    fn test_to_snake_case_leading_uppercase() {
+        assert_eq!(to_snake_case("URL"), "u_r_l");
+        assert_eq!(to_snake_case("ABC"), "a_b_c");
+    }
+
+    #[test]
+    fn test_brick_worker_message_direction_eq() {
+        assert_eq!(
+            BrickWorkerMessageDirection::ToWorker,
+            BrickWorkerMessageDirection::ToWorker
+        );
+        assert_ne!(
+            BrickWorkerMessageDirection::ToWorker,
+            BrickWorkerMessageDirection::FromWorker
+        );
+    }
+
+    #[test]
+    fn test_field_type_shared_array_buffer_rust() {
+        assert_eq!(
+            FieldType::SharedArrayBuffer.to_rust(),
+            "js_sys::SharedArrayBuffer"
+        );
+    }
+
+    #[test]
+    fn test_message_field_clone() {
+        let field = MessageField::new("test", FieldType::String);
+        let cloned = field.clone();
+        assert_eq!(field.name, cloned.name);
+        assert_eq!(field.field_type, cloned.field_type);
+    }
+
+    #[test]
+    fn test_worker_transition_clone() {
+        let transition = WorkerTransition::new("a", "b", "c").with_action("action");
+        let cloned = transition.clone();
+        assert_eq!(transition.from, cloned.from);
+        assert_eq!(transition.action, cloned.action);
+    }
+
+    #[test]
+    fn test_worker_brick_clone() {
+        let worker = WorkerBrick::new("test")
+            .message(BrickWorkerMessage::new(
+                "msg",
+                BrickWorkerMessageDirection::ToWorker,
+            ))
+            .transition("a", "msg", "b");
+        let cloned = worker.clone();
+        assert_eq!(worker.name, cloned.name);
+        assert_eq!(worker.messages.len(), cloned.messages.len());
     }
 }

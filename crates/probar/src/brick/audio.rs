@@ -555,24 +555,23 @@ impl Brick for AudioBrick {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_audio_brick_basic() {
-        let audio = AudioBrick::new("whisper-capture");
-        assert_eq!(audio.name, "whisper-capture");
-        assert_eq!(audio.inputs, 1);
-        assert_eq!(audio.outputs, 1);
-    }
+    // ============================================================
+    // AudioParam tests
+    // ============================================================
 
     #[test]
-    fn test_audio_brick_class_name() {
-        let audio = AudioBrick::new("whisper-capture");
-        assert_eq!(audio.class_name(), "WhisperCaptureProcessor");
+    fn test_audio_param_new() {
+        let param = AudioParam::new("gain", 1.0);
 
-        let audio2 = AudioBrick::new("my_processor");
-        assert_eq!(audio2.class_name(), "MyProcessorProcessor");
+        assert_eq!(param.name, "gain");
+        assert_eq!(param.default_value, 1.0);
+        assert_eq!(param.min_value, f64::MIN);
+        assert_eq!(param.max_value, f64::MAX);
+        assert_eq!(param.automation_rate, "k-rate");
     }
 
     #[test]
@@ -587,6 +586,12 @@ mod tests {
     }
 
     #[test]
+    fn test_audio_param_k_rate() {
+        let param = AudioParam::new("frequency", 440.0).k_rate();
+        assert_eq!(param.automation_rate, "k-rate");
+    }
+
+    #[test]
     fn test_audio_param_js_descriptor() {
         let param = AudioParam::new("volume", 0.5).range(0.0, 1.0);
         let js = param.to_js_descriptor();
@@ -595,6 +600,46 @@ mod tests {
         assert!(js.contains("defaultValue: 0.5"));
         assert!(js.contains("minValue: 0"));
         assert!(js.contains("maxValue: 1"));
+        assert!(js.contains("automationRate: 'k-rate'"));
+    }
+
+    #[test]
+    fn test_audio_param_js_descriptor_a_rate() {
+        let param = AudioParam::new("pan", 0.0).range(-1.0, 1.0).a_rate();
+        let js = param.to_js_descriptor();
+
+        assert!(js.contains("automationRate: 'a-rate'"));
+    }
+
+    #[test]
+    fn test_audio_param_debug_and_clone() {
+        let param = AudioParam::new("test", 0.5);
+        let cloned = param.clone();
+
+        assert_eq!(cloned.name, "test");
+        assert!(format!("{:?}", cloned).contains("AudioParam"));
+    }
+
+    // ============================================================
+    // RingBufferConfig tests
+    // ============================================================
+
+    #[test]
+    fn test_ring_buffer_config_default() {
+        let config = RingBufferConfig::default();
+
+        assert_eq!(config.size, 48000);
+        assert_eq!(config.channels, 1);
+        assert!(config.use_atomics);
+    }
+
+    #[test]
+    fn test_ring_buffer_config_new() {
+        let config = RingBufferConfig::new(24000);
+
+        assert_eq!(config.size, 24000);
+        assert_eq!(config.channels, 1);
+        assert!(config.use_atomics);
     }
 
     #[test]
@@ -605,6 +650,122 @@ mod tests {
         assert_eq!(config.channels, 2);
         assert!(config.use_atomics);
     }
+
+    #[test]
+    fn test_ring_buffer_config_without_atomics() {
+        let config = RingBufferConfig::new(16000).without_atomics();
+
+        assert!(!config.use_atomics);
+    }
+
+    #[test]
+    fn test_ring_buffer_config_chained() {
+        let config = RingBufferConfig::new(96000).channels(4).without_atomics();
+
+        assert_eq!(config.size, 96000);
+        assert_eq!(config.channels, 4);
+        assert!(!config.use_atomics);
+    }
+
+    #[test]
+    fn test_ring_buffer_config_debug_and_clone() {
+        let config = RingBufferConfig::new(48000);
+        let cloned = config.clone();
+
+        assert_eq!(cloned.size, 48000);
+        assert!(format!("{:?}", cloned).contains("RingBufferConfig"));
+    }
+
+    // ============================================================
+    // AudioBrick tests
+    // ============================================================
+
+    #[test]
+    fn test_audio_brick_basic() {
+        let audio = AudioBrick::new("whisper-capture");
+        assert_eq!(audio.name, "whisper-capture");
+        assert_eq!(audio.inputs, 1);
+        assert_eq!(audio.outputs, 1);
+    }
+
+    #[test]
+    fn test_audio_brick_inputs_outputs() {
+        let audio = AudioBrick::new("mixer").inputs(4).outputs(2);
+
+        assert_eq!(audio.inputs, 4);
+        assert_eq!(audio.outputs, 2);
+    }
+
+    #[test]
+    fn test_audio_brick_sample_rate() {
+        let audio = AudioBrick::new("test").sample_rate(44100);
+        assert_eq!(audio.sample_rate, 44100);
+    }
+
+    #[test]
+    fn test_audio_brick_with_param() {
+        let audio = AudioBrick::new("processor").param(AudioParam::new("gain", 1.0));
+
+        assert_eq!(audio.params.len(), 1);
+        assert_eq!(audio.params[0].name, "gain");
+    }
+
+    #[test]
+    fn test_audio_brick_with_multiple_params() {
+        let audio = AudioBrick::new("eq")
+            .param(AudioParam::new("low", 0.0).range(-12.0, 12.0))
+            .param(AudioParam::new("mid", 0.0).range(-12.0, 12.0))
+            .param(AudioParam::new("high", 0.0).range(-12.0, 12.0));
+
+        assert_eq!(audio.params.len(), 3);
+    }
+
+    #[test]
+    fn test_audio_brick_with_ring_buffer() {
+        let audio =
+            AudioBrick::new("capture").with_ring_buffer(RingBufferConfig::new(48000).channels(2));
+
+        assert!(audio.ring_buffer.is_some());
+        let rb = audio.ring_buffer.unwrap();
+        assert_eq!(rb.size, 48000);
+        assert_eq!(rb.channels, 2);
+    }
+
+    #[test]
+    fn test_audio_brick_class_name() {
+        let audio = AudioBrick::new("whisper-capture");
+        assert_eq!(audio.class_name(), "WhisperCaptureProcessor");
+
+        let audio2 = AudioBrick::new("my_processor");
+        assert_eq!(audio2.class_name(), "MyProcessorProcessor");
+    }
+
+    #[test]
+    fn test_audio_brick_class_name_single_word() {
+        let audio = AudioBrick::new("processor");
+        assert_eq!(audio.class_name(), "ProcessorProcessor");
+    }
+
+    #[test]
+    fn test_audio_brick_class_name_complex() {
+        let audio = AudioBrick::new("my-complex_audio-processor");
+        assert_eq!(audio.class_name(), "MyComplexAudioProcessorProcessor");
+    }
+
+    #[test]
+    fn test_audio_brick_debug_and_clone() {
+        let audio = AudioBrick::new("test")
+            .param(AudioParam::new("gain", 1.0))
+            .with_ring_buffer(RingBufferConfig::default());
+
+        let cloned = audio.clone();
+        assert_eq!(cloned.name, "test");
+        assert!(format!("{:?}", cloned).contains("AudioBrick"));
+    }
+
+    // ============================================================
+    // to_worklet_js tests
+    // ============================================================
 
     #[test]
     fn test_worklet_js_generation() {
@@ -624,6 +785,73 @@ mod tests {
     }
 
     #[test]
+    fn test_worklet_js_without_params() {
+        let audio = AudioBrick::new("simple").with_ring_buffer(RingBufferConfig::new(24000));
+
+        let js = audio.to_worklet_js();
+
+        // Should not contain parameterDescriptors when no params
+        assert!(!js.contains("parameterDescriptors"));
+        assert!(js.contains("class SimpleProcessor"));
+    }
+
+    #[test]
+    fn test_worklet_js_without_ring_buffer() {
+        let audio = AudioBrick::new("passthrough").param(AudioParam::new("gain", 1.0));
+
+        let js = audio.to_worklet_js();
+
+        // Should not contain RingBuffer class
+        assert!(!js.contains("class RingBuffer"));
+        assert!(!js.contains("this.ringBuffer"));
+        assert!(js.contains("parameterDescriptors"));
+    }
+
+    #[test]
+    fn test_worklet_js_no_outputs() {
+        let audio = AudioBrick::new("sink")
+            .outputs(0)
+            .with_ring_buffer(RingBufferConfig::new(24000));
+
+        let js = audio.to_worklet_js();
+
+        // Should not contain output copy logic
+        assert!(!js.contains("const output = outputs[0]"));
+    }
+
+    #[test]
+    fn test_worklet_js_ring_buffer_class() {
+        let audio = AudioBrick::new("capture").with_ring_buffer(RingBufferConfig::new(48000));
+
+        let js = audio.to_worklet_js();
+
+        // Verify ring buffer class is generated
+        assert!(js.contains("class RingBuffer"));
+        assert!(js.contains("constructor(sab)"));
+        assert!(js.contains("write(samples)"));
+        assert!(js.contains("read(samples)"));
+        assert!(js.contains("available()"));
+        assert!(js.contains("Atomics.load"));
+        assert!(js.contains("Atomics.store"));
+        assert!(js.contains("Atomics.notify"));
+    }
+
+    #[test]
+    fn test_worklet_js_ring_buffer_without_atomics() {
+        let audio = AudioBrick::new("simple")
+            .with_ring_buffer(RingBufferConfig::new(24000).without_atomics());
+
+        let js = audio.to_worklet_js();
+
+        // Should not contain the RingBuffer class when atomics are disabled
+        assert!(!js.contains("class RingBuffer"));
+    }
+
+    // ============================================================
+    // to_audio_init_js tests
+    // ============================================================
+
+    #[test]
     fn test_audio_init_js_generation() {
         let audio = AudioBrick::new("capture").with_ring_buffer(RingBufferConfig::new(48000));
 
@@ -634,6 +862,112 @@ mod tests {
         assert!(js.contains("SharedArrayBuffer"));
         assert!(js.contains("AudioWorkletNode"));
     }
+
+    #[test]
+    fn test_audio_init_js_without_ring_buffer() {
+        let audio = AudioBrick::new("passthrough");
+
+        let js = audio.to_audio_init_js();
+
+        assert!(js.contains("AudioContext"));
+        assert!(js.contains("AudioWorkletNode"));
+        assert!(!js.contains("SharedArrayBuffer"));
+        assert!(!js.contains("ringBufferSab"));
+    }
+
+    #[test]
+    fn test_audio_init_js_ring_buffer_size_calculation() {
+        let audio = AudioBrick::new("capture").with_ring_buffer(RingBufferConfig::new(48000));
+
+        let js = audio.to_audio_init_js();
+
+        // 48000 * 4 (f32) + 8 (state) = 192008
+        assert!(js.contains("Ring buffer: 48000 samples"));
+        assert!(js.contains("SharedArrayBuffer(192008)"));
+    }
+
+    #[test]
+    fn test_audio_init_js_posts_ring_buffer() {
+        let audio = AudioBrick::new("capture").with_ring_buffer(RingBufferConfig::new(24000));
+
+        let js = audio.to_audio_init_js();
+
+        assert!(js.contains("workletNode.port.postMessage"));
+        assert!(js.contains("type: 'init'"));
+        assert!(js.contains("ringBuffer: ringBufferSab"));
+    }
+
+    // ============================================================
+    // to_rust_bindings tests
+    // ============================================================
+
+    #[test]
+    fn test_rust_bindings_generation() {
+        let audio =
+            AudioBrick::new("capture").with_ring_buffer(RingBufferConfig::new(48000).channels(2));
+
+        let rust = audio.to_rust_bindings();
+
+        assert!(rust.contains("CaptureProcessor Audio Bindings"));
+        assert!(rust.contains("Generated by probar"));
+        assert!(rust.contains("RING_BUFFER_SIZE: usize = 48000"));
+        assert!(rust.contains("RING_BUFFER_CHANNELS: usize = 2"));
+        assert!(rust.contains("struct AudioRingBuffer"));
+        assert!(rust.contains("fn new(sab: js_sys::SharedArrayBuffer)"));
+        assert!(rust.contains("fn read(&self, output: &mut [f32])"));
+        assert!(rust.contains("fn available(&self)"));
+    }
+
+    #[test]
+    fn test_rust_bindings_without_ring_buffer() {
+        let audio = AudioBrick::new("passthrough");
+
+        let rust = audio.to_rust_bindings();
+
+        assert!(rust.contains("PassthroughProcessor Audio Bindings"));
+        assert!(!rust.contains("RING_BUFFER_SIZE"));
+        assert!(!rust.contains("struct AudioRingBuffer"));
+    }
+
+    // ============================================================
+    // Brick trait implementation tests
+    // ============================================================
+
+    #[test]
+    fn test_audio_brick_brick_name() {
+        let audio = AudioBrick::new("test");
+        assert_eq!(audio.brick_name(), "AudioBrick");
+    }
+
+    #[test]
+    fn test_audio_brick_assertions() {
+        let audio = AudioBrick::new("test");
+        assert!(audio.assertions().is_empty());
+    }
+
+    #[test]
+    fn test_audio_brick_budget() {
+        let audio = AudioBrick::new("test");
+        let budget = audio.budget();
+        // Audio has strict 3ms budget for real-time
+        assert_eq!(budget.as_duration(), Duration::from_millis(3));
+    }
+
+    #[test]
+    fn test_audio_brick_to_html() {
+        let audio = AudioBrick::new("test");
+        assert!(audio.to_html().is_empty());
+    }
+
+    #[test]
+    fn test_audio_brick_to_css() {
+        let audio = AudioBrick::new("test");
+        assert!(audio.to_css().is_empty());
+    }
+
+    // ============================================================
+    // Verification tests
+    // ============================================================
 
     #[test]
     fn test_verification_valid() {
@@ -651,5 +985,152 @@ mod tests {
 
         let result = audio.verify();
         assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_verification_ring_buffer_too_small() {
+        let audio = AudioBrick::new("test").with_ring_buffer(RingBufferConfig {
+            size: 64, // Too small (min is 128)
+            channels: 1,
+            use_atomics: true,
+        });
+
+        let result = audio.verify();
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_verification_ring_buffer_too_large() {
+        let audio = AudioBrick::new("test").with_ring_buffer(RingBufferConfig {
+            size: 48000 * 11, // Too large (max is 48000 * 10)
+            channels: 1,
+            use_atomics: true,
+        });
+
+        let result = audio.verify();
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_verification_ring_buffer_edge_cases() {
+        // Minimum valid size
+        let audio_min = AudioBrick::new("test").with_ring_buffer(RingBufferConfig {
+            size: 128,
+            channels: 1,
+            use_atomics: true,
+        });
+        assert!(audio_min.verify().is_valid());
+
+        // Maximum valid size
+        let audio_max = AudioBrick::new("test").with_ring_buffer(RingBufferConfig {
+            size: 48000 * 10,
+            channels: 1,
+            use_atomics: true,
+        });
+        assert!(audio_max.verify().is_valid());
+    }
+
+    #[test]
+    fn test_verification_no_ring_buffer() {
+        let audio = AudioBrick::new("test").param(AudioParam::new("gain", 1.0).range(0.0, 2.0));
+
+        let result = audio.verify();
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_verification_multiple_params() {
+        let audio = AudioBrick::new("eq")
+            .param(AudioParam::new("low", 0.0).range(-12.0, 12.0))
+            .param(AudioParam::new("mid", 0.0).range(-12.0, 12.0))
+            .param(AudioParam::new("high", 0.0).range(-12.0, 12.0));
+
+        let result = audio.verify();
+        assert!(result.is_valid());
+        // Each param should add a passed assertion
+        assert_eq!(result.passed.len(), 3);
+    }
+
+    #[test]
+    fn test_verification_mixed_valid_invalid_params() {
+        let audio = AudioBrick::new("test")
+            .param(AudioParam::new("good", 0.5).range(0.0, 1.0))
+            .param(AudioParam::new("bad", 0.5).range(1.0, 0.0)); // Invalid
+
+        let result = audio.verify();
+        assert!(!result.is_valid());
+        // One should pass, one should fail
+        assert_eq!(result.passed.len(), 1);
+        assert_eq!(result.failed.len(), 1);
+    }
+
+    // ============================================================
+    // Integration tests
+    // ============================================================
+
+    #[test]
+    fn test_full_audio_brick_workflow() {
+        let audio = AudioBrick::new("whisper-capture")
+            .inputs(1)
+            .outputs(1)
+            .sample_rate(16000)
+            .param(AudioParam::new("gain", 1.0).range(0.0, 2.0).a_rate())
+            .param(
+                AudioParam::new("threshold", -40.0)
+                    .range(-60.0, 0.0)
+                    .k_rate(),
+            )
+            .with_ring_buffer(RingBufferConfig::new(144000).channels(1));
+
+        // Verify configuration
+        assert_eq!(audio.name, "whisper-capture");
+        assert_eq!(audio.inputs, 1);
+        assert_eq!(audio.outputs, 1);
+        assert_eq!(audio.sample_rate, 16000);
+        assert_eq!(audio.params.len(), 2);
+        assert!(audio.ring_buffer.is_some());
+
+        // Verify class name
+        assert_eq!(audio.class_name(), "WhisperCaptureProcessor");
+
+        // Verify validation passes
+        assert!(audio.verify().is_valid());
+
+        // Generate all JS
+        let worklet_js = audio.to_worklet_js();
+        let init_js = audio.to_audio_init_js();
+        let rust_bindings = audio.to_rust_bindings();
+
+        // Verify all generation works
+        assert!(!worklet_js.is_empty());
+        assert!(!init_js.is_empty());
+        assert!(!rust_bindings.is_empty());
+
+        // Verify key content
+        assert!(worklet_js.contains("class WhisperCaptureProcessor"));
+        assert!(worklet_js.contains("gain"));
+        assert!(worklet_js.contains("threshold"));
+        assert!(init_js.contains("whisper-capture"));
+        assert!(rust_bindings.contains("RING_BUFFER_SIZE: usize = 144000"));
+    }
+
+    #[test]
+    fn test_minimal_audio_brick() {
+        let audio = AudioBrick::new("minimal");
+
+        // Verify defaults
+        assert_eq!(audio.inputs, 1);
+        assert_eq!(audio.outputs, 1);
+        assert_eq!(audio.sample_rate, 48000);
+        assert!(audio.params.is_empty());
+        assert!(audio.ring_buffer.is_none());
+
+        // Should still verify valid
+        assert!(audio.verify().is_valid());
+
+        // Should generate valid JS
+        let js = audio.to_worklet_js();
+        assert!(js.contains("class MinimalProcessor"));
+        assert!(js.contains("registerProcessor('minimal'"));
     }
 }
