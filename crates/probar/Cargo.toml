@@ -19,7 +19,8 @@ runtime = ["wasmtime", "async-trait"]
 derive = ["jugar-probar-derive"]
 # TUI testing support (included by default)
 # Note: For wasm32-unknown-unknown target, use --no-default-features
-tui = ["ratatui", "crossterm"]
+# Uses custom TextGrid instead of ratatui for zero external dependencies
+tui = ["crossterm"]
 # GPU compute support via trueno (RTX 4090 etc.)
 gpu = ["trueno"]
 # Docker-based cross-browser WASM testing (PROBAR-SPEC-014)
@@ -40,7 +41,7 @@ png = { workspace = true }
 mp4 = { workspace = true }
 
 # TUI testing (EDD compliance) - optional, not available on WASM
-ratatui = { workspace = true, optional = true }
+# Uses custom TextGrid instead of ratatui for zero external dependencies
 crossterm = { workspace = true, optional = true }
 regex = { workspace = true }
 sha2 = { workspace = true }

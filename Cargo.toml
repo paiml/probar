@@ -5,7 +5,7 @@ members = [
     "crates/probar-derive",
     "crates/probar-cli",
     "crates/probar-js-gen",
-    "crates/showcase-calculator",
+    # showcase-calculator removed - uses ratatui which is deprecated
 ]
 
 [workspace.package]
@@ -82,7 +82,7 @@ bincode = "1.3"
 trueno = { version = "0.11", features = ["gpu"] }
 
 # TUI Testing (EDD compliance)
-ratatui = "0.29"
+# Uses custom TextGrid/MockTty - no ratatui
 crossterm = "0.28"
 
 # Deterministic replay
@@ -94,10 +94,10 @@ regex = "1.11"
 uuid = { version = "1.11", features = ["v4", "serde", "js"] }
 
 # Local crates - exact versions for verified release
-probar = { version = "=1.0.0-rc.1", path = "crates/probar" }
-probar-derive = { version = "=1.0.0-rc.1", path = "crates/probar-derive" }
-probar-cli = { version = "=1.0.0-rc.1", path = "crates/probar-cli" }
-probar-js-gen = { version = "=1.0.0-rc.1", path = "crates/probar-js-gen" }
+probar = { version = "=1.0.0", path = "crates/probar" }
+probar-derive = { version = "=1.0.0", path = "crates/probar-derive" }
+probar-cli = { version = "=1.0.0", path = "crates/probar-cli" }
+probar-js-gen = { version = "=1.0.0", path = "crates/probar-js-gen" }
 
 # Hashing
 blake3 = "1"

@@ -1,12 +1,12 @@
 //! TUI Test Backend for Frame Capture
 //!
-//! Provides a test backend for ratatui that captures frames for assertion.
+//! Provides a test backend that captures frames for assertion.
+//! Uses TextGrid instead of ratatui::Buffer for zero external dependencies.
 //!
 //! ## EXTREME TDD: Tests written FIRST per spec
 
+use super::buffer::TextGrid;
 use crate::result::{ProbarError, ProbarResult};
-use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -24,26 +24,13 @@ pub struct TuiFrame {
 }
 
 impl TuiFrame {
-    /// Create a new TUI frame from a ratatui buffer
+    /// Create a new TUI frame from a TextGrid
     #[must_use]
-    pub fn from_buffer(buffer: &Buffer, timestamp_ms: u64) -> Self {
-        let area = buffer.area;
-        let mut content = Vec::with_capacity(area.height as usize);
-
-        for y in 0..area.height {
-            let mut line = String::with_capacity(area.width as usize);
-            for x in 0..area.width {
-                let cell = buffer.cell((x, y)).map(|c| c.symbol()).unwrap_or(" ");
-                line.push_str(cell);
-            }
-            // Trim trailing whitespace but preserve structure
-            content.push(line.trim_end().to_string());
-        }
-
+    pub fn from_grid(grid: &TextGrid, timestamp_ms: u64) -> Self {
         Self {
-            content,
-            width: area.width,
-            height: area.height,
+            content: grid.to_lines(),
+            width: grid.width(),
+            height: grid.height(),
             timestamp_ms,
         }
     }
@@ -208,12 +195,11 @@ impl fmt::Display for FrameDiff {
 
 /// TUI Test Backend for capturing frames
 ///
-/// Wraps ratatui's TestBackend and provides frame capture functionality.
+/// Provides a text grid and frame capture functionality for testing terminal UIs.
+/// Uses TextGrid instead of ratatui::Buffer for zero external dependencies.
 #[derive(Debug)]
 pub struct TuiTestBackend {
-    width: u16,
-    height: u16,
-    buffer: Buffer,
+    grid: TextGrid,
     frames: Vec<TuiFrame>,
     start_time: std::time::Instant,
 }
@@ -222,11 +208,8 @@ impl TuiTestBackend {
     /// Create a new test backend with the given dimensions
     #[must_use]
     pub fn new(width: u16, height: u16) -> Self {
-        let area = Rect::new(0, 0, width, height);
         Self {
-            width,
-            height,
-            buffer: Buffer::empty(area),
+            grid: TextGrid::new(width, height),
             frames: Vec::new(),
             start_time: std::time::Instant::now(),
         }
@@ -235,25 +218,25 @@ impl TuiTestBackend {
     /// Get the backend dimensions
     #[must_use]
     pub fn size(&self) -> (u16, u16) {
-        (self.width, self.height)
+        (self.grid.width(), self.grid.height())
     }
 
-    /// Get a reference to the underlying buffer
+    /// Get a reference to the underlying grid
     #[must_use]
-    pub fn buffer(&self) -> &Buffer {
-        &self.buffer
+    pub fn grid(&self) -> &TextGrid {
+        &self.grid
     }
 
-    /// Get a mutable reference to the underlying buffer
+    /// Get a mutable reference to the underlying grid
     #[must_use]
-    pub fn buffer_mut(&mut self) -> &mut Buffer {
-        &mut self.buffer
+    pub fn grid_mut(&mut self) -> &mut TextGrid {
+        &mut self.grid
     }
 
     /// Capture the current frame
     pub fn capture_frame(&mut self) -> TuiFrame {
         let timestamp = self.start_time.elapsed().as_millis() as u64;
-        let frame = TuiFrame::from_buffer(&self.buffer, timestamp);
+        let frame = TuiFrame::from_grid(&self.grid, timestamp);
         self.frames.push(frame.clone());
         frame
     }
@@ -262,7 +245,7 @@ impl TuiTestBackend {
     #[must_use]
     pub fn current_frame(&self) -> TuiFrame {
         let timestamp = self.start_time.elapsed().as_millis() as u64;
-        TuiFrame::from_buffer(&self.buffer, timestamp)
+        TuiFrame::from_grid(&self.grid, timestamp)
     }
 
     /// Get all captured frames
@@ -277,42 +260,32 @@ impl TuiTestBackend {
         self.frames.len()
     }
 
-    /// Clear the buffer
+    /// Clear the grid
     pub fn clear(&mut self) {
-        self.buffer.reset();
+        self.grid.clear();
     }
 
-    /// Reset the backend (clear buffer and frames)
+    /// Reset the backend (clear grid and frames)
     pub fn reset(&mut self) {
-        self.buffer.reset();
+        self.grid.clear();
         self.frames.clear();
         self.start_time = std::time::Instant::now();
     }
 
     /// Resize the backend
     pub fn resize(&mut self, width: u16, height: u16) {
-        self.width = width;
-        self.height = height;
-        let area = Rect::new(0, 0, width, height);
-        self.buffer = Buffer::empty(area);
+        self.grid.resize(width, height);
     }
 
     /// Write text at a position (for testing)
     pub fn write_text(&mut self, x: u16, y: u16, text: &str) {
-        for (i, ch) in text.chars().enumerate() {
-            let pos_x = x + i as u16;
-            if pos_x < self.width && y < self.height {
-                if let Some(cell) = self.buffer.cell_mut((pos_x, y)) {
-                    cell.set_char(ch);
-                }
-            }
-        }
+        self.grid.write_str(x, y, text);
     }
 
     /// Write multiple lines starting at a position
     pub fn write_lines(&mut self, x: u16, y: u16, lines: &[&str]) {
         for (i, line) in lines.iter().enumerate() {
-            self.write_text(x, y + i as u16, line);
+            self.grid.write_str(x, y + i as u16, line);
         }
     }
 }
@@ -337,6 +310,20 @@ mod tests {
             assert_eq!(frame.width(), 5);
             assert_eq!(frame.height(), 2);
             assert_eq!(frame.lines(), &["Hello", "World"]);
+        }
+
+        #[test]
+        fn test_from_grid() {
+            let mut grid = TextGrid::new(10, 3);
+            grid.write_str(0, 0, "Hello");
+            grid.write_str(0, 1, "World");
+
+            let frame = TuiFrame::from_grid(&grid, 100);
+            assert_eq!(frame.width(), 10);
+            assert_eq!(frame.height(), 3);
+            assert_eq!(frame.timestamp_ms(), 100);
+            assert!(frame.contains("Hello"));
+            assert!(frame.contains("World"));
         }
 
         #[test]
@@ -503,6 +490,18 @@ mod tests {
             let mut backend = TuiTestBackend::new(20, 5);
             backend.resize(40, 10);
             assert_eq!(backend.size(), (40, 10));
+        }
+
+        #[test]
+        fn test_grid_access() {
+            let mut backend = TuiTestBackend::new(20, 5);
+
+            // Test grid() accessor
+            assert_eq!(backend.grid().width(), 20);
+
+            // Test grid_mut() accessor
+            backend.grid_mut().set(0, 0, 'X');
+            assert_eq!(backend.grid().get(0, 0), Some('X'));
         }
     }
 }

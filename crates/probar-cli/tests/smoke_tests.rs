@@ -26,7 +26,7 @@ fn test_version_flag() {
         .arg("--version")
         .assert()
         .success()
-        .stdout(predicate::str::contains("1.0.0-rc.1"));
+        .stdout(predicate::str::contains("1.0.0"));
 }
 
 #[test]
