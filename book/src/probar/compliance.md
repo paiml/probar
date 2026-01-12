@@ -83,7 +83,171 @@ probador comply . --max-wasm-size 2097152  # 2MB
 
 ### C010: No Panic Paths
 
-Scans for `.unwrap()` and `.expect()` patterns in production code.
+Scans for panic-inducing patterns in production code. See [Panic Path Detection](#panic-path-detection) below for details.
+
+## Panic Path Detection
+
+The panic path linter (PROBAR-WASM-006) detects code patterns that can cause WASM execution to terminate unrecoverably.
+
+### Why This Matters
+
+In native Rust, panics can sometimes be caught with `catch_unwind`. In WASM, panics call `wasm_bindgen::throw_str` which terminates the entire WASM instance. This breaks the user experience catastrophically.
+
+### Detection Rules
+
+| Rule ID | Pattern | Severity |
+|---------|---------|----------|
+| WASM-PANIC-001 | `unwrap()` | Error |
+| WASM-PANIC-002 | `expect()` | Error |
+| WASM-PANIC-003 | `panic!()` | Error |
+| WASM-PANIC-004 | `unreachable!()` | Warning |
+| WASM-PANIC-005 | `todo!()` | Error |
+| WASM-PANIC-006 | `unimplemented!()` | Error |
+| WASM-PANIC-007 | Direct indexing `arr[i]` | Warning |
+
+### Usage
+
+```rust
+use jugar_probar::lint::{lint_panic_paths, PanicPathSummary};
+
+let source = r#"
+fn dangerous() {
+    let x = Some(5);
+    let y = x.unwrap();  // WASM-PANIC-001
+}
+"#;
+
+let report = lint_panic_paths(source, "file.rs")?;
+let summary = PanicPathSummary::from_report(&report);
+
+println!("unwrap calls: {}", summary.unwrap_count);
+println!("Total errors: {}", summary.error_count());
+```
+
+### Safe Alternatives
+
+Instead of panic paths, use proper error handling:
+
+```rust
+// BAD: Will panic
+let value = option.unwrap();
+let item = array[index];
+
+// GOOD: Returns Option/Result
+let value = option?;  // propagate None
+let value = option.ok_or(MyError)?;  // convert to Result
+let value = option.unwrap_or_default();  // provide default
+let item = array.get(index).ok_or(MyError)?;  // bounds-checked
+```
+
+### Test Modules
+
+The linter automatically skips `#[cfg(test)]` modules, allowing `unwrap()` and `expect()` in test code where panics are acceptable.
+
+### Example
+
+```bash
+cargo run --example panic_paths_demo -p jugar-probar
+```
+
+## PMAT Integration
+
+Probar integrates with [pmat](https://crates.io/crates/pmat) for comprehensive static analysis through the PMAT Bridge (PROBAR-PMAT-001).
+
+### What PMAT Provides
+
+| Check | Description |
+|-------|-------------|
+| SATD | Self-Admitted Technical Debt detection |
+| Complexity | Cyclomatic/cognitive complexity analysis |
+| Dead Code | Unused code detection |
+| Duplicates | Code duplication analysis |
+| Security | Security vulnerability detection |
+
+### Usage
+
+```rust
+use jugar_probar::comply::PmatBridge;
+use std::path::Path;
+
+let bridge = PmatBridge::new();
+
+// Check if pmat is installed
+if bridge.is_available() {
+    // Run quality gate
+    let result = bridge.run_quality_gate(Path::new("src/"))?;
+
+    println!("SATD violations: {}", result.satd_count);
+    println!("Complexity violations: {}", result.complexity_count);
+    println!("Total: {}", result.total_violations);
+
+    if result.has_critical() {
+        eprintln!("Critical issues found!");
+    }
+}
+```
+
+### Compliance Integration
+
+PMAT results are converted to compliance checks:
+
+```rust
+let bridge = PmatBridge::new();
+let compliance = bridge.check_compliance(Path::new("src/"))?;
+
+println!("{}", compliance.summary());
+// "COMPLIANT: 5/5 passed" or "NON-COMPLIANT: 3/5 passed, 2 failed"
+```
+
+### Generated Checks
+
+| Check ID | Description |
+|----------|-------------|
+| PMAT-SATD-001 | SATD Detection |
+| PMAT-COMPLEXITY-001 | Complexity Analysis |
+| PMAT-DEADCODE-001 | Dead Code Detection |
+| PMAT-SECURITY-001 | Security Analysis |
+| PMAT-DUPLICATE-001 | Code Duplication |
+
+### Installation
+
+```bash
+cargo install pmat
+```
+
+### Example
+
+```bash
+cargo run --example pmat_bridge_demo -p jugar-probar
+```
+
+## WASM Threading Compliance
+
+The `WasmThreadingCompliance` checker validates WASM projects against best practices.
+
+### Checks
+
+| Check ID | Description | Required |
+|----------|-------------|----------|
+| WASM-COMPLY-001 | State sync lint passes | Yes |
+| WASM-COMPLY-002 | Mock runtime tests exist | Yes |
+| WASM-COMPLY-003 | Property tests on actual code | Warning |
+| WASM-COMPLY-004 | Regression tests for known bugs | Yes |
+| WASM-COMPLY-005 | No JS files in target/ | Yes |
+| WASM-COMPLY-006 | No panic paths | Yes |
+
+### Usage
+
+```rust
+use jugar_probar::comply::WasmThreadingCompliance;
+use std::path::Path;
+
+let mut checker = WasmThreadingCompliance::new();
+let result = checker.check(Path::new("."));
+
+println!("{}", result.summary());
+// "COMPLIANT: 6/6 passed, 0 failed, 0 warnings"
+```
 
 ## Strict Modes
 
