@@ -1124,4 +1124,575 @@ mod tests {
             assert_eq!(manager.count(), 1);
         }
     }
+
+    mod coverage_enhancement_tests {
+        use super::*;
+
+        // Fixture with configurable priority that tracks order
+        #[derive(Debug)]
+        struct PriorityFixture {
+            name: String,
+            priority: i32,
+            setup_order: Arc<std::sync::Mutex<Vec<String>>>,
+            teardown_order: Arc<std::sync::Mutex<Vec<String>>>,
+        }
+
+        impl PriorityFixture {
+            fn new(
+                name: &str,
+                priority: i32,
+                setup_order: Arc<std::sync::Mutex<Vec<String>>>,
+                teardown_order: Arc<std::sync::Mutex<Vec<String>>>,
+            ) -> Self {
+                Self {
+                    name: name.to_string(),
+                    priority,
+                    setup_order,
+                    teardown_order,
+                }
+            }
+        }
+
+        impl Fixture for PriorityFixture {
+            fn setup(&mut self) -> ProbarResult<()> {
+                self.setup_order.lock().unwrap().push(self.name.clone());
+                Ok(())
+            }
+
+            fn teardown(&mut self) -> ProbarResult<()> {
+                self.teardown_order.lock().unwrap().push(self.name.clone());
+                Ok(())
+            }
+
+            fn name(&self) -> &str {
+                &self.name
+            }
+
+            fn priority(&self) -> i32 {
+                self.priority
+            }
+        }
+
+        // Fixture that fails on setup but with high priority
+        #[derive(Debug)]
+        struct HighPriorityFailingSetupFixture {
+            priority: i32,
+        }
+
+        impl Fixture for HighPriorityFailingSetupFixture {
+            fn setup(&mut self) -> ProbarResult<()> {
+                Err(ProbarError::FixtureError {
+                    message: "High priority setup failure".to_string(),
+                })
+            }
+
+            fn teardown(&mut self) -> ProbarResult<()> {
+                Ok(())
+            }
+
+            fn priority(&self) -> i32 {
+                self.priority
+            }
+        }
+
+        // Fixture that fails on setup but with low priority (set up later)
+        #[derive(Debug)]
+        struct LowPriorityFailingSetupFixture {
+            priority: i32,
+            setup_order: Arc<std::sync::Mutex<Vec<String>>>,
+        }
+
+        impl Fixture for LowPriorityFailingSetupFixture {
+            fn setup(&mut self) -> ProbarResult<()> {
+                self.setup_order
+                    .lock()
+                    .unwrap()
+                    .push("low_failing".to_string());
+                Err(ProbarError::FixtureError {
+                    message: "Low priority setup failure".to_string(),
+                })
+            }
+
+            fn teardown(&mut self) -> ProbarResult<()> {
+                Ok(())
+            }
+
+            fn priority(&self) -> i32 {
+                self.priority
+            }
+        }
+
+        // Another unique fixture type for testing multiple fixture types
+        #[derive(Debug)]
+        struct SecondTestFixture {
+            setup_called: Arc<AtomicBool>,
+            teardown_called: Arc<AtomicBool>,
+        }
+
+        impl SecondTestFixture {
+            fn new() -> Self {
+                Self {
+                    setup_called: Arc::new(AtomicBool::new(false)),
+                    teardown_called: Arc::new(AtomicBool::new(false)),
+                }
+            }
+        }
+
+        impl Fixture for SecondTestFixture {
+            fn setup(&mut self) -> ProbarResult<()> {
+                self.setup_called.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+
+            fn teardown(&mut self) -> ProbarResult<()> {
+                self.teardown_called.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        #[test]
+        fn test_simple_fixture_debug() {
+            let fixture = SimpleFixture::new("debug_test").with_priority(5);
+            let debug = format!("{:?}", fixture);
+            assert!(debug.contains("SimpleFixture"));
+            assert!(debug.contains("debug_test"));
+            assert!(debug.contains("5"));
+        }
+
+        #[test]
+        fn test_fixture_scope_debug() {
+            let manager = FixtureManager::new();
+            let scope = FixtureScope::new(manager);
+            let debug = format!("{:?}", scope);
+            assert!(debug.contains("FixtureScope"));
+            assert!(debug.contains("FixtureManager"));
+        }
+
+        #[test]
+        fn test_fixture_builder_default() {
+            let builder = FixtureBuilder::default();
+            let manager = builder.build();
+            assert_eq!(manager.count(), 0);
+        }
+
+        #[test]
+        fn test_build_and_setup_failure() {
+            let result = FixtureBuilder::new()
+                .with_fixture(FailingSetupFixture)
+                .build_and_setup();
+
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_setup_all_with_rollback() {
+            // Test that when a fixture fails setup, previously set up fixtures are torn down
+            let setup_order = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let teardown_order = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+            let mut manager = FixtureManager::new();
+
+            // Register a fixture that succeeds (high priority, set up first)
+            manager.register(PriorityFixture::new(
+                "first",
+                100,
+                setup_order.clone(),
+                teardown_order.clone(),
+            ));
+
+            // Register a fixture that will fail (low priority, set up later)
+            manager.register(LowPriorityFailingSetupFixture {
+                priority: -100,
+                setup_order: setup_order.clone(),
+            });
+
+            let result = manager.setup_all();
+            assert!(result.is_err());
+
+            // Verify the first fixture was set up
+            let setup = setup_order.lock().unwrap();
+            assert!(setup.contains(&"first".to_string()));
+            assert!(setup.contains(&"low_failing".to_string()));
+
+            // Verify the first fixture was torn down after the failure
+            let teardown = teardown_order.lock().unwrap();
+            assert!(teardown.contains(&"first".to_string()));
+        }
+
+        #[test]
+        fn test_teardown_failure_continues_others() {
+            // Test that when one fixture fails teardown, others are still torn down
+            let mut manager = FixtureManager::new();
+
+            manager.register(FailingTeardownFixture);
+            manager.register(TestFixture::new());
+
+            manager.setup_all().expect("Setup should succeed");
+
+            // First teardown should fail but both should be attempted
+            let result = manager.teardown_all();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_fixture_scope_get_mut() {
+            let fixture = TestFixture::new();
+            let setup_called = fixture.setup_called.clone();
+
+            let mut manager = FixtureManager::new();
+            manager.register(fixture);
+            manager.setup_all().expect("Setup should succeed");
+
+            let mut scope = FixtureScope::new(manager);
+            let retrieved = scope.get_mut::<TestFixture>();
+            assert!(retrieved.is_some());
+            assert!(Arc::ptr_eq(&retrieved.unwrap().setup_called, &setup_called));
+        }
+
+        #[test]
+        fn test_fixture_scope_get_unregistered() {
+            let manager = FixtureManager::new();
+            let scope = FixtureScope::new(manager);
+            assert!(scope.get::<TestFixture>().is_none());
+        }
+
+        #[test]
+        fn test_fixture_scope_get_mut_unregistered() {
+            let manager = FixtureManager::new();
+            let mut scope = FixtureScope::new(manager);
+            assert!(scope.get_mut::<TestFixture>().is_none());
+        }
+
+        #[test]
+        fn test_setup_from_torn_down_state() {
+            // Test setup_all when fixtures are in TornDown state
+            let mut manager = FixtureManager::new();
+            manager.register(TestFixture::new());
+
+            manager.setup_all().expect("First setup should succeed");
+            manager.teardown_all().expect("Teardown should succeed");
+
+            // Setup again from TornDown state
+            let result = manager.setup_all();
+            assert!(result.is_ok());
+            assert_eq!(manager.state::<TestFixture>(), Some(FixtureState::SetUp));
+        }
+
+        #[test]
+        fn test_multiple_fixture_types() {
+            // Test with multiple different fixture types (not just SimpleFixture)
+            let mut manager = FixtureManager::new();
+            manager.register(TestFixture::new());
+            manager.register(SecondTestFixture::new());
+
+            assert_eq!(manager.count(), 2);
+            assert!(manager.is_registered::<TestFixture>());
+            assert!(manager.is_registered::<SecondTestFixture>());
+        }
+
+        #[test]
+        fn test_register_replaces_existing() {
+            let first = TestFixture::new();
+            let first_setup = first.setup_called.clone();
+
+            let second = TestFixture::new();
+            let second_setup = second.setup_called.clone();
+
+            let mut manager = FixtureManager::new();
+            manager.register(first);
+            manager.register(second);
+
+            // Only one fixture registered
+            assert_eq!(manager.count(), 1);
+
+            // The second one replaced the first
+            manager.setup_all().expect("Setup should succeed");
+            assert!(second_setup.load(Ordering::SeqCst));
+            // The first was replaced so its setup wasn't called
+            assert!(!first_setup.load(Ordering::SeqCst));
+        }
+
+        #[test]
+        fn test_single_fixture_setup_failure() {
+            let mut manager = FixtureManager::new();
+            manager.register(FailingSetupFixture);
+
+            let result = manager.setup::<FailingSetupFixture>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_single_fixture_teardown_failure() {
+            let mut manager = FixtureManager::new();
+            manager.register(FailingTeardownFixture);
+
+            manager
+                .setup::<FailingTeardownFixture>()
+                .expect("Setup should succeed");
+            let result = manager.teardown::<FailingTeardownFixture>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_unregister_removes_from_setup_order() {
+            let mut manager = FixtureManager::new();
+            manager.register(TestFixture::new());
+            manager.setup_all().expect("Setup should succeed");
+
+            // Unregister should also clean up setup_order
+            assert!(manager.unregister::<TestFixture>());
+            assert!(!manager.is_registered::<TestFixture>());
+        }
+
+        #[test]
+        fn test_simple_fixture_is_setup_tracking() {
+            let mut fixture = SimpleFixture::new("test");
+            assert!(!fixture.is_setup);
+
+            fixture.setup().expect("Setup should succeed");
+            assert!(fixture.is_setup);
+
+            fixture.teardown().expect("Teardown should succeed");
+            assert!(!fixture.is_setup);
+        }
+
+        #[test]
+        fn test_simple_fixture_failing_setup() {
+            let mut fixture = SimpleFixture::new("test").with_setup(|| {
+                Err(ProbarError::FixtureError {
+                    message: "Test failure".to_string(),
+                })
+            });
+
+            let result = fixture.setup();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_simple_fixture_failing_teardown() {
+            let mut fixture = SimpleFixture::new("test").with_teardown(|| {
+                Err(ProbarError::FixtureError {
+                    message: "Teardown failure".to_string(),
+                })
+            });
+
+            fixture.setup().expect("Setup should succeed");
+            let result = fixture.teardown();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_list_multiple_fixtures() {
+            let mut manager = FixtureManager::new();
+            manager.register(TestFixture::new());
+            manager.register(SecondTestFixture::new());
+
+            let names = manager.list();
+            assert_eq!(names.len(), 2);
+        }
+
+        #[test]
+        fn test_state_none_for_unregistered() {
+            let manager = FixtureManager::new();
+            assert!(manager.state::<TestFixture>().is_none());
+        }
+
+        #[test]
+        fn test_priority_ordering_in_setup() {
+            let setup_order = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let teardown_order = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+            let mut manager = FixtureManager::new();
+
+            // Register with different priorities (out of order)
+            manager.register(PriorityFixture::new(
+                "low",
+                -10,
+                setup_order.clone(),
+                teardown_order.clone(),
+            ));
+
+            // Use SimpleFixture for high priority (different type)
+            let setup_clone = setup_order.clone();
+            manager.register(
+                SimpleFixture::new("high")
+                    .with_priority(10)
+                    .with_setup(move || {
+                        setup_clone.lock().unwrap().push("high".to_string());
+                        Ok(())
+                    }),
+            );
+
+            manager.setup_all().expect("Setup should succeed");
+
+            let setup = setup_order.lock().unwrap();
+            // High priority (10) should be set up before low priority (-10)
+            let high_idx = setup.iter().position(|s| s == "high").unwrap();
+            let low_idx = setup.iter().position(|s| s == "low").unwrap();
+            assert!(high_idx < low_idx, "High priority should be set up first");
+        }
+
+        #[test]
+        fn test_teardown_reverse_order() {
+            let setup_order = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let teardown_order = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+            let mut manager = FixtureManager::new();
+
+            manager.register(PriorityFixture::new(
+                "high",
+                100,
+                setup_order.clone(),
+                teardown_order.clone(),
+            ));
+
+            // Second fixture with different type
+            let teardown_clone = teardown_order.clone();
+            manager.register(SimpleFixture::new("low").with_priority(-100).with_teardown(
+                move || {
+                    teardown_clone.lock().unwrap().push("low".to_string());
+                    Ok(())
+                },
+            ));
+
+            manager.setup_all().expect("Setup should succeed");
+            manager.teardown_all().expect("Teardown should succeed");
+
+            let teardown = teardown_order.lock().unwrap();
+            // Low priority was set up last, so it should be torn down first
+            let high_idx = teardown.iter().position(|s| s == "high").unwrap();
+            let low_idx = teardown.iter().position(|s| s == "low").unwrap();
+            assert!(
+                low_idx < high_idx,
+                "Low priority (set up last) should be torn down first"
+            );
+        }
+
+        #[test]
+        fn test_clear_empties_setup_order() {
+            let mut manager = FixtureManager::new();
+            manager.register(TestFixture::new());
+            manager.setup_all().expect("Setup should succeed");
+
+            manager.clear();
+            assert_eq!(manager.count(), 0);
+            assert!(manager.list().is_empty());
+        }
+
+        #[test]
+        fn test_reset_clears_setup_order() {
+            let fixture = TestFixture::new();
+            let teardown_called = fixture.teardown_called.clone();
+
+            let mut manager = FixtureManager::new();
+            manager.register(fixture);
+            manager.setup_all().expect("Setup should succeed");
+
+            // Reset without teardown
+            manager.reset();
+
+            // Teardown should NOT have been called
+            assert!(!teardown_called.load(Ordering::SeqCst));
+            assert_eq!(
+                manager.state::<TestFixture>(),
+                Some(FixtureState::Registered)
+            );
+        }
+
+        #[test]
+        fn test_fixture_scope_drop_with_failing_teardown() {
+            // This tests that the scope ignores errors during drop
+            let mut manager = FixtureManager::new();
+            manager.register(FailingTeardownFixture);
+            manager.setup_all().expect("Setup should succeed");
+
+            // This should not panic even though teardown fails
+            let _scope = FixtureScope::new(manager);
+            // Scope drops here without panicking
+        }
+
+        #[test]
+        fn test_single_teardown_updates_state() {
+            let mut manager = FixtureManager::new();
+            manager.register(TestFixture::new());
+
+            manager
+                .setup::<TestFixture>()
+                .expect("Setup should succeed");
+            assert_eq!(manager.state::<TestFixture>(), Some(FixtureState::SetUp));
+
+            manager
+                .teardown::<TestFixture>()
+                .expect("Teardown should succeed");
+            assert_eq!(manager.state::<TestFixture>(), Some(FixtureState::TornDown));
+        }
+
+        #[test]
+        fn test_setup_adds_to_setup_order_once() {
+            let mut manager = FixtureManager::new();
+            manager.register(TestFixture::new());
+
+            // Setup multiple times
+            manager.setup::<TestFixture>().unwrap();
+            manager.reset();
+            manager.setup::<TestFixture>().unwrap();
+
+            // Should work without issues
+            assert_eq!(manager.state::<TestFixture>(), Some(FixtureState::SetUp));
+        }
+
+        #[test]
+        fn test_single_fixture_teardown_removes_from_order() {
+            let mut manager = FixtureManager::new();
+            manager.register(TestFixture::new());
+            manager.register(SecondTestFixture::new());
+
+            manager.setup_all().expect("Setup should succeed");
+
+            // Teardown just one fixture
+            manager
+                .teardown::<TestFixture>()
+                .expect("Teardown should succeed");
+
+            // The other should still be set up
+            assert_eq!(
+                manager.state::<SecondTestFixture>(),
+                Some(FixtureState::SetUp)
+            );
+            assert_eq!(manager.state::<TestFixture>(), Some(FixtureState::TornDown));
+        }
+
+        #[test]
+        fn test_fixture_error_message_includes_name() {
+            let mut manager = FixtureManager::new();
+            manager.register(FailingSetupFixture);
+
+            let result = manager.setup_all();
+            assert!(result.is_err());
+
+            if let Err(ProbarError::FixtureError { message }) = result {
+                assert!(message.contains("FailingSetupFixture"));
+                assert!(message.contains("setup failed"));
+            } else {
+                panic!("Expected FixtureError");
+            }
+        }
+
+        #[test]
+        fn test_teardown_error_message_includes_name() {
+            let mut manager = FixtureManager::new();
+            manager.register(FailingTeardownFixture);
+            manager.setup_all().expect("Setup should succeed");
+
+            let result = manager.teardown_all();
+            assert!(result.is_err());
+
+            if let Err(ProbarError::FixtureError { message }) = result {
+                assert!(message.contains("FailingTeardownFixture"));
+                assert!(message.contains("teardown failed"));
+            } else {
+                panic!("Expected FixtureError");
+            }
+        }
+    }
 }

@@ -558,4 +558,417 @@ mod tests {
         assert_eq!(GENERATION_METADATA.spec, "PROBAR-SPEC-009-P7");
         assert_eq!(GENERATION_METADATA.ticket, "PROBAR-WEBSYS-001");
     }
+
+    // ========================================================================
+    // Additional tests for 95%+ coverage
+    // ========================================================================
+
+    #[test]
+    fn test_web_sys_error_all_variants_display() {
+        // Test all WebSysError variants for Display implementation
+        let errors = [
+            (WebSysError::NoWindow, "No window object available"),
+            (
+                WebSysError::EventCreationFailed,
+                "Failed to create custom event",
+            ),
+            (WebSysError::DispatchFailed, "Failed to dispatch event"),
+            (WebSysError::FetchFailed, "Fetch operation failed"),
+            (
+                WebSysError::NotInBrowser,
+                "Not running in browser environment",
+            ),
+            (WebSysError::BlobCreationFailed, "Failed to create blob"),
+            (
+                WebSysError::UrlCreationFailed,
+                "Failed to create object URL",
+            ),
+            (WebSysError::UrlRevokeFailed, "Failed to revoke object URL"),
+            (
+                WebSysError::WorkerCreationFailed,
+                "Failed to create web worker",
+            ),
+            (
+                WebSysError::PostMessageFailed,
+                "Failed to post message to worker",
+            ),
+        ];
+
+        for (error, expected_msg) in errors {
+            assert_eq!(format!("{}", error), expected_msg);
+        }
+    }
+
+    #[test]
+    fn test_web_sys_error_debug() {
+        let err = WebSysError::NoWindow;
+        let debug_str = format!("{:?}", err);
+        assert!(debug_str.contains("NoWindow"));
+    }
+
+    #[test]
+    fn test_web_sys_error_clone() {
+        let err = WebSysError::FetchFailed;
+        let cloned = err.clone();
+        assert!(matches!(cloned, WebSysError::FetchFailed));
+    }
+
+    #[test]
+    fn test_web_sys_error_std_error_trait() {
+        let err: Box<dyn std::error::Error> = Box::new(WebSysError::NoWindow);
+        // Verify it can be used as a trait object
+        let _ = err.to_string();
+    }
+
+    #[test]
+    fn test_dispatch_with_detail_native_fallback() {
+        let dispatcher = CustomEventDispatcher::new("test-event");
+
+        // Test all EventDetail variants through dispatch_with_detail
+        assert!(dispatcher.dispatch_with_detail(EventDetail::None).is_ok());
+        assert!(dispatcher
+            .dispatch_with_detail(EventDetail::String("hello".to_string()))
+            .is_ok());
+        assert!(dispatcher
+            .dispatch_with_detail(EventDetail::Number(42.0))
+            .is_ok());
+        assert!(dispatcher
+            .dispatch_with_detail(EventDetail::Bool(true))
+            .is_ok());
+        assert!(dispatcher
+            .dispatch_with_detail(EventDetail::Json(r#"{"key":"value"}"#.to_string()))
+            .is_ok());
+    }
+
+    #[test]
+    fn test_event_detail_none() {
+        let detail = EventDetail::None;
+        assert!(matches!(detail, EventDetail::None));
+    }
+
+    #[test]
+    fn test_event_detail_bool() {
+        let detail_true = EventDetail::Bool(true);
+        let detail_false = EventDetail::Bool(false);
+        assert!(matches!(detail_true, EventDetail::Bool(true)));
+        assert!(matches!(detail_false, EventDetail::Bool(false)));
+    }
+
+    #[test]
+    fn test_event_detail_debug() {
+        let detail = EventDetail::String("test".to_string());
+        let debug_str = format!("{:?}", detail);
+        assert!(debug_str.contains("String"));
+    }
+
+    #[test]
+    fn test_event_detail_clone() {
+        let detail = EventDetail::Number(42.0);
+        let cloned = detail.clone();
+        assert!(matches!(cloned, EventDetail::Number(n) if (n - 42.0).abs() < f64::EPSILON));
+    }
+
+    #[test]
+    fn test_event_detail_json_serialization_failure() {
+        // Test the error path when serialization fails
+        // Create a type that always fails to serialize
+        struct FailsToSerialize;
+
+        impl serde::Serialize for FailsToSerialize {
+            fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                Err(serde::ser::Error::custom("intentional failure"))
+            }
+        }
+
+        let json = EventDetail::json(&FailsToSerialize);
+        // Should return None when serialization fails
+        assert!(matches!(json, EventDetail::None));
+
+        // Also verify the happy path still works
+        let json_ok = EventDetail::json(&"simple string");
+        assert!(matches!(json_ok, EventDetail::Json(_)));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_bytes_native_fallback() {
+        // Test the async fetch_bytes method in native mode
+        let client = FetchClient::new();
+
+        let result = client.fetch_bytes("http://example.com").await;
+
+        // Native fallback should return NotInBrowser error
+        assert!(matches!(result, Err(WebSysError::NotInBrowser)));
+    }
+
+    #[test]
+    fn test_fetch_client_default() {
+        let client = FetchClient::default();
+        let debug_str = format!("{:?}", client);
+        assert!(debug_str.contains("FetchClient"));
+    }
+
+    #[test]
+    fn test_fetch_client_clone() {
+        let client = FetchClient::new();
+        let cloned = client.clone();
+        let _ = format!("{:?}", cloned);
+    }
+
+    #[test]
+    fn test_fetch_result_struct() {
+        let result = FetchResult {
+            status: 200,
+            body: vec![1, 2, 3, 4],
+        };
+        assert_eq!(result.status, 200);
+        assert_eq!(result.body.len(), 4);
+
+        // Test Debug
+        let debug_str = format!("{:?}", result);
+        assert!(debug_str.contains("FetchResult"));
+        assert!(debug_str.contains("200"));
+    }
+
+    #[test]
+    fn test_custom_event_dispatcher_debug() {
+        let dispatcher = CustomEventDispatcher::new("my-event");
+        let debug_str = format!("{:?}", dispatcher);
+        assert!(debug_str.contains("CustomEventDispatcher"));
+    }
+
+    #[test]
+    fn test_custom_event_dispatcher_clone() {
+        let dispatcher = CustomEventDispatcher::new("clone-test");
+        let cloned = dispatcher.clone();
+        assert!(cloned.dispatch().is_ok());
+    }
+
+    #[test]
+    fn test_performance_timing_debug() {
+        let timing = PerformanceTiming;
+        let debug_str = format!("{:?}", timing);
+        assert!(debug_str.contains("PerformanceTiming"));
+    }
+
+    #[test]
+    fn test_performance_timing_clone_copy() {
+        let timing1 = PerformanceTiming;
+        let timing2 = timing1; // Copy
+        let timing3 = timing1.clone(); // Clone
+        let _ = format!("{:?}", timing2);
+        let _ = format!("{:?}", timing3);
+    }
+
+    #[test]
+    fn test_blob_url_debug() {
+        let blob = BlobUrl;
+        let debug_str = format!("{:?}", blob);
+        assert!(debug_str.contains("BlobUrl"));
+    }
+
+    #[test]
+    fn test_blob_url_clone() {
+        let blob1 = BlobUrl;
+        let blob2 = blob1.clone();
+        let _ = format!("{:?}", blob2);
+    }
+
+    #[test]
+    fn test_generation_metadata_debug() {
+        let debug_str = format!("{:?}", GENERATION_METADATA);
+        assert!(debug_str.contains("GenerationMetadata"));
+        assert!(debug_str.contains("PROBAR-SPEC-009-P7"));
+    }
+
+    #[test]
+    fn test_generation_metadata_clone() {
+        let cloned = GENERATION_METADATA.clone();
+        assert_eq!(cloned.spec, GENERATION_METADATA.spec);
+        assert_eq!(cloned.ticket, GENERATION_METADATA.ticket);
+        assert_eq!(cloned.method, GENERATION_METADATA.method);
+    }
+
+    #[test]
+    fn test_generation_metadata_method_field() {
+        assert_eq!(GENERATION_METADATA.method, "probar::brick::web_sys_gen");
+    }
+
+    #[test]
+    fn test_get_base_url_native_format() {
+        let url = get_base_url().expect("should return Some in native mode");
+        assert_eq!(url, "http://localhost/");
+    }
+
+    #[test]
+    fn test_performance_timing_now_returns_positive() {
+        let now = PerformanceTiming::now();
+        assert!(now > 0.0, "Timestamp should be positive");
+    }
+
+    #[test]
+    fn test_performance_timing_monotonic() {
+        let t1 = PerformanceTiming::now();
+        let t2 = PerformanceTiming::now();
+        let t3 = PerformanceTiming::now();
+        assert!(t2 >= t1);
+        assert!(t3 >= t2);
+    }
+
+    #[test]
+    fn test_event_detail_string_with_into() {
+        // Test that Into<String> works with various types
+        let s1 = EventDetail::string("literal str");
+        let s2 = EventDetail::string(String::from("String type"));
+
+        match s1 {
+            EventDetail::String(s) => assert_eq!(s, "literal str"),
+            _ => panic!("Expected String variant"),
+        }
+
+        match s2 {
+            EventDetail::String(s) => assert_eq!(s, "String type"),
+            _ => panic!("Expected String variant"),
+        }
+    }
+
+    #[test]
+    fn test_event_detail_number_special_values() {
+        // Test special floating point values
+        let nan = EventDetail::number(f64::NAN);
+        let inf = EventDetail::number(f64::INFINITY);
+        let neg_inf = EventDetail::number(f64::NEG_INFINITY);
+        let zero = EventDetail::number(0.0);
+        let neg_zero = EventDetail::number(-0.0);
+
+        assert!(matches!(nan, EventDetail::Number(_)));
+        assert!(matches!(inf, EventDetail::Number(_)));
+        assert!(matches!(neg_inf, EventDetail::Number(_)));
+        assert!(matches!(zero, EventDetail::Number(_)));
+        assert!(matches!(neg_zero, EventDetail::Number(_)));
+    }
+
+    #[test]
+    fn test_event_detail_json_complex_structures() {
+        use std::collections::HashMap;
+
+        // Test with nested HashMap
+        let mut map: HashMap<&str, Vec<i32>> = HashMap::new();
+        map.insert("numbers", vec![1, 2, 3]);
+
+        let json = EventDetail::json(&map);
+        match json {
+            EventDetail::Json(s) => {
+                assert!(s.contains("numbers"));
+                assert!(s.contains("[1,2,3]"));
+            }
+            _ => panic!("Expected Json variant"),
+        }
+    }
+
+    #[test]
+    fn test_custom_event_dispatcher_new_with_string() {
+        let dispatcher1 = CustomEventDispatcher::new("event-name");
+        let dispatcher2 = CustomEventDispatcher::new(String::from("event-name-string"));
+        assert!(dispatcher1.dispatch().is_ok());
+        assert!(dispatcher2.dispatch().is_ok());
+    }
+
+    #[test]
+    fn test_blob_url_revoke_empty_string() {
+        // Revoke with empty string should still succeed in native fallback
+        assert!(BlobUrl::revoke("").is_ok());
+    }
+
+    #[test]
+    fn test_blob_url_from_js_code_empty() {
+        // Empty JS code should still return NotInBrowser in native
+        let result = BlobUrl::from_js_code("");
+        assert!(matches!(result, Err(WebSysError::NotInBrowser)));
+    }
+
+    #[test]
+    fn test_performance_measure_with_panic_safe() {
+        // Test measure with a quick operation
+        let (result, duration) = PerformanceTiming::measure(|| {
+            let mut sum = 0u64;
+            for i in 0..1000 {
+                sum = sum.wrapping_add(i);
+            }
+            sum
+        });
+
+        assert!(result > 0);
+        assert!(duration >= 0.0);
+    }
+
+    #[test]
+    fn test_fetch_result_empty_body() {
+        let result = FetchResult {
+            status: 204,
+            body: vec![],
+        };
+        assert_eq!(result.status, 204);
+        assert!(result.body.is_empty());
+    }
+
+    #[test]
+    fn test_fetch_result_large_body() {
+        let result = FetchResult {
+            status: 200,
+            body: vec![0u8; 10000],
+        };
+        assert_eq!(result.body.len(), 10000);
+    }
+
+    #[test]
+    fn test_web_sys_error_is_send_sync() {
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+
+        assert_send::<WebSysError>();
+        assert_sync::<WebSysError>();
+    }
+
+    /// Test implementing GeneratedWebSys trait
+    struct TestGeneratedCode;
+
+    impl GeneratedWebSys for TestGeneratedCode {
+        fn source_brick() -> &'static str {
+            "test-brick"
+        }
+
+        fn generated_at() -> &'static str {
+            "2024-01-01T00:00:00Z"
+        }
+    }
+
+    #[test]
+    fn test_generated_websys_trait() {
+        assert_eq!(TestGeneratedCode::source_brick(), "test-brick");
+        assert_eq!(TestGeneratedCode::generated_at(), "2024-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn test_all_event_detail_variants_in_match() {
+        let variants = vec![
+            EventDetail::None,
+            EventDetail::String("test".to_string()),
+            EventDetail::Number(1.5),
+            EventDetail::Bool(false),
+            EventDetail::Json("{}".to_string()),
+        ];
+
+        for variant in variants {
+            let _ = match &variant {
+                EventDetail::None => "none",
+                EventDetail::String(_) => "string",
+                EventDetail::Number(_) => "number",
+                EventDetail::Bool(_) => "bool",
+                EventDetail::Json(_) => "json",
+            };
+        }
+    }
 }

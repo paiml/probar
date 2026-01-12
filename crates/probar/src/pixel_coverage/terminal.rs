@@ -990,4 +990,973 @@ mod tests {
         assert!(formatted.contains("80.0%"));
         assert!(formatted.contains("90.0%"));
     }
+
+    // =========================================================================
+    // Additional Tests for 95%+ Coverage (H0-TERM-19-XX)
+    // =========================================================================
+
+    // --- ANSI Module Tests ---
+
+    #[test]
+    fn h0_term_19_ansi_rgb_fg() {
+        let color = ansi::rgb_fg(255, 128, 64);
+        assert!(color.contains("38;2;255;128;64"));
+        assert!(color.starts_with("\x1b["));
+        assert!(color.ends_with('m'));
+    }
+
+    #[test]
+    fn h0_term_20_ansi_rgb_bg() {
+        let color = ansi::rgb_bg(100, 200, 50);
+        assert!(color.contains("48;2;100;200;50"));
+        assert!(color.starts_with("\x1b["));
+        assert!(color.ends_with('m'));
+    }
+
+    #[test]
+    fn h0_term_21_ansi_constants() {
+        // Verify ANSI constants are correctly defined
+        assert_eq!(ansi::RESET, "\x1b[0m");
+        assert_eq!(ansi::BOLD, "\x1b[1m");
+        assert_eq!(ansi::DIM, "\x1b[2m");
+        assert_eq!(ansi::PASS, "\x1b[32m");
+        assert_eq!(ansi::FAIL, "\x1b[31m");
+        assert_eq!(ansi::WARN, "\x1b[33m");
+        assert_eq!(ansi::INFO, "\x1b[36m");
+    }
+
+    // --- OutputMode Tests ---
+
+    #[test]
+    fn h0_term_22_output_mode_default() {
+        let mode = OutputMode::default();
+        assert_eq!(mode, OutputMode::RichAnsi);
+    }
+
+    #[test]
+    fn h0_term_23_output_mode_debug() {
+        let mode = OutputMode::RichAnsi;
+        let debug_str = format!("{:?}", mode);
+        assert!(debug_str.contains("RichAnsi"));
+    }
+
+    #[test]
+    fn h0_term_24_output_mode_clone_eq() {
+        let mode1 = OutputMode::Json;
+        let mode2 = mode1;
+        assert_eq!(mode1, mode2);
+    }
+
+    // --- ScoreBar RichAnsi and Json Mode Tests ---
+
+    #[test]
+    fn h0_term_25_score_bar_rich_ansi_pass() {
+        let bar = ScoreBar::new("Test", 0.90, 0.80);
+        let output = bar.render(OutputMode::RichAnsi);
+        // Should contain ANSI color codes for pass (green)
+        assert!(output.contains(ansi::PASS));
+        assert!(output.contains(ansi::RESET));
+        assert!(output.contains("90.0%"));
+    }
+
+    #[test]
+    fn h0_term_26_score_bar_rich_ansi_fail() {
+        let bar = ScoreBar::new("Test", 0.50, 0.80);
+        let output = bar.render(OutputMode::RichAnsi);
+        // Should contain ANSI color codes for fail (red)
+        assert!(output.contains(ansi::FAIL));
+        assert!(output.contains(ansi::RESET));
+        assert!(output.contains("50.0%"));
+    }
+
+    #[test]
+    fn h0_term_27_score_bar_json_mode() {
+        let bar = ScoreBar::new("Test", 0.75, 0.80);
+        let output = bar.render(OutputMode::Json);
+        // JSON mode should have the bar without status markers
+        assert!(output.contains("75.0%"));
+        // Should NOT contain [PASS] or [FAIL] or ANSI codes
+        assert!(!output.contains("[PASS]"));
+        assert!(!output.contains("[FAIL]"));
+        assert!(!output.contains("\x1b["));
+    }
+
+    #[test]
+    fn h0_term_28_score_bar_zero_score() {
+        let bar = ScoreBar::new("Empty", 0.0, 0.80);
+        let output = bar.render(OutputMode::NoColorAscii);
+        assert!(output.contains("0.0%"));
+        assert!(output.contains("[FAIL]"));
+    }
+
+    #[test]
+    fn h0_term_29_score_bar_exact_threshold() {
+        let bar = ScoreBar::new("Exact", 0.80, 0.80);
+        let output = bar.render(OutputMode::NoColorAscii);
+        assert!(output.contains("80.0%"));
+        assert!(output.contains("[PASS]")); // At threshold is pass
+    }
+
+    // --- Wilson Score Confidence Level Tests ---
+
+    #[test]
+    fn h0_term_30_wilson_score_99_confidence() {
+        let ci = ConfidenceInterval::wilson_score(50, 100, 0.99);
+        // 99% CI should be wider than 95%
+        assert!(ci.level >= 0.99);
+        // CI should be valid
+        assert!(ci.lower < ci.upper);
+        assert!(ci.lower >= 0.0);
+        assert!(ci.upper <= 1.0);
+    }
+
+    #[test]
+    fn h0_term_31_wilson_score_90_confidence() {
+        let ci = ConfidenceInterval::wilson_score(50, 100, 0.90);
+        // 90% CI should be narrower than 95%
+        assert!((ci.level - 0.90).abs() < 0.01);
+        assert!(ci.lower < ci.upper);
+    }
+
+    #[test]
+    fn h0_term_32_wilson_score_low_confidence() {
+        // Confidence below 0.90 should use default z=1.96
+        let ci = ConfidenceInterval::wilson_score(50, 100, 0.80);
+        assert!(ci.lower < ci.upper);
+        assert!((ci.level - 0.80).abs() < 0.01);
+    }
+
+    // --- CoverageHypothesis Tests ---
+
+    #[test]
+    fn h0_term_33_hypothesis_new_direct() {
+        let h = CoverageHypothesis::new("H0-TEST", "Test description", 0.70, 0.80);
+        assert_eq!(h.id, "H0-TEST");
+        assert_eq!(h.description, "Test description");
+        assert_eq!(h.threshold, 0.70);
+        assert_eq!(h.actual, 0.80);
+        assert!(!h.falsified); // actual >= threshold
+    }
+
+    #[test]
+    fn h0_term_34_hypothesis_clone_debug() {
+        let h = CoverageHypothesis::coverage_threshold(0.80, 0.85);
+        let h2 = h.clone();
+        assert_eq!(h.id, h2.id);
+        let debug_str = format!("{:?}", h);
+        assert!(debug_str.contains("H0-COV-01"));
+    }
+
+    #[test]
+    fn h0_term_35_gap_hypothesis_exact() {
+        // Test exact threshold case
+        let h = CoverageHypothesis::max_gap_size(0.15, 0.15);
+        assert!(!h.falsified); // Not falsified when actual == threshold
+    }
+
+    // --- GapRegion Tests ---
+
+    #[test]
+    fn h0_term_36_gap_region_debug_clone() {
+        let gap = GapRegion {
+            rows: (0, 5),
+            cols: (2, 8),
+            percent: 0.25,
+            suggestion: Some("Check button component".to_string()),
+        };
+        let gap2 = gap.clone();
+        assert_eq!(gap.rows, gap2.rows);
+        assert_eq!(gap.cols, gap2.cols);
+        let debug_str = format!("{:?}", gap);
+        assert!(debug_str.contains("GapRegion"));
+    }
+
+    // --- RichTerminalHeatmap Builder Tests ---
+
+    #[test]
+    fn h0_term_37_heatmap_with_title() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5
+                };
+                3
+            ];
+            3
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells)
+            .with_title("Test Coverage Report")
+            .with_mode(OutputMode::NoColorAscii);
+        let output = heatmap.render();
+        assert!(output.contains("Test Coverage Report"));
+    }
+
+    #[test]
+    fn h0_term_38_heatmap_with_palette() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5
+                };
+                3
+            ];
+            3
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells)
+            .with_palette(ColorPalette::magma())
+            .with_mode(OutputMode::RichAnsi);
+        let output = heatmap.render_grid();
+        // Should contain ANSI color codes (from palette)
+        assert!(output.contains("\x1b["));
+    }
+
+    #[test]
+    fn h0_term_39_heatmap_with_threshold() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.7,
+                    hit_count: 7
+                };
+                3
+            ];
+            3
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells)
+            .with_threshold(0.60)
+            .with_mode(OutputMode::NoColorAscii);
+        let output = heatmap.render();
+        assert!(output.contains("60.0%")); // threshold displayed
+    }
+
+    #[test]
+    fn h0_term_40_heatmap_disable_scores() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10
+                };
+                3
+            ];
+            3
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells)
+            .with_scores(false)
+            .with_mode(OutputMode::NoColorAscii);
+        let output = heatmap.render();
+        // Should NOT contain score panel elements
+        assert!(!output.contains("COVERAGE SCORE"));
+    }
+
+    #[test]
+    fn h0_term_41_heatmap_disable_gaps() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0
+                };
+                3
+            ];
+            3
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells)
+            .with_gaps(false)
+            .with_mode(OutputMode::NoColorAscii);
+        let _output = heatmap.render();
+        // Gaps section should be disabled, but might still show falsification
+        // Just verify it doesn't panic
+    }
+
+    #[test]
+    fn h0_term_42_heatmap_disable_hypotheses() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10
+                };
+                3
+            ];
+            3
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells)
+            .with_hypotheses(false)
+            .with_mode(OutputMode::NoColorAscii);
+        let output = heatmap.render();
+        // Should NOT contain FALSIFICATION STATUS
+        assert!(!output.contains("FALSIFICATION STATUS"));
+    }
+
+    // --- render_grid Tests for All OutputModes ---
+
+    #[test]
+    fn h0_term_43_render_grid_rich_ansi() {
+        let cells = vec![vec![
+            CoverageCell {
+                coverage: 0.0,
+                hit_count: 0,
+            },
+            CoverageCell {
+                coverage: 0.5,
+                hit_count: 5,
+            },
+            CoverageCell {
+                coverage: 1.0,
+                hit_count: 10,
+            },
+        ]];
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::RichAnsi);
+        let output = heatmap.render_grid();
+        // Should contain ANSI color codes
+        assert!(output.contains("\x1b[38;2;")); // RGB foreground
+        assert!(output.contains(ansi::RESET));
+    }
+
+    #[test]
+    fn h0_term_44_render_grid_json() {
+        let cells = vec![vec![
+            CoverageCell {
+                coverage: 0.0,
+                hit_count: 0,
+            },
+            CoverageCell {
+                coverage: 0.5,
+                hit_count: 5,
+            },
+            CoverageCell {
+                coverage: 1.0,
+                hit_count: 10,
+            },
+        ]];
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::Json);
+        let output = heatmap.render_grid();
+        // Should contain unicode chars but no ANSI codes
+        assert!(!output.contains("\x1b["));
+        assert!(output.contains('\u{00B7}')); // gap char
+        assert!(output.contains('\u{2588}')); // full block
+    }
+
+    // --- render_scores Tests ---
+
+    #[test]
+    fn h0_term_45_render_scores_with_line_coverage() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.9,
+                    hit_count: 9
+                };
+                5
+            ];
+            5
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::NoColorAscii);
+        let output = heatmap.render_scores(0.85, Some(0.90));
+        assert!(output.contains("Pixel Coverage"));
+        assert!(output.contains("Line Coverage"));
+        assert!(output.contains("Combined Score"));
+    }
+
+    #[test]
+    fn h0_term_46_render_scores_without_line_coverage() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.9,
+                    hit_count: 9
+                };
+                5
+            ];
+            5
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::NoColorAscii);
+        let output = heatmap.render_scores(0.85, None);
+        assert!(output.contains("Pixel Coverage"));
+        // Line coverage should not appear
+        assert!(!output.contains("Line Coverage"));
+        assert!(output.contains("Combined Score"));
+    }
+
+    #[test]
+    fn h0_term_47_render_scores_fail_status_rich_ansi() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5
+                };
+                5
+            ];
+            5
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells)
+            .with_threshold(0.90)
+            .with_mode(OutputMode::RichAnsi);
+        let output = heatmap.render_scores(0.50, None);
+        // Should contain fail color codes
+        assert!(output.contains(ansi::FAIL));
+    }
+
+    #[test]
+    fn h0_term_48_render_scores_pass_status_rich_ansi() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.95,
+                    hit_count: 10
+                };
+                5
+            ];
+            5
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells)
+            .with_threshold(0.80)
+            .with_mode(OutputMode::RichAnsi);
+        let output = heatmap.render_scores(0.95, None);
+        // Should contain pass color codes
+        assert!(output.contains(ansi::PASS));
+    }
+
+    // --- render_gap_analysis Tests ---
+
+    #[test]
+    fn h0_term_49_render_gap_analysis_no_gaps_rich_ansi() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10
+                };
+                5
+            ];
+            5
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::RichAnsi);
+        let output = heatmap.render_gap_analysis();
+        assert!(output.contains("No coverage gaps detected"));
+        assert!(output.contains(ansi::PASS));
+    }
+
+    #[test]
+    fn h0_term_50_render_gap_analysis_with_gaps_rich_ansi() {
+        let mut cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10
+                };
+                10
+            ];
+            10
+        ];
+        // Create a large gap
+        for r in 2..6 {
+            for c in 2..6 {
+                cells[r][c] = CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0,
+                };
+            }
+        }
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::RichAnsi);
+        let output = heatmap.render_gap_analysis();
+        assert!(output.contains("GAPS DETECTED"));
+        assert!(output.contains(ansi::WARN));
+    }
+
+    #[test]
+    fn h0_term_51_render_gap_analysis_single_gap() {
+        let mut cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10
+                };
+                10
+            ];
+            10
+        ];
+        // Create one gap region
+        for r in 0..5 {
+            for c in 0..5 {
+                cells[r][c] = CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0,
+                };
+            }
+        }
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::NoColorAscii);
+        let output = heatmap.render_gap_analysis();
+        // Should say "1 region" not "1 regions"
+        assert!(output.contains("1 region,") || output.contains("1 region "));
+    }
+
+    #[test]
+    fn h0_term_52_render_gap_analysis_multiple_gaps() {
+        let mut cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10
+                };
+                20
+            ];
+            20
+        ];
+        // Create multiple disconnected gap regions
+        for r in 0..4 {
+            for c in 0..4 {
+                cells[r][c] = CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0,
+                };
+            }
+        }
+        for r in 10..14 {
+            for c in 10..14 {
+                cells[r][c] = CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0,
+                };
+            }
+        }
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::NoColorAscii);
+        let output = heatmap.render_gap_analysis();
+        assert!(output.contains("regions")); // plural
+    }
+
+    #[test]
+    fn h0_term_53_render_gap_analysis_more_than_5_gaps() {
+        let mut cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10
+                };
+                30
+            ];
+            30
+        ];
+        // Create 7 separate gap regions (each 4x4 = 16 cells, >1% of 900)
+        let gap_positions = [
+            (0, 0),
+            (0, 10),
+            (0, 20),
+            (10, 0),
+            (10, 10),
+            (10, 20),
+            (20, 0),
+        ];
+        for (start_r, start_c) in gap_positions {
+            for r in start_r..start_r + 4 {
+                for c in start_c..start_c + 4 {
+                    cells[r][c] = CoverageCell {
+                        coverage: 0.0,
+                        hit_count: 0,
+                    };
+                }
+            }
+        }
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::NoColorAscii);
+        let output = heatmap.render_gap_analysis();
+        // Should show "... and X more gaps"
+        assert!(output.contains("more gaps"));
+    }
+
+    // --- render_hypotheses Tests ---
+
+    #[test]
+    fn h0_term_54_render_hypotheses_rich_ansi_falsified() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5
+                };
+                5
+            ];
+            5
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::RichAnsi);
+        let hypotheses = vec![
+            CoverageHypothesis::coverage_threshold(0.80, 0.50), // falsified
+        ];
+        let output = heatmap.render_hypotheses(&hypotheses);
+        assert!(output.contains("FALSIFIED"));
+        assert!(output.contains(ansi::FAIL));
+    }
+
+    #[test]
+    fn h0_term_55_render_hypotheses_rich_ansi_not_falsified() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.9,
+                    hit_count: 9
+                };
+                5
+            ];
+            5
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::RichAnsi);
+        let hypotheses = vec![
+            CoverageHypothesis::coverage_threshold(0.80, 0.90), // not falsified
+        ];
+        let output = heatmap.render_hypotheses(&hypotheses);
+        assert!(output.contains("NOT FALSIFIED"));
+        assert!(output.contains(ansi::PASS));
+    }
+
+    #[test]
+    fn h0_term_56_render_hypotheses_no_color() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.9,
+                    hit_count: 9
+                };
+                5
+            ];
+            5
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::NoColorAscii);
+        let hypotheses = vec![
+            CoverageHypothesis::coverage_threshold(0.80, 0.90),
+            CoverageHypothesis::max_gap_size(0.15, 0.10),
+        ];
+        let output = heatmap.render_hypotheses(&hypotheses);
+        assert!(output.contains("NOT FALSIFIED"));
+        // No ANSI codes
+        assert!(!output.contains("\x1b["));
+    }
+
+    #[test]
+    fn h0_term_57_render_hypotheses_json_mode() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5
+                };
+                5
+            ];
+            5
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::Json);
+        let hypotheses = vec![CoverageHypothesis::coverage_threshold(0.80, 0.50)];
+        let output = heatmap.render_hypotheses(&hypotheses);
+        assert!(output.contains("FALSIFIED"));
+        // No ANSI codes in JSON mode
+        assert!(!output.contains("\x1b["));
+    }
+
+    // --- render_with_report Tests ---
+
+    #[test]
+    fn h0_term_58_render_with_report() {
+        use super::super::tracker::{
+            CombinedCoverageReport, LineCoverageReport, PixelCoverageReport,
+        };
+
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.9,
+                    hit_count: 9
+                };
+                5
+            ];
+            5
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::NoColorAscii);
+
+        let line_report = LineCoverageReport::new(0.85, 1.0, 0.80, 20, 17);
+        let pixel_report = PixelCoverageReport {
+            overall_coverage: 0.90,
+            ..Default::default()
+        };
+        let report = CombinedCoverageReport::from_parts(line_report, pixel_report);
+
+        let output = heatmap.render_with_report(Some(&report));
+        assert!(output.contains("Line Coverage"));
+        assert!(output.contains("Pixel Coverage"));
+    }
+
+    // --- find_gaps Edge Cases ---
+
+    #[test]
+    fn h0_term_59_find_gaps_empty_grid() {
+        let cells: Vec<Vec<CoverageCell>> = vec![];
+        let heatmap = RichTerminalHeatmap::new(cells);
+        let gaps = heatmap.find_gaps();
+        assert!(gaps.is_empty());
+    }
+
+    #[test]
+    fn h0_term_60_find_gaps_single_cell_gap() {
+        // Single cell gap shouldn't be reported (< 1%)
+        let mut cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10
+                };
+                10
+            ];
+            10
+        ];
+        cells[5][5] = CoverageCell {
+            coverage: 0.0,
+            hit_count: 0,
+        };
+        let heatmap = RichTerminalHeatmap::new(cells);
+        let gaps = heatmap.find_gaps();
+        // 1 cell out of 100 = 1%, borderline
+        assert!(gaps.is_empty() || gaps[0].percent < 0.02);
+    }
+
+    #[test]
+    fn h0_term_61_find_gaps_all_zero() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0
+                };
+                5
+            ];
+            5
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells);
+        let gaps = heatmap.find_gaps();
+        // Should find one large gap covering everything
+        assert!(!gaps.is_empty());
+        assert!((gaps[0].percent - 1.0).abs() < 0.01); // 100% gap
+    }
+
+    #[test]
+    fn h0_term_62_find_gaps_sorted_by_size() {
+        let mut cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10
+                };
+                20
+            ];
+            20
+        ];
+        // Small gap (4 cells)
+        for r in 0..2 {
+            for c in 0..2 {
+                cells[r][c] = CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0,
+                };
+            }
+        }
+        // Large gap (16 cells)
+        for r in 10..14 {
+            for c in 10..14 {
+                cells[r][c] = CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0,
+                };
+            }
+        }
+        let heatmap = RichTerminalHeatmap::new(cells);
+        let gaps = heatmap.find_gaps();
+        // Largest gap should be first
+        if gaps.len() >= 2 {
+            assert!(gaps[0].percent >= gaps[1].percent);
+        }
+    }
+
+    // --- calculate_stats Tests ---
+
+    #[test]
+    fn h0_term_63_calculate_stats_mixed() {
+        let cells = vec![vec![
+            CoverageCell {
+                coverage: 1.0,
+                hit_count: 10,
+            },
+            CoverageCell {
+                coverage: 0.0,
+                hit_count: 0,
+            },
+            CoverageCell {
+                coverage: 0.5,
+                hit_count: 5,
+            },
+            CoverageCell {
+                coverage: 0.0,
+                hit_count: 0,
+            },
+        ]];
+        let heatmap = RichTerminalHeatmap::new(cells);
+        let (coverage, covered, total) = heatmap.calculate_stats();
+        assert_eq!(total, 4);
+        assert_eq!(covered, 2); // Only cells with coverage > 0
+        assert!((coverage - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn h0_term_64_calculate_stats_empty() {
+        let cells: Vec<Vec<CoverageCell>> = vec![];
+        let heatmap = RichTerminalHeatmap::new(cells);
+        let (coverage, covered, total) = heatmap.calculate_stats();
+        assert_eq!(total, 0);
+        assert_eq!(covered, 0);
+        assert_eq!(coverage, 0.0);
+    }
+
+    // --- Coverage Char Edge Cases ---
+
+    #[test]
+    fn h0_term_65_coverage_char_boundaries() {
+        // Test exact boundary values
+        assert_eq!(RichTerminalHeatmap::coverage_char(-0.1), '\u{00B7}');
+        assert_eq!(RichTerminalHeatmap::coverage_char(0.25), '\u{2591}');
+        assert_eq!(RichTerminalHeatmap::coverage_char(0.50), '\u{2592}');
+        assert_eq!(RichTerminalHeatmap::coverage_char(0.75), '\u{2593}');
+        assert_eq!(RichTerminalHeatmap::coverage_char(0.76), '\u{2588}');
+    }
+
+    #[test]
+    fn h0_term_66_ascii_coverage_char_boundaries() {
+        // Test exact boundary values
+        assert_eq!(RichTerminalHeatmap::ascii_coverage_char(-0.1), '.');
+        assert_eq!(RichTerminalHeatmap::ascii_coverage_char(0.25), '-');
+        assert_eq!(RichTerminalHeatmap::ascii_coverage_char(0.50), '+');
+        assert_eq!(RichTerminalHeatmap::ascii_coverage_char(0.75), '#');
+        assert_eq!(RichTerminalHeatmap::ascii_coverage_char(0.76), '@');
+    }
+
+    // --- Full Render Tests ---
+
+    #[test]
+    fn h0_term_67_render_full_output_rich_ansi() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.9,
+                    hit_count: 9
+                };
+                5
+            ];
+            5
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells)
+            .with_title("Full Test")
+            .with_mode(OutputMode::RichAnsi);
+        let output = heatmap.render();
+        // Should have all sections
+        assert!(output.contains("Full Test"));
+        assert!(output.contains("LEGEND"));
+        assert!(output.contains("COVERAGE SCORE"));
+        assert!(output.contains("FALSIFICATION STATUS"));
+    }
+
+    #[test]
+    fn h0_term_68_render_full_output_json() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5
+                };
+                3
+            ];
+            3
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::Json);
+        let output = heatmap.render();
+        // Should have content without ANSI codes
+        assert!(!output.is_empty());
+    }
+
+    // --- ScoreBar Debug and Clone ---
+
+    #[test]
+    fn h0_term_69_score_bar_debug_clone() {
+        let bar = ScoreBar::new("Debug Test", 0.75, 0.80);
+        let bar2 = bar.clone();
+        assert_eq!(bar.score, bar2.score);
+        assert_eq!(bar.label, bar2.label);
+        let debug_str = format!("{:?}", bar);
+        assert!(debug_str.contains("ScoreBar"));
+    }
+
+    // --- ConfidenceInterval Debug Copy Clone ---
+
+    #[test]
+    fn h0_term_70_confidence_interval_debug_copy() {
+        let ci = ConfidenceInterval::new(0.70, 0.90, 0.95);
+        let ci2 = ci; // Copy
+        assert_eq!(ci.lower, ci2.lower);
+        assert_eq!(ci.upper, ci2.upper);
+        let debug_str = format!("{:?}", ci);
+        assert!(debug_str.contains("ConfidenceInterval"));
+    }
+
+    // --- RichTerminalHeatmap Debug Clone ---
+
+    #[test]
+    fn h0_term_71_rich_terminal_heatmap_debug_clone() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5
+                };
+                2
+            ];
+            2
+        ];
+        let heatmap = RichTerminalHeatmap::new(cells);
+        let heatmap2 = heatmap.clone();
+        let debug_str = format!("{:?}", heatmap2);
+        assert!(debug_str.contains("RichTerminalHeatmap"));
+    }
+
+    // --- Render Grid with Various Coverage Levels ---
+
+    #[test]
+    fn h0_term_72_render_grid_all_coverage_levels() {
+        let cells = vec![vec![
+            CoverageCell {
+                coverage: 0.0,
+                hit_count: 0,
+            }, // gap
+            CoverageCell {
+                coverage: 0.10,
+                hit_count: 1,
+            }, // light
+            CoverageCell {
+                coverage: 0.30,
+                hit_count: 3,
+            }, // medium
+            CoverageCell {
+                coverage: 0.60,
+                hit_count: 6,
+            }, // dark
+            CoverageCell {
+                coverage: 0.90,
+                hit_count: 9,
+            }, // full
+        ]];
+        let heatmap = RichTerminalHeatmap::new(cells).with_mode(OutputMode::NoColorAscii);
+        let output = heatmap.render_grid();
+        // All ASCII coverage chars should be present
+        assert!(output.contains('.'));
+        assert!(output.contains('-'));
+        assert!(output.contains('+'));
+        assert!(output.contains('#'));
+        assert!(output.contains('@'));
+    }
 }

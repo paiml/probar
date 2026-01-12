@@ -763,4 +763,460 @@ mod tests {
         let sum_squares: f32 = samples.iter().map(|&s| s * s).sum();
         (sum_squares / samples.len() as f32).sqrt()
     }
+
+    // ========================================================================
+    // Additional coverage tests for 95%+ target
+    // ========================================================================
+
+    #[test]
+    fn test_audio_source_default() {
+        // Coverage: AudioSource::default() implementation
+        let source = AudioSource::default();
+        match source {
+            AudioSource::Silence { noise_floor_db } => {
+                assert!((noise_floor_db - (-60.0)).abs() < f32::EPSILON);
+            }
+            _ => panic!("Default should be Silence variant"),
+        }
+    }
+
+    #[test]
+    fn test_audio_emulator_error_display_injection_failed() {
+        // Coverage: AudioEmulatorError::InjectionFailed Display
+        let error = AudioEmulatorError::InjectionFailed("test error".to_string());
+        let display = format!("{error}");
+        assert_eq!(display, "Audio injection failed: test error");
+    }
+
+    #[test]
+    fn test_audio_emulator_error_display_context_not_available() {
+        // Coverage: AudioEmulatorError::ContextNotAvailable Display
+        let error = AudioEmulatorError::ContextNotAvailable;
+        let display = format!("{error}");
+        assert_eq!(display, "Audio context not available");
+    }
+
+    #[test]
+    fn test_audio_emulator_error_display_invalid_config() {
+        // Coverage: AudioEmulatorError::InvalidConfig Display
+        let error = AudioEmulatorError::InvalidConfig("bad config".to_string());
+        let display = format!("{error}");
+        assert_eq!(display, "Invalid audio config: bad config");
+    }
+
+    #[test]
+    fn test_audio_emulator_error_is_error_trait() {
+        // Coverage: std::error::Error impl for AudioEmulatorError
+        let error: Box<dyn std::error::Error> = Box::new(AudioEmulatorError::ContextNotAvailable);
+        // Just verify it implements Error trait
+        assert!(error.to_string().contains("context"));
+    }
+
+    #[test]
+    fn test_sample_rate_accessor() {
+        // Coverage: AudioEmulator::sample_rate() method
+        let emulator = AudioEmulator::with_config(
+            AudioSource::Silence {
+                noise_floor_db: -60.0,
+            },
+            AudioEmulatorConfig {
+                sample_rate: 44100,
+                channels: 2,
+                buffer_size: 512,
+            },
+        );
+        assert_eq!(emulator.sample_rate(), 44100);
+    }
+
+    #[test]
+    fn test_sine_wave_phase_wrap() {
+        // Coverage: Phase wrap-around (phase >= 1.0 branch)
+        // Generate enough samples to guarantee multiple phase wraps
+        let mut emulator = AudioEmulator::with_config(
+            AudioSource::SineWave {
+                frequency: 1000.0, // High frequency for faster phase advancement
+                amplitude: 1.0,
+            },
+            AudioEmulatorConfig {
+                sample_rate: 8000, // Low sample rate = faster phase wrap
+                ..Default::default()
+            },
+        );
+        // 1000 Hz at 8000 Hz sample rate = phase advances 0.125 per sample
+        // After 8 samples, phase wraps (8 * 0.125 = 1.0)
+        let samples = emulator.generate_n_samples(100);
+        // Verify continuous output (no discontinuities from wrap)
+        assert!(samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
+    }
+
+    #[test]
+    fn test_speech_pattern_harmonic_exceeds_nyquist() {
+        // Coverage: Harmonic frequency exceeding Nyquist (line 202-205)
+        let mut emulator = AudioEmulator::with_config(
+            AudioSource::SpeechPattern {
+                fundamental_hz: 3000.0,                        // High fundamental
+                harmonics: vec![0.5, 0.3, 0.2, 0.1, 0.1, 0.1], // Harmonics will exceed Nyquist
+                variation_hz: 0.0,
+            },
+            AudioEmulatorConfig {
+                sample_rate: 16000, // Nyquist = 8000 Hz
+                ..Default::default()
+            },
+        );
+        // 3000 Hz fundamental, harmonics at 6000, 9000, 12000... (last 3 exceed Nyquist)
+        let samples = emulator.generate_n_samples(1000);
+        // Should still produce valid samples
+        assert!(samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
+    }
+
+    #[test]
+    fn test_speech_pattern_phase_wrap() {
+        // Coverage: Speech pattern phase wrap-around
+        let mut emulator = AudioEmulator::with_config(
+            AudioSource::SpeechPattern {
+                fundamental_hz: 2000.0,
+                harmonics: vec![0.3],
+                variation_hz: 10.0,
+            },
+            AudioEmulatorConfig {
+                sample_rate: 8000,
+                ..Default::default()
+            },
+        );
+        // Generate enough samples for multiple phase wraps
+        let samples = emulator.generate_n_samples(500);
+        assert!(samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
+    }
+
+    #[test]
+    fn test_speech_pattern_variation_clamping() {
+        // Coverage: variation_hz clamping (line 189)
+        let mut emulator = AudioEmulator::new(AudioSource::SpeechPattern {
+            fundamental_hz: 100.0,
+            harmonics: vec![0.5],
+            variation_hz: 1000.0, // Much larger than freq/2, should be clamped to 50
+        });
+        let samples = emulator.generate_n_samples(1000);
+        // Should produce valid samples despite extreme variation
+        assert!(samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
+    }
+
+    #[test]
+    fn test_speech_pattern_low_fundamental_clamped() {
+        // Coverage: fundamental_hz clamping to minimum 20.0
+        let mut emulator = AudioEmulator::new(AudioSource::SpeechPattern {
+            fundamental_hz: 5.0, // Below minimum, should be clamped to 20.0
+            harmonics: vec![0.5, 0.3],
+            variation_hz: 2.0,
+        });
+        let samples = emulator.generate_n_samples(1000);
+        assert!(samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
+    }
+
+    #[test]
+    fn test_speech_pattern_high_fundamental_clamped() {
+        // Coverage: fundamental_hz clamping to Nyquist
+        let mut emulator = AudioEmulator::with_config(
+            AudioSource::SpeechPattern {
+                fundamental_hz: 20000.0, // Above Nyquist for 16kHz
+                harmonics: vec![0.5],
+                variation_hz: 10.0,
+            },
+            AudioEmulatorConfig {
+                sample_rate: 16000,
+                ..Default::default()
+            },
+        );
+        let samples = emulator.generate_n_samples(1000);
+        assert!(samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
+    }
+
+    #[test]
+    fn test_speech_pattern_harmonic_amplitude_clamping() {
+        // Coverage: Harmonic amplitude clamping (line 204)
+        let mut emulator = AudioEmulator::new(AudioSource::SpeechPattern {
+            fundamental_hz: 150.0,
+            harmonics: vec![2.0, -0.5, 1.5], // Amplitudes outside [0, 1] range
+            variation_hz: 10.0,
+        });
+        let samples = emulator.generate_n_samples(1000);
+        // Harmonics should be clamped, output in valid range
+        assert!(samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
+    }
+
+    #[test]
+    fn test_silence_noise_floor_clamping_high() {
+        // Coverage: noise_floor_db clamping to 0 (max)
+        let mut emulator = AudioEmulator::new(AudioSource::Silence {
+            noise_floor_db: 10.0, // Above 0, should be clamped
+        });
+        let samples = emulator.generate_n_samples(1000);
+        // At 0 dB, amplitude = 1.0, so noise could be in full [-1, 1] range
+        assert!(samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
+    }
+
+    #[test]
+    fn test_silence_noise_floor_clamping_low() {
+        // Coverage: noise_floor_db clamping to -100 (min)
+        let mut emulator = AudioEmulator::new(AudioSource::Silence {
+            noise_floor_db: -200.0, // Below -100, should be clamped
+        });
+        let samples = emulator.generate_n_samples(1000);
+        let rms = calculate_rms(&samples);
+        // Should be extremely quiet
+        assert!(rms < 0.0001);
+    }
+
+    #[test]
+    fn test_samples_source_clamping_positive() {
+        // Coverage: Sample clamping for values > 1.0 (lines 245, 247)
+        let data = vec![1.5, 2.0, 0.5, -0.5];
+        let mut emulator = AudioEmulator::new(AudioSource::Samples {
+            data,
+            sample_rate: 16000,
+            loop_playback: false,
+        });
+        let samples = emulator.generate_n_samples(4);
+        assert_eq!(samples[0], 1.0); // Clamped from 1.5
+        assert_eq!(samples[1], 1.0); // Clamped from 2.0
+        assert_eq!(samples[2], 0.5); // Unchanged
+        assert_eq!(samples[3], -0.5); // Unchanged
+    }
+
+    #[test]
+    fn test_samples_source_clamping_negative() {
+        // Coverage: Sample clamping for values < -1.0
+        let data = vec![-1.5, -2.0, 0.5];
+        let mut emulator = AudioEmulator::new(AudioSource::Samples {
+            data,
+            sample_rate: 16000,
+            loop_playback: false,
+        });
+        let samples = emulator.generate_n_samples(3);
+        assert_eq!(samples[0], -1.0); // Clamped from -1.5
+        assert_eq!(samples[1], -1.0); // Clamped from -2.0
+        assert_eq!(samples[2], 0.5); // Unchanged
+    }
+
+    #[test]
+    fn test_samples_source_loop_with_clamping() {
+        // Coverage: Looped samples with clamping (line 247)
+        let data = vec![1.5, -1.5]; // Both need clamping
+        let mut emulator = AudioEmulator::new(AudioSource::Samples {
+            data,
+            sample_rate: 16000,
+            loop_playback: true,
+        });
+        let samples = emulator.generate_n_samples(6);
+        assert_eq!(samples[0], 1.0); // Clamped
+        assert_eq!(samples[1], -1.0); // Clamped
+        assert_eq!(samples[2], 1.0); // Looped and clamped
+        assert_eq!(samples[3], -1.0); // Looped and clamped
+    }
+
+    #[test]
+    fn test_white_noise_zero_amplitude() {
+        // Coverage: WhiteNoise with zero amplitude
+        let mut emulator = AudioEmulator::new(AudioSource::WhiteNoise { amplitude: 0.0 });
+        let samples = emulator.generate_n_samples(1000);
+        // All samples should be 0
+        assert!(samples.iter().all(|&s| s.abs() < f32::EPSILON));
+    }
+
+    #[test]
+    fn test_white_noise_negative_amplitude_clamped() {
+        // Coverage: WhiteNoise with negative amplitude (clamped to 0)
+        let mut emulator = AudioEmulator::new(AudioSource::WhiteNoise { amplitude: -0.5 });
+        let samples = emulator.generate_n_samples(1000);
+        // All samples should be 0 (amplitude clamped to 0)
+        assert!(samples.iter().all(|&s| s.abs() < f32::EPSILON));
+    }
+
+    #[test]
+    fn test_white_noise_high_amplitude_clamped() {
+        // Coverage: WhiteNoise with amplitude > 1.0 (clamped to 1.0)
+        let mut emulator = AudioEmulator::new(AudioSource::WhiteNoise { amplitude: 5.0 });
+        let samples = emulator.generate_n_samples(1000);
+        // All samples should be in valid range
+        assert!(samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
+    }
+
+    #[test]
+    fn test_rng_determinism_after_reset() {
+        // Coverage: RNG state reset
+        let mut emulator = AudioEmulator::new(AudioSource::WhiteNoise { amplitude: 1.0 });
+        let samples1 = emulator.generate_n_samples(100);
+        emulator.reset();
+        let samples2 = emulator.generate_n_samples(100);
+        // After reset, noise should be identical
+        assert_eq!(samples1, samples2);
+    }
+
+    #[test]
+    fn test_generate_mock_js_with_many_samples() {
+        // Coverage: generate_mock_js with larger sample set
+        let emulator = AudioEmulator::new(AudioSource::Silence {
+            noise_floor_db: -60.0,
+        });
+        let samples: Vec<f32> = (0..100).map(|i| (i as f32) * 0.01).collect();
+        let js = emulator.generate_mock_js(&samples);
+
+        // Verify sample count in output
+        assert!(js.contains("0.990000")); // Last sample value
+        assert!(js.contains("Float32Array"));
+    }
+
+    #[test]
+    fn test_config_custom_channels_and_buffer() {
+        // Coverage: Custom AudioEmulatorConfig values
+        let config = AudioEmulatorConfig {
+            sample_rate: 48000,
+            channels: 2,
+            buffer_size: 2048,
+        };
+        assert_eq!(config.sample_rate, 48000);
+        assert_eq!(config.channels, 2);
+        assert_eq!(config.buffer_size, 2048);
+    }
+
+    #[test]
+    fn test_audio_source_clone() {
+        // Coverage: AudioSource Clone implementation
+        let source = AudioSource::SpeechPattern {
+            fundamental_hz: 150.0,
+            harmonics: vec![0.5, 0.3],
+            variation_hz: 20.0,
+        };
+        let cloned = source.clone();
+        match cloned {
+            AudioSource::SpeechPattern {
+                fundamental_hz,
+                harmonics,
+                variation_hz,
+            } => {
+                assert!((fundamental_hz - 150.0).abs() < f32::EPSILON);
+                assert_eq!(harmonics, vec![0.5, 0.3]);
+                assert!((variation_hz - 20.0).abs() < f32::EPSILON);
+            }
+            _ => panic!("Clone should preserve variant"),
+        }
+    }
+
+    #[test]
+    fn test_audio_emulator_config_clone() {
+        // Coverage: AudioEmulatorConfig Clone implementation
+        let config = AudioEmulatorConfig {
+            sample_rate: 22050,
+            channels: 2,
+            buffer_size: 512,
+        };
+        let cloned = config.clone();
+        assert_eq!(cloned.sample_rate, 22050);
+        assert_eq!(cloned.channels, 2);
+        assert_eq!(cloned.buffer_size, 512);
+    }
+
+    #[test]
+    fn test_audio_emulator_clone() {
+        // Coverage: AudioEmulator Clone implementation
+        let mut emulator = AudioEmulator::new(AudioSource::SineWave {
+            frequency: 440.0,
+            amplitude: 0.8,
+        });
+        let _ = emulator.generate_n_samples(100); // Advance state
+
+        let cloned = emulator.clone();
+        assert_eq!(cloned.samples_generated(), 100);
+        assert_eq!(cloned.sample_rate(), 16000);
+    }
+
+    #[test]
+    fn test_audio_emulator_error_clone() {
+        // Coverage: AudioEmulatorError Clone implementation
+        let error = AudioEmulatorError::InjectionFailed("test".to_string());
+        let cloned = error.clone();
+        match cloned {
+            AudioEmulatorError::InjectionFailed(msg) => assert_eq!(msg, "test"),
+            _ => panic!("Clone should preserve variant"),
+        }
+    }
+
+    #[test]
+    fn test_audio_source_debug() {
+        // Coverage: AudioSource Debug implementation
+        let source = AudioSource::SineWave {
+            frequency: 440.0,
+            amplitude: 1.0,
+        };
+        let debug_str = format!("{source:?}");
+        assert!(debug_str.contains("SineWave"));
+        assert!(debug_str.contains("440"));
+    }
+
+    #[test]
+    fn test_audio_emulator_config_debug() {
+        // Coverage: AudioEmulatorConfig Debug implementation
+        let config = AudioEmulatorConfig::default();
+        let debug_str = format!("{config:?}");
+        assert!(debug_str.contains("16000"));
+    }
+
+    #[test]
+    fn test_audio_emulator_debug() {
+        // Coverage: AudioEmulator Debug implementation
+        let emulator = AudioEmulator::new(AudioSource::default());
+        let debug_str = format!("{emulator:?}");
+        assert!(debug_str.contains("AudioEmulator"));
+    }
+
+    #[test]
+    fn test_audio_emulator_error_debug() {
+        // Coverage: AudioEmulatorError Debug implementation
+        let error = AudioEmulatorError::ContextNotAvailable;
+        let debug_str = format!("{error:?}");
+        assert!(debug_str.contains("ContextNotAvailable"));
+    }
+
+    #[test]
+    fn test_speech_pattern_normalization() {
+        // Coverage: Speech pattern normalization (line 209-210)
+        // Use harmonics that sum to > 1.0 to test normalization
+        let mut emulator = AudioEmulator::new(AudioSource::SpeechPattern {
+            fundamental_hz: 150.0,
+            harmonics: vec![0.8, 0.8, 0.8, 0.8], // Sum = 3.2, total_amp = 4.2
+            variation_hz: 0.0,
+        });
+        let samples = emulator.generate_n_samples(1000);
+        // Normalization should keep all samples in range
+        assert!(samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
+    }
+
+    #[test]
+    fn test_sine_wave_very_low_frequency() {
+        // Coverage: Very low frequency sine wave (near minimum clamp)
+        let mut emulator = AudioEmulator::new(AudioSource::SineWave {
+            frequency: 0.0001, // Very close to minimum
+            amplitude: 1.0,
+        });
+        let samples = emulator.generate_n_samples(100);
+        // At such low frequency, output should be near-constant
+        assert!(samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
+    }
+
+    #[test]
+    fn test_generate_samples_fractional_duration() {
+        // Coverage: generate_samples with fractional sample count
+        let mut emulator = AudioEmulator::with_config(
+            AudioSource::Silence {
+                noise_floor_db: -60.0,
+            },
+            AudioEmulatorConfig {
+                sample_rate: 1000, // 1kHz for easy math
+                ..Default::default()
+            },
+        );
+        // 0.0015 seconds * 1000 Hz = 1.5 samples, truncated to 1
+        let samples = emulator.generate_samples(0.0015);
+        assert_eq!(samples.len(), 1);
+    }
 }

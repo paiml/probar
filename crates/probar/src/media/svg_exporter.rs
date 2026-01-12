@@ -1653,4 +1653,754 @@ mod tests {
             assert!(debug.contains("Rect"));
         }
     }
+
+    // Additional tests to increase coverage to 95%+
+    mod additional_coverage_tests {
+        use super::*;
+        use std::path::PathBuf;
+        use tempfile::tempdir;
+
+        #[test]
+        fn test_svg_exporter_default_trait() {
+            // Explicitly test Default trait implementation
+            let exporter = SvgExporter::default();
+            let config = exporter.config();
+            assert_eq!(config.viewbox, (800, 600));
+            assert!(config.preserve_aspect_ratio);
+        }
+
+        #[test]
+        fn test_svg_config_clone() {
+            let config = SvgConfig::new(1024, 768)
+                .with_title("Test Title")
+                .with_description("Test Desc");
+            let cloned = config.clone();
+            assert_eq!(cloned.viewbox, (1024, 768));
+            assert_eq!(cloned.title, Some("Test Title".to_string()));
+            assert_eq!(cloned.description, Some("Test Desc".to_string()));
+        }
+
+        #[test]
+        fn test_svg_exporter_clone() {
+            let exporter = SvgExporter::new();
+            let cloned = exporter.clone();
+            assert_eq!(cloned.config().viewbox, exporter.config().viewbox);
+        }
+
+        #[test]
+        fn test_svg_shape_clone() {
+            let shape = SvgShape::rect(10.0, 20.0, 100.0, 50.0).with_fill("blue");
+            let cloned = shape.clone();
+            if let SvgShape::Rect { x, y, fill, .. } = cloned {
+                assert!((x - 10.0).abs() < f64::EPSILON);
+                assert!((y - 20.0).abs() < f64::EPSILON);
+                assert_eq!(fill, Some("blue".to_string()));
+            } else {
+                panic!("Expected Rect shape");
+            }
+        }
+
+        #[test]
+        fn test_svg_compression_copy_eq() {
+            let comp1 = SvgCompression::None;
+            let comp2 = comp1; // Copy
+            assert_eq!(comp1, comp2);
+
+            let comp3 = SvgCompression::Minified;
+            assert_ne!(comp1, comp3);
+        }
+
+        #[test]
+        fn test_svg_compression_default() {
+            let default = SvgCompression::default();
+            assert_eq!(default, SvgCompression::None);
+        }
+
+        #[test]
+        fn test_save_to_file() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("test.svg");
+
+            let exporter = SvgExporter::new();
+            let shapes = vec![SvgShape::rect(0.0, 0.0, 100.0, 50.0)];
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            exporter.save(&svg, &path).unwrap();
+
+            let contents = std::fs::read_to_string(&path).unwrap();
+            assert!(contents.contains("<svg"));
+            assert!(contents.contains("<rect"));
+        }
+
+        #[test]
+        fn test_save_error_handling() {
+            let exporter = SvgExporter::new();
+            let svg = "<svg></svg>";
+
+            // Try to save to an invalid path
+            let invalid_path = PathBuf::from("/nonexistent_dir_xyz/test.svg");
+            let result = exporter.save(svg, &invalid_path);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_preserve_aspect_ratio_false_screenshot() {
+            let screenshot = test_screenshot();
+            let config = SvgConfig::new(100, 100).with_preserve_aspect_ratio(false);
+            let exporter = SvgExporter::with_config(config);
+
+            let svg = exporter.from_screenshot(&screenshot).unwrap();
+
+            assert!(svg.contains("preserveAspectRatio=\"none\""));
+        }
+
+        #[test]
+        fn test_minified_shapes_output() {
+            let config = SvgConfig::new(100, 100)
+                .with_compression(SvgCompression::Minified)
+                .with_xml_declaration(false);
+            let exporter = SvgExporter::with_config(config);
+            let shapes = vec![SvgShape::rect(0.0, 0.0, 50.0, 50.0)];
+
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            // Minified should not have indentation
+            assert!(!svg.contains("\n  "));
+        }
+
+        #[test]
+        fn test_shapes_no_xml_declaration() {
+            let config = SvgConfig::new(100, 100).with_xml_declaration(false);
+            let exporter = SvgExporter::with_config(config);
+            let shapes = vec![SvgShape::rect(0.0, 0.0, 50.0, 50.0)];
+
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(!svg.contains("<?xml"));
+        }
+
+        #[test]
+        fn test_title_and_description_xml_escaping() {
+            let screenshot = test_screenshot();
+            let config = SvgConfig::new(100, 100)
+                .with_title("Test <Title> & 'Quotes' \"Escaping\"")
+                .with_description("Desc with <xml> & 'special' \"chars\"");
+            let exporter = SvgExporter::with_config(config);
+
+            let svg = exporter.from_screenshot(&screenshot).unwrap();
+
+            assert!(svg.contains("&lt;Title&gt;"));
+            assert!(svg.contains("&amp;"));
+            assert!(svg.contains("&apos;"));
+            assert!(svg.contains("&quot;"));
+        }
+
+        #[test]
+        fn test_empty_shapes_list() {
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let shapes: Vec<SvgShape> = vec![];
+
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<svg"));
+            assert!(svg.contains("</svg>"));
+        }
+
+        #[test]
+        fn test_empty_annotations_list() {
+            let screenshot = test_screenshot();
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let annotations: Vec<Annotation> = vec![];
+
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
+
+            // Should not have annotations group when empty
+            assert!(!svg.contains("<g id=\"annotations\">"));
+        }
+
+        #[test]
+        fn test_annotation_circle_with_label() {
+            let screenshot = test_screenshot();
+            let annotations = vec![Annotation::circle(50, 50, 20).with_label("Circle Label")];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
+
+            assert!(svg.contains("<circle"));
+            assert!(svg.contains("Circle Label"));
+        }
+
+        #[test]
+        fn test_annotation_arrow_with_label() {
+            let screenshot = test_screenshot();
+            let annotations = vec![Annotation::arrow(10, 10, 50, 50).with_label("Arrow Label")];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
+
+            assert!(svg.contains("<line"));
+            assert!(svg.contains("<marker"));
+            assert!(svg.contains("Arrow Label"));
+        }
+
+        #[test]
+        fn test_annotation_highlight_with_label() {
+            let screenshot = test_screenshot();
+            let annotations =
+                vec![Annotation::highlight(10, 10, 50, 30).with_label("Highlight Label")];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
+
+            assert!(svg.contains("fill-opacity=\"0.3\""));
+            assert!(svg.contains("Highlight Label"));
+        }
+
+        #[test]
+        fn test_annotation_filled_rectangle_with_label() {
+            let screenshot = test_screenshot();
+            let annotations =
+                vec![Annotation::filled_rectangle(10, 10, 50, 30).with_label("Filled Label")];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
+
+            assert!(svg.contains("<rect"));
+            assert!(svg.contains("Filled Label"));
+        }
+
+        #[test]
+        fn test_minified_annotations() {
+            let screenshot = test_screenshot();
+            let config = SvgConfig::new(100, 100).with_compression(SvgCompression::Minified);
+            let annotations = vec![Annotation::rectangle(10, 10, 50, 30)];
+            let exporter = SvgExporter::with_config(config);
+
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
+
+            // Minified should have no indented newlines
+            assert!(!svg.contains("\n  "));
+        }
+
+        #[test]
+        fn test_base64_encode_all_chunk_sizes() {
+            // Test chunk size 1
+            assert_eq!(base64_encode(&[65]), "QQ==");
+            // Test chunk size 2
+            assert_eq!(base64_encode(&[65, 66]), "QUI=");
+            // Test chunk size 3
+            assert_eq!(base64_encode(&[65, 66, 67]), "QUJD");
+            // Test longer data with all chunk sizes represented
+            let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+            let encoded = base64_encode(&data);
+            assert!(!encoded.is_empty());
+            assert!(!encoded.contains(' '));
+        }
+
+        #[test]
+        fn test_base64_encode_large_data() {
+            let data: Vec<u8> = (0..=255).collect();
+            let encoded = base64_encode(&data);
+            assert!(!encoded.is_empty());
+            // Should be properly padded
+            assert!(encoded.len() % 4 == 0);
+        }
+
+        #[test]
+        fn test_text_ignores_stroke() {
+            // Text should ignore stroke and stroke_width
+            let shape = SvgShape::text(10.0, 20.0, "Hello")
+                .with_stroke("red")
+                .with_stroke_width(2.0);
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            // Text element should exist but not have stroke attributes
+            assert!(svg.contains("<text"));
+            // Verify no stroke attribute in the text element
+            let text_line = svg.lines().find(|l| l.contains("<text")).unwrap();
+            assert!(!text_line.contains("stroke="));
+        }
+
+        #[test]
+        fn test_polygon_without_optional_attrs() {
+            let shapes = vec![SvgShape::Polygon {
+                points: vec![(0.0, 0.0), (50.0, 50.0), (100.0, 0.0)],
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<polygon"));
+            // Should not have fill, stroke, or stroke-width when None
+            let polygon_line = svg.lines().find(|l| l.contains("<polygon")).unwrap();
+            assert!(!polygon_line.contains("fill="));
+            assert!(!polygon_line.contains("stroke="));
+        }
+
+        #[test]
+        fn test_path_without_optional_attrs() {
+            let shapes = vec![SvgShape::Path {
+                d: "M0 0 L100 100".to_string(),
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<path"));
+            assert!(svg.contains("d=\"M0 0 L100 100\""));
+        }
+
+        #[test]
+        fn test_ellipse_without_optional_attrs() {
+            let shapes = vec![SvgShape::Ellipse {
+                cx: 50.0,
+                cy: 50.0,
+                rx: 40.0,
+                ry: 20.0,
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<ellipse"));
+        }
+
+        #[test]
+        fn test_line_without_optional_attrs() {
+            let shapes = vec![SvgShape::Line {
+                x1: 0.0,
+                y1: 0.0,
+                x2: 100.0,
+                y2: 100.0,
+                stroke: None,
+                stroke_width: None,
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<line"));
+        }
+
+        #[test]
+        fn test_circle_without_optional_attrs() {
+            let shapes = vec![SvgShape::Circle {
+                cx: 50.0,
+                cy: 50.0,
+                r: 25.0,
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<circle"));
+        }
+
+        #[test]
+        fn test_rect_without_optional_attrs() {
+            let shapes = vec![SvgShape::Rect {
+                x: 10.0,
+                y: 10.0,
+                width: 80.0,
+                height: 60.0,
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+                rx: None,
+                ry: None,
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<rect"));
+        }
+
+        #[test]
+        fn test_text_without_optional_attrs() {
+            let shapes = vec![SvgShape::Text {
+                x: 10.0,
+                y: 20.0,
+                content: "Plain text".to_string(),
+                font_size: None,
+                fill: None,
+                font_family: None,
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<text"));
+            assert!(svg.contains(">Plain text</text>"));
+        }
+
+        #[test]
+        fn test_nested_groups() {
+            let inner_group = SvgShape::Group {
+                id: Some("inner".to_string()),
+                children: vec![SvgShape::circle(25.0, 25.0, 10.0).with_fill("red")],
+            };
+
+            let outer_group = SvgShape::Group {
+                id: Some("outer".to_string()),
+                children: vec![inner_group],
+            };
+
+            let shapes = vec![outer_group];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<g id=\"outer\">"));
+            assert!(svg.contains("<g id=\"inner\">"));
+            assert!(svg.contains("</g>"));
+        }
+
+        #[test]
+        fn test_group_minified() {
+            let config = SvgConfig::new(100, 100).with_compression(SvgCompression::Minified);
+            let exporter = SvgExporter::with_config(config);
+
+            let group = SvgShape::Group {
+                id: Some("test".to_string()),
+                children: vec![SvgShape::rect(0.0, 0.0, 50.0, 50.0)],
+            };
+
+            let svg = exporter.from_shapes(&vec![group]).unwrap();
+
+            assert!(svg.contains("<g id=\"test\">"));
+        }
+
+        #[test]
+        fn test_escape_xml_edge_cases() {
+            // Empty string
+            assert_eq!(escape_xml(""), "");
+            // Only special chars
+            assert_eq!(escape_xml("<>&\"'"), "&lt;&gt;&amp;&quot;&apos;");
+            // Unicode
+            assert_eq!(escape_xml("Hello\u{00A0}World"), "Hello\u{00A0}World");
+            // Mixed content
+            assert_eq!(
+                escape_xml("a < b > c & d \"e\" 'f'"),
+                "a &lt; b &gt; c &amp; d &quot;e&quot; &apos;f&apos;"
+            );
+        }
+
+        #[test]
+        fn test_color_to_svg_edge_cases() {
+            // Full transparency
+            assert_eq!(color_to_svg(&[255, 255, 255, 0]), "rgba(255,255,255,0)");
+            // Half transparency
+            let half = color_to_svg(&[100, 100, 100, 127]);
+            assert!(half.starts_with("rgba(100,100,100,0."));
+            // Full opacity
+            assert_eq!(color_to_svg(&[0, 0, 0, 255]), "rgba(0,0,0,1)");
+        }
+
+        #[test]
+        fn test_shapes_with_special_characters() {
+            let shapes = vec![SvgShape::text(10.0, 20.0, "Hello <World> & 'Friends'")];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("Hello &lt;World&gt; &amp; &apos;Friends&apos;"));
+        }
+
+        #[test]
+        fn test_polyline_stroke_width() {
+            let shapes = vec![SvgShape::Polyline {
+                points: vec![(0.0, 0.0), (50.0, 50.0), (100.0, 0.0)],
+                stroke: Some("blue".to_string()),
+                stroke_width: Some(3.0),
+                fill: Some("none".to_string()),
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("stroke=\"blue\""));
+            assert!(svg.contains("stroke-width=\"3\""));
+        }
+
+        #[test]
+        fn test_polygon_stroke() {
+            let shapes = vec![SvgShape::Polygon {
+                points: vec![(50.0, 0.0), (100.0, 100.0), (0.0, 100.0)],
+                fill: Some("yellow".to_string()),
+                stroke: Some("black".to_string()),
+                stroke_width: Some(2.0),
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("stroke=\"black\""));
+            assert!(svg.contains("stroke-width=\"2\""));
+        }
+
+        #[test]
+        fn test_path_fill() {
+            let shapes = vec![SvgShape::Path {
+                d: "M10 10 L90 90".to_string(),
+                fill: Some("green".to_string()),
+                stroke: None,
+                stroke_width: None,
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("fill=\"green\""));
+        }
+
+        #[test]
+        fn test_with_fill_on_path() {
+            let shape = SvgShape::Path {
+                d: "M0 0".to_string(),
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+            }
+            .with_fill("magenta");
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("fill=\"magenta\""));
+        }
+
+        #[test]
+        fn test_with_stroke_on_polygon() {
+            let shape = SvgShape::Polygon {
+                points: vec![(0.0, 0.0), (50.0, 50.0), (100.0, 0.0)],
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+            }
+            .with_stroke("cyan");
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("stroke=\"cyan\""));
+        }
+
+        #[test]
+        fn test_with_stroke_width_on_polyline() {
+            let shape = SvgShape::Polyline {
+                points: vec![(0.0, 0.0), (100.0, 100.0)],
+                stroke: None,
+                stroke_width: None,
+                fill: None,
+            }
+            .with_stroke_width(5.0);
+
+            let shapes = vec![shape];
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("stroke-width=\"5\""));
+        }
+
+        #[test]
+        fn test_rect_only_rx() {
+            let shapes = vec![SvgShape::Rect {
+                x: 10.0,
+                y: 10.0,
+                width: 80.0,
+                height: 60.0,
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+                rx: Some(5.0),
+                ry: None,
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("rx=\"5\""));
+            assert!(!svg.contains("ry="));
+        }
+
+        #[test]
+        fn test_rect_only_ry() {
+            let shapes = vec![SvgShape::Rect {
+                x: 10.0,
+                y: 10.0,
+                width: 80.0,
+                height: 60.0,
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+                rx: None,
+                ry: Some(5.0),
+            }];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(!svg.contains("rx="));
+            assert!(svg.contains("ry=\"5\""));
+        }
+
+        #[test]
+        fn test_large_screenshot_data() {
+            // Test with larger image data
+            let large_data: Vec<u8> = (0..10000).map(|i| (i % 256) as u8).collect();
+            let screenshot = Screenshot {
+                data: large_data,
+                width: 500,
+                height: 500,
+                device_pixel_ratio: 2.0,
+                timestamp: SystemTime::now(),
+            };
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(500, 500));
+            let svg = exporter.from_screenshot(&screenshot).unwrap();
+
+            assert!(svg.contains("data:image/png;base64,"));
+            assert!(svg.contains("</svg>"));
+        }
+
+        #[test]
+        fn test_annotation_label_xml_escape() {
+            let screenshot = test_screenshot();
+            let annotations = vec![
+                Annotation::rectangle(10, 10, 50, 30).with_label("Label with <xml> & 'chars'")
+            ];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
+
+            assert!(svg.contains("&lt;xml&gt;"));
+            assert!(svg.contains("&amp;"));
+        }
+
+        #[test]
+        fn test_multiple_annotations_same_type() {
+            let screenshot = test_screenshot();
+            let annotations = vec![
+                Annotation::rectangle(10, 10, 20, 20),
+                Annotation::rectangle(40, 40, 20, 20),
+                Annotation::rectangle(70, 70, 20, 20),
+            ];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
+
+            // Should have 3 rectangles (image uses <image> element, not rect)
+            assert_eq!(svg.matches("<rect x=\"").count(), 3);
+        }
+
+        #[test]
+        fn test_all_shapes_in_single_svg() {
+            let shapes = vec![
+                SvgShape::rect(10.0, 10.0, 30.0, 20.0),
+                SvgShape::circle(50.0, 50.0, 15.0),
+                SvgShape::line(0.0, 0.0, 100.0, 100.0),
+                SvgShape::text(10.0, 90.0, "Text"),
+                SvgShape::Ellipse {
+                    cx: 80.0,
+                    cy: 20.0,
+                    rx: 10.0,
+                    ry: 5.0,
+                    fill: Some("pink".to_string()),
+                    stroke: None,
+                    stroke_width: None,
+                },
+                SvgShape::Polyline {
+                    points: vec![(5.0, 5.0), (15.0, 15.0)],
+                    stroke: Some("brown".to_string()),
+                    stroke_width: None,
+                    fill: None,
+                },
+                SvgShape::Polygon {
+                    points: vec![(30.0, 30.0), (40.0, 40.0), (30.0, 40.0)],
+                    fill: None,
+                    stroke: None,
+                    stroke_width: None,
+                },
+                SvgShape::Path {
+                    d: "M50 50 L60 60".to_string(),
+                    fill: None,
+                    stroke: None,
+                    stroke_width: None,
+                },
+                SvgShape::Group {
+                    id: None,
+                    children: vec![SvgShape::rect(0.0, 0.0, 10.0, 10.0)],
+                },
+            ];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter.from_shapes(&shapes).unwrap();
+
+            assert!(svg.contains("<rect"));
+            assert!(svg.contains("<circle"));
+            assert!(svg.contains("<line"));
+            assert!(svg.contains("<text"));
+            assert!(svg.contains("<ellipse"));
+            assert!(svg.contains("<polyline"));
+            assert!(svg.contains("<polygon"));
+            assert!(svg.contains("<path"));
+            assert!(svg.contains("<g>"));
+        }
+
+        #[test]
+        fn test_annotation_y_saturating_sub() {
+            let screenshot = test_screenshot();
+            // Create annotation with y=0 to test saturating_sub
+            let annotations = vec![Annotation::rectangle(10, 0, 50, 30).with_label("At top")];
+
+            let exporter = SvgExporter::with_config(SvgConfig::new(100, 100));
+            let svg = exporter
+                .from_screenshot_with_annotations(&screenshot, &annotations)
+                .unwrap();
+
+            // Label y position should be 0 (since 0 - 5 saturates to 0)
+            assert!(svg.contains("y=\"0\""));
+            assert!(svg.contains("At top"));
+        }
+
+        #[test]
+        fn test_compression_debug() {
+            let comp = SvgCompression::Minified;
+            let debug = format!("{:?}", comp);
+            assert!(debug.contains("Minified"));
+        }
+    }
 }

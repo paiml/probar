@@ -956,4 +956,894 @@ mod tests {
             assert!(handler.on_stop().is_ok());
         }
     }
+
+    mod additional_coverage_tests {
+        use super::*;
+
+        // FileChangeKind additional coverage
+        #[test]
+        fn test_file_change_kind_any() {
+            let kind = FileChangeKind::from(EventKind::Any);
+            assert_eq!(kind, FileChangeKind::Other);
+        }
+
+        #[test]
+        fn test_file_change_kind_renamed_variant() {
+            // Test the Renamed variant exists and can be used
+            let kind = FileChangeKind::Renamed;
+            assert_eq!(kind, FileChangeKind::Renamed);
+        }
+
+        #[test]
+        fn test_file_change_kind_hash() {
+            // Test Hash trait for FileChangeKind
+            use std::collections::HashSet;
+            let mut set = HashSet::new();
+            set.insert(FileChangeKind::Created);
+            set.insert(FileChangeKind::Modified);
+            set.insert(FileChangeKind::Deleted);
+            set.insert(FileChangeKind::Renamed);
+            set.insert(FileChangeKind::Other);
+            assert_eq!(set.len(), 5);
+        }
+
+        #[test]
+        fn test_file_change_kind_copy() {
+            let kind = FileChangeKind::Modified;
+            let copied = kind;
+            assert_eq!(kind, copied);
+        }
+
+        // WatchConfig serialization tests
+        #[test]
+        fn test_watch_config_serialize() {
+            let config = WatchConfig::default();
+            let json = serde_json::to_string(&config).unwrap();
+            assert!(json.contains("patterns"));
+            assert!(json.contains("debounce_ms"));
+        }
+
+        #[test]
+        fn test_watch_config_deserialize() {
+            let json = r#"{
+                "patterns": ["**/*.rs"],
+                "ignore_patterns": ["**/target/**"],
+                "debounce_ms": 500,
+                "clear_screen": false,
+                "run_on_start": false,
+                "watch_dirs": ["."]
+            }"#;
+            let config: WatchConfig = serde_json::from_str(json).unwrap();
+            assert_eq!(config.debounce_ms, 500);
+            assert!(!config.clear_screen);
+            assert!(!config.run_on_start);
+        }
+
+        #[test]
+        fn test_watch_config_clone() {
+            let config = WatchConfig::default();
+            let cloned = config.clone();
+            assert_eq!(config.debounce_ms, cloned.debounce_ms);
+            assert_eq!(config.patterns.len(), cloned.patterns.len());
+        }
+
+        #[test]
+        fn test_watch_config_debug() {
+            let config = WatchConfig::default();
+            let debug_str = format!("{:?}", config);
+            assert!(debug_str.contains("WatchConfig"));
+            assert!(debug_str.contains("patterns"));
+        }
+
+        // Glob matching edge cases
+        #[test]
+        fn test_glob_matches_empty_pattern_parts() {
+            // Test with path having multiple slashes creating empty parts
+            assert!(WatchConfig::glob_matches("**/*.rs", "//src//main.rs"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_star_at_end() {
+            // Star at end of pattern matches any suffix
+            assert!(WatchConfig::glob_match_segment("test*", "testing"));
+            assert!(WatchConfig::glob_match_segment("test*", "test"));
+            assert!(WatchConfig::glob_match_segment("test*", "test123"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_star_in_middle() {
+            // Star in middle of pattern
+            assert!(WatchConfig::glob_match_segment("te*st", "test"));
+            assert!(WatchConfig::glob_match_segment("te*st", "teaast"));
+            assert!(!WatchConfig::glob_match_segment("te*st", "testing"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_multiple_stars() {
+            // Multiple stars in pattern
+            assert!(WatchConfig::glob_match_segment("*.*", "test.rs"));
+            assert!(WatchConfig::glob_match_segment("*_*", "test_file"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_question_at_end() {
+            // Question mark at end
+            assert!(WatchConfig::glob_match_segment("test?", "testX"));
+            assert!(!WatchConfig::glob_match_segment("test?", "test"));
+            assert!(!WatchConfig::glob_match_segment("test?", "testXY"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_question_in_middle() {
+            // Question mark in middle
+            assert!(WatchConfig::glob_match_segment("te?t", "test"));
+            assert!(WatchConfig::glob_match_segment("te?t", "teat"));
+            assert!(!WatchConfig::glob_match_segment("te?t", "tet"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_empty_pattern() {
+            assert!(WatchConfig::glob_match_segment("", ""));
+            assert!(!WatchConfig::glob_match_segment("", "x"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_empty_segment() {
+            assert!(WatchConfig::glob_match_segment("", ""));
+            assert!(!WatchConfig::glob_match_segment("a", ""));
+        }
+
+        #[test]
+        fn test_glob_match_parts_empty_both() {
+            let empty: Vec<&str> = vec![];
+            assert!(WatchConfig::glob_match_parts(&empty, &empty));
+        }
+
+        #[test]
+        fn test_glob_match_parts_empty_pattern_non_empty_path() {
+            let empty: Vec<&str> = vec![];
+            let path = vec!["src"];
+            assert!(!WatchConfig::glob_match_parts(&empty, &path));
+        }
+
+        #[test]
+        fn test_glob_match_parts_double_star_at_end() {
+            // Double star at end matches any remaining path
+            let pattern = vec!["src", "**"];
+            let path = vec!["src", "lib", "mod.rs"];
+            assert!(WatchConfig::glob_match_parts(&pattern, &path));
+        }
+
+        #[test]
+        fn test_glob_match_parts_double_star_matches_zero_segments() {
+            // Double star can match zero path segments
+            let pattern = vec!["**", "*.rs"];
+            let path = vec!["main.rs"];
+            assert!(WatchConfig::glob_match_parts(&pattern, &path));
+        }
+
+        #[test]
+        fn test_glob_match_parts_double_star_no_match() {
+            // Double star followed by pattern that doesn't match anywhere
+            let pattern = vec!["**", "*.xyz"];
+            let path = vec!["src", "main.rs"];
+            assert!(!WatchConfig::glob_match_parts(&pattern, &path));
+        }
+
+        #[test]
+        fn test_glob_matches_node_modules() {
+            let config = WatchConfig::default();
+            assert!(!config.matches_pattern(Path::new("node_modules/package/index.js")));
+        }
+
+        #[test]
+        fn test_matches_pattern_no_watch_patterns() {
+            // Test with empty patterns - should not match anything
+            let config = WatchConfig {
+                patterns: vec![],
+                ignore_patterns: vec![],
+                debounce_ms: 300,
+                clear_screen: true,
+                run_on_start: true,
+                watch_dirs: vec![],
+            };
+            assert!(!config.matches_pattern(Path::new("src/main.rs")));
+        }
+
+        #[test]
+        fn test_matches_pattern_not_matching_any() {
+            // File type that doesn't match any pattern
+            let config = WatchConfig::default();
+            assert!(!config.matches_pattern(Path::new("src/main.xyz")));
+        }
+
+        // WatchStats additional coverage
+        #[test]
+        fn test_watch_stats_default() {
+            let stats = WatchStats::default();
+            assert_eq!(stats.trigger_count, 0);
+            assert_eq!(stats.change_count, 0);
+            assert_eq!(stats.total_runtime, Duration::default());
+            assert!(stats.last_trigger.is_none());
+        }
+
+        #[test]
+        fn test_watch_stats_clone() {
+            let mut stats = WatchStats::new();
+            stats.record_trigger(5);
+            let cloned = stats.clone();
+            assert_eq!(stats.trigger_count, cloned.trigger_count);
+            assert_eq!(stats.change_count, cloned.change_count);
+        }
+
+        #[test]
+        fn test_watch_stats_debug() {
+            let stats = WatchStats::new();
+            let debug_str = format!("{:?}", stats);
+            assert!(debug_str.contains("WatchStats"));
+            assert!(debug_str.contains("trigger_count"));
+        }
+
+        // WatchBuilder additional coverage
+        #[test]
+        fn test_watch_builder_default() {
+            let builder = WatchBuilder::default();
+            let config = builder.build();
+            assert!(config.patterns.is_empty());
+            assert!(config.ignore_patterns.is_empty());
+            assert_eq!(config.debounce_ms, 300);
+            assert!(config.clear_screen);
+            assert!(config.run_on_start);
+        }
+
+        #[test]
+        fn test_watch_builder_debug() {
+            let builder = WatchBuilder::new();
+            let debug_str = format!("{:?}", builder);
+            assert!(debug_str.contains("WatchBuilder"));
+        }
+
+        // FileChange additional tests
+        #[test]
+        fn test_file_change_all_kinds() {
+            let kinds = [
+                FileChangeKind::Created,
+                FileChangeKind::Modified,
+                FileChangeKind::Deleted,
+                FileChangeKind::Renamed,
+                FileChangeKind::Other,
+            ];
+            for kind in kinds {
+                let change = FileChange {
+                    path: PathBuf::from("test.rs"),
+                    kind,
+                    timestamp: Instant::now(),
+                };
+                let _ = format!("{:?}", change);
+            }
+        }
+
+        // FnWatchHandler additional tests
+        #[test]
+        fn test_fn_watch_handler_with_error() {
+            let handler = FnWatchHandler::new(|_changes| {
+                Err(ProbarError::AssertionFailed {
+                    message: "test error".to_string(),
+                })
+            });
+            let changes = vec![FileChange {
+                path: PathBuf::from("test.rs"),
+                kind: FileChangeKind::Modified,
+                timestamp: Instant::now(),
+            }];
+            assert!(handler.on_change(&changes).is_err());
+        }
+
+        #[test]
+        fn test_fn_watch_handler_access_changes() {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            use std::sync::Arc;
+
+            let count = Arc::new(AtomicUsize::new(0));
+            let count_clone = Arc::clone(&count);
+
+            let handler = FnWatchHandler::new(move |changes| {
+                count_clone.store(changes.len(), Ordering::SeqCst);
+                Ok(())
+            });
+
+            let changes = vec![
+                FileChange {
+                    path: PathBuf::from("a.rs"),
+                    kind: FileChangeKind::Created,
+                    timestamp: Instant::now(),
+                },
+                FileChange {
+                    path: PathBuf::from("b.rs"),
+                    kind: FileChangeKind::Modified,
+                    timestamp: Instant::now(),
+                },
+            ];
+
+            handler.on_change(&changes).unwrap();
+            assert_eq!(count.load(Ordering::SeqCst), 2);
+        }
+
+        // FileWatcher with non-existent directory
+        #[test]
+        fn test_file_watcher_with_nonexistent_dir() {
+            let config =
+                WatchConfig::new().with_watch_dir(Path::new("/nonexistent/directory/12345"));
+            let mut watcher = FileWatcher::new(config).unwrap();
+            // Should not error because we skip non-existent directories
+            let result = watcher.start();
+            assert!(result.is_ok());
+            watcher.stop();
+        }
+
+        // Test watch config with multiple patterns
+        #[test]
+        fn test_watch_config_multiple_patterns_chained() {
+            let config = WatchConfig::new()
+                .with_pattern("**/*.rs")
+                .with_pattern("**/*.toml")
+                .with_pattern("**/*.md")
+                .with_ignore("**/target/**")
+                .with_ignore("**/.git/**");
+
+            assert!(config.patterns.len() >= 3);
+            assert!(config.ignore_patterns.len() >= 2);
+        }
+
+        // More glob edge cases
+        #[test]
+        fn test_glob_matches_deep_nesting() {
+            assert!(WatchConfig::glob_matches(
+                "**/*.rs",
+                "a/b/c/d/e/f/g/h/i/j/test.rs"
+            ));
+        }
+
+        #[test]
+        fn test_glob_matches_single_segment() {
+            assert!(WatchConfig::glob_matches("*.rs", "main.rs"));
+            assert!(!WatchConfig::glob_matches("*.rs", "src/main.rs"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_star_no_match() {
+            // Star pattern that can't match
+            assert!(!WatchConfig::glob_match_segment("*.rs", "main.js"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_literal_mismatch() {
+            assert!(!WatchConfig::glob_match_segment("abc", "abd"));
+            assert!(!WatchConfig::glob_match_segment("abc", "ab"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_pattern_longer_than_segment() {
+            assert!(!WatchConfig::glob_match_segment("abcdef", "abc"));
+        }
+
+        // Test WatchConfig::new explicitly
+        #[test]
+        fn test_watch_config_new() {
+            let config = WatchConfig::new();
+            assert!(!config.patterns.is_empty());
+            assert!(config.run_on_start);
+        }
+
+        // Test glob_match_parts when pattern doesn't match path segment
+        #[test]
+        fn test_glob_match_parts_segment_mismatch() {
+            let pattern = vec!["src", "lib.rs"];
+            let path = vec!["src", "main.rs"];
+            assert!(!WatchConfig::glob_match_parts(&pattern, &path));
+        }
+
+        // Test glob_match_parts with single non-matching segment
+        #[test]
+        fn test_glob_match_parts_single_mismatch() {
+            let pattern = vec!["foo"];
+            let path = vec!["bar"];
+            assert!(!WatchConfig::glob_match_parts(&pattern, &path));
+        }
+
+        // Test pattern non-empty but path is empty (coverage for line 149-151)
+        #[test]
+        fn test_glob_match_parts_pattern_longer_than_path() {
+            let pattern = vec!["src", "lib.rs"];
+            let path = vec!["src"];
+            assert!(!WatchConfig::glob_match_parts(&pattern, &path));
+        }
+
+        // Test non-** pattern with empty path
+        #[test]
+        fn test_glob_match_parts_non_doublestar_empty_path() {
+            let pattern = vec!["*.rs"];
+            let empty: Vec<&str> = vec![];
+            assert!(!WatchConfig::glob_match_parts(&pattern, &empty));
+        }
+
+        // Test double star matching multiple segments then failing
+        #[test]
+        fn test_glob_match_parts_double_star_exhaustive_search() {
+            // ** tries all positions but none match
+            let pattern = vec!["**", "specific.txt"];
+            let path = vec!["a", "b", "c", "other.txt"];
+            assert!(!WatchConfig::glob_match_parts(&pattern, &path));
+        }
+
+        // Test segment with star that needs to try multiple positions
+        #[test]
+        fn test_glob_match_segment_star_backtrack() {
+            // Pattern "a*b*c" against "aXXbYYc"
+            assert!(WatchConfig::glob_match_segment("a*b*c", "aXXbYYc"));
+            assert!(WatchConfig::glob_match_segment("a*b*c", "abc"));
+            assert!(!WatchConfig::glob_match_segment("a*b*c", "aXXbYY"));
+        }
+
+        // Test question mark when segment is shorter than pattern needs
+        #[test]
+        fn test_glob_match_segment_question_exhausts_segment() {
+            assert!(!WatchConfig::glob_match_segment("a??", "ab"));
+        }
+
+        // Test literal char mismatch at specific position
+        #[test]
+        fn test_glob_match_segment_literal_char_mismatch() {
+            assert!(!WatchConfig::glob_match_segment("test", "Test"));
+            assert!(!WatchConfig::glob_match_segment("abc", "axc"));
+        }
+
+        // Test pattern ends but segment has more chars
+        #[test]
+        fn test_glob_match_segment_pattern_shorter() {
+            assert!(!WatchConfig::glob_match_segment("ab", "abc"));
+        }
+
+        // Test FileWatcher internal state - pending changes
+        #[test]
+        fn test_file_watcher_pending_changes_init() {
+            let config = WatchConfig::new();
+            let watcher = FileWatcher::new(config).unwrap();
+            // Initial state has no pending changes
+            assert!(!watcher.is_running());
+            assert_eq!(watcher.config().debounce_ms, 300);
+        }
+
+        // Test FileWatcher debug with running state
+        #[test]
+        fn test_file_watcher_debug_running() {
+            let config = WatchConfig::new().with_watch_dir(Path::new("."));
+            let mut watcher = FileWatcher::new(config).unwrap();
+            watcher.start().unwrap();
+            let debug_str = format!("{:?}", watcher);
+            assert!(debug_str.contains("true")); // is_running is true
+            watcher.stop();
+        }
+
+        // Test WatchStats with total_runtime modification
+        #[test]
+        fn test_watch_stats_total_runtime() {
+            let mut stats = WatchStats::new();
+            stats.total_runtime = Duration::from_secs(10);
+            assert_eq!(stats.total_runtime, Duration::from_secs(10));
+        }
+
+        // Test ignore pattern matching more thoroughly
+        #[test]
+        fn test_matches_pattern_ignore_takes_precedence() {
+            let config = WatchConfig {
+                patterns: vec!["**/*.rs".to_string()],
+                ignore_patterns: vec!["**/test/**".to_string()],
+                debounce_ms: 300,
+                clear_screen: true,
+                run_on_start: true,
+                watch_dirs: vec![],
+            };
+            // Should be ignored even though it matches *.rs
+            assert!(!config.matches_pattern(Path::new("test/main.rs")));
+            // Should match since not in ignored path
+            assert!(config.matches_pattern(Path::new("src/main.rs")));
+        }
+
+        // Test glob_matches with exact file name (no directory)
+        #[test]
+        fn test_glob_matches_root_file() {
+            assert!(WatchConfig::glob_matches("*.toml", "Cargo.toml"));
+            assert!(!WatchConfig::glob_matches("*.toml", "src/Cargo.toml"));
+        }
+
+        // Test the ** matching exactly at different depths
+        #[test]
+        fn test_double_star_various_depths() {
+            // ** at start matches 0 segments
+            let pattern = vec!["**", "src", "main.rs"];
+            let path = vec!["src", "main.rs"];
+            assert!(WatchConfig::glob_match_parts(&pattern, &path));
+
+            // ** at start matches 1 segment
+            let path2 = vec!["project", "src", "main.rs"];
+            assert!(WatchConfig::glob_match_parts(&pattern, &path2));
+
+            // ** at start matches many segments
+            let path3 = vec!["a", "b", "c", "src", "main.rs"];
+            assert!(WatchConfig::glob_match_parts(&pattern, &path3));
+        }
+
+        // WatchConfig run_on_start field test
+        #[test]
+        fn test_watch_config_run_on_start_default_true() {
+            let config = WatchConfig::default();
+            assert!(config.run_on_start);
+        }
+
+        // Additional glob edge cases for remaining coverage
+        #[test]
+        fn test_glob_match_segment_star_with_remaining_pattern() {
+            // * in middle followed by more pattern
+            assert!(WatchConfig::glob_match_segment("foo*bar", "fooXbar"));
+            assert!(WatchConfig::glob_match_segment("foo*bar", "foobar"));
+            assert!(WatchConfig::glob_match_segment("foo*bar", "fooXXXbar"));
+            assert!(!WatchConfig::glob_match_segment("foo*bar", "fooXba"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_star_matches_empty() {
+            // Star can match zero characters
+            assert!(WatchConfig::glob_match_segment("a*b", "ab"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_consecutive_stars() {
+            // Multiple consecutive stars (edge case)
+            assert!(WatchConfig::glob_match_segment("**", "anything"));
+            assert!(WatchConfig::glob_match_segment("a**b", "aXXXb"));
+        }
+
+        #[test]
+        fn test_glob_match_segment_star_followed_by_literal() {
+            // Star followed by literal that appears multiple times
+            assert!(WatchConfig::glob_match_segment("*a", "aaa"));
+            assert!(WatchConfig::glob_match_segment("*a", "XXXa"));
+            assert!(!WatchConfig::glob_match_segment("*a", "XXXb"));
+        }
+
+        #[test]
+        fn test_glob_matches_leading_slash() {
+            // Path with leading slash
+            assert!(WatchConfig::glob_matches("**/*.rs", "/src/main.rs"));
+        }
+
+        #[test]
+        fn test_glob_match_parts_double_star_only() {
+            // Just ** matches everything
+            let pattern = vec!["**"];
+            let path = vec!["a", "b", "c"];
+            assert!(WatchConfig::glob_match_parts(&pattern, &path));
+
+            let empty: Vec<&str> = vec![];
+            assert!(WatchConfig::glob_match_parts(&pattern, &empty));
+        }
+
+        #[test]
+        fn test_watch_config_watch_dirs_default() {
+            let config = WatchConfig::default();
+            assert!(!config.watch_dirs.is_empty());
+            assert!(config.watch_dirs.contains(&PathBuf::from(".")));
+        }
+
+        // Test FileChange kind variants debug
+        #[test]
+        fn test_file_change_kind_debug() {
+            let kinds = [
+                (FileChangeKind::Created, "Created"),
+                (FileChangeKind::Modified, "Modified"),
+                (FileChangeKind::Deleted, "Deleted"),
+                (FileChangeKind::Renamed, "Renamed"),
+                (FileChangeKind::Other, "Other"),
+            ];
+            for (kind, expected) in kinds {
+                let debug_str = format!("{:?}", kind);
+                assert!(debug_str.contains(expected));
+            }
+        }
+
+        // Test EventKind conversion comprehensively
+        #[test]
+        fn test_file_change_kind_from_create_any() {
+            let kind = FileChangeKind::from(EventKind::Create(notify::event::CreateKind::Any));
+            assert_eq!(kind, FileChangeKind::Created);
+        }
+
+        #[test]
+        fn test_file_change_kind_from_create_folder() {
+            let kind = FileChangeKind::from(EventKind::Create(notify::event::CreateKind::Folder));
+            assert_eq!(kind, FileChangeKind::Created);
+        }
+
+        #[test]
+        fn test_file_change_kind_from_modify_any() {
+            let kind = FileChangeKind::from(EventKind::Modify(notify::event::ModifyKind::Any));
+            assert_eq!(kind, FileChangeKind::Modified);
+        }
+
+        #[test]
+        fn test_file_change_kind_from_modify_name() {
+            let kind = FileChangeKind::from(EventKind::Modify(notify::event::ModifyKind::Name(
+                notify::event::RenameMode::Any,
+            )));
+            assert_eq!(kind, FileChangeKind::Modified);
+        }
+
+        #[test]
+        fn test_file_change_kind_from_modify_metadata() {
+            let kind = FileChangeKind::from(EventKind::Modify(
+                notify::event::ModifyKind::Metadata(notify::event::MetadataKind::Any),
+            ));
+            assert_eq!(kind, FileChangeKind::Modified);
+        }
+
+        #[test]
+        fn test_file_change_kind_from_remove_any() {
+            let kind = FileChangeKind::from(EventKind::Remove(notify::event::RemoveKind::Any));
+            assert_eq!(kind, FileChangeKind::Deleted);
+        }
+
+        #[test]
+        fn test_file_change_kind_from_remove_folder() {
+            let kind = FileChangeKind::from(EventKind::Remove(notify::event::RemoveKind::Folder));
+            assert_eq!(kind, FileChangeKind::Deleted);
+        }
+
+        #[test]
+        fn test_file_change_kind_from_access_close() {
+            let kind = FileChangeKind::from(EventKind::Access(notify::event::AccessKind::Close(
+                notify::event::AccessMode::Any,
+            )));
+            assert_eq!(kind, FileChangeKind::Other);
+        }
+
+        // Test WatchBuilder with all methods chained
+        #[test]
+        fn test_watch_builder_all_options() {
+            let config = WatchBuilder::new()
+                .rust_files()
+                .toml_files()
+                .test_files()
+                .src_dir()
+                .ignore_target()
+                .debounce(100)
+                .build();
+
+            assert!(config.patterns.contains(&"**/*.rs".to_string()));
+            assert!(config.patterns.contains(&"**/*.toml".to_string()));
+            assert!(config.patterns.contains(&"**/tests/**/*.rs".to_string()));
+            assert!(config.patterns.contains(&"**/*_test.rs".to_string()));
+            assert!(config.patterns.contains(&"**/test_*.rs".to_string()));
+            assert!(config.watch_dirs.contains(&PathBuf::from("src")));
+            assert!(config.ignore_patterns.contains(&"**/target/**".to_string()));
+            assert_eq!(config.debounce_ms, 100);
+        }
+
+        // Test matches_pattern with various path formats
+        #[test]
+        fn test_matches_pattern_various_paths() {
+            let config = WatchConfig::default();
+
+            // Absolute-like paths (Unix style)
+            assert!(config.matches_pattern(Path::new("/home/user/project/src/main.rs")));
+
+            // Windows-like paths (if running on Windows this would match differently)
+            // For now just test that it handles them gracefully
+            let _ = config.matches_pattern(Path::new("C:\\Users\\test\\main.rs"));
+        }
+
+        // Test empty string pattern matching
+        #[test]
+        fn test_glob_matches_empty_strings() {
+            // Empty pattern splits to [""], path splits to [] after filtering empty strings
+            // glob_match_parts([""], []) -> first_pattern = "", path_parts is empty
+            // Since "" != "**" and path_parts is empty, returns false
+
+            // Empty pattern against non-empty path should not match
+            assert!(!WatchConfig::glob_matches("", "src"));
+
+            // Empty pattern against empty path
+            // This won't match because pattern_parts [""] is not empty but path_parts [] is
+            assert!(!WatchConfig::glob_matches("", ""));
+        }
+
+        // Test FileChange timestamp field
+        #[test]
+        fn test_file_change_timestamp() {
+            let before = Instant::now();
+            let change = FileChange {
+                path: PathBuf::from("test.rs"),
+                kind: FileChangeKind::Modified,
+                timestamp: Instant::now(),
+            };
+            let after = Instant::now();
+
+            assert!(change.timestamp >= before);
+            assert!(change.timestamp <= after);
+        }
+
+        // Test FileWatcher with empty watch_dirs
+        #[test]
+        fn test_file_watcher_empty_watch_dirs() {
+            let config = WatchConfig {
+                patterns: vec!["**/*.rs".to_string()],
+                ignore_patterns: vec![],
+                debounce_ms: 300,
+                clear_screen: true,
+                run_on_start: true,
+                watch_dirs: vec![],
+            };
+            let mut watcher = FileWatcher::new(config).unwrap();
+            // Should succeed with no directories to watch
+            assert!(watcher.start().is_ok());
+            assert!(watcher.is_running());
+            watcher.stop();
+        }
+
+        // Test WatchConfig fields with custom values
+        #[test]
+        fn test_watch_config_all_custom_values() {
+            let config = WatchConfig {
+                patterns: vec!["custom".to_string()],
+                ignore_patterns: vec!["ignore".to_string()],
+                debounce_ms: 1000,
+                clear_screen: false,
+                run_on_start: false,
+                watch_dirs: vec![PathBuf::from("/tmp")],
+            };
+
+            assert_eq!(config.patterns, vec!["custom".to_string()]);
+            assert_eq!(config.ignore_patterns, vec!["ignore".to_string()]);
+            assert_eq!(config.debounce_ms, 1000);
+            assert!(!config.clear_screen);
+            assert!(!config.run_on_start);
+            assert_eq!(config.watch_dirs, vec![PathBuf::from("/tmp")]);
+        }
+
+        // Test WatchStats fields
+        #[test]
+        fn test_watch_stats_all_fields() {
+            let mut stats = WatchStats {
+                trigger_count: 10,
+                change_count: 25,
+                total_runtime: Duration::from_secs(60),
+                last_trigger: Some(Instant::now()),
+            };
+
+            assert_eq!(stats.trigger_count, 10);
+            assert_eq!(stats.change_count, 25);
+            assert_eq!(stats.total_runtime.as_secs(), 60);
+            assert!(stats.last_trigger.is_some());
+
+            // Test record_trigger updates
+            stats.record_trigger(5);
+            assert_eq!(stats.trigger_count, 11);
+            assert_eq!(stats.change_count, 30);
+        }
+
+        // Test glob_match_parts with segment that doesn't match
+        #[test]
+        fn test_glob_match_parts_first_segment_fail() {
+            let pattern = vec!["foo", "bar"];
+            let path = vec!["baz", "bar"];
+            assert!(!WatchConfig::glob_match_parts(&pattern, &path));
+        }
+
+        // Test FileChange path field
+        #[test]
+        fn test_file_change_path_field() {
+            let change = FileChange {
+                path: PathBuf::from("/home/user/test.rs"),
+                kind: FileChangeKind::Created,
+                timestamp: Instant::now(),
+            };
+            assert_eq!(change.path, PathBuf::from("/home/user/test.rs"));
+        }
+
+        // Test FnWatchHandler with empty changes
+        #[test]
+        fn test_fn_watch_handler_empty_changes() {
+            use std::sync::atomic::{AtomicBool, Ordering};
+            use std::sync::Arc;
+
+            let called = Arc::new(AtomicBool::new(false));
+            let called_clone = Arc::clone(&called);
+
+            let handler = FnWatchHandler::new(move |changes| {
+                called_clone.store(true, Ordering::SeqCst);
+                assert!(changes.is_empty());
+                Ok(())
+            });
+
+            let empty_changes: Vec<FileChange> = vec![];
+            handler.on_change(&empty_changes).unwrap();
+            assert!(called.load(Ordering::SeqCst));
+        }
+
+        // Test WatchHandler trait default implementations explicitly
+        #[test]
+        fn test_watch_handler_trait_defaults() {
+            struct MinimalHandler;
+            impl WatchHandler for MinimalHandler {
+                fn on_change(&self, _: &[FileChange]) -> ProbarResult<()> {
+                    Ok(())
+                }
+            }
+
+            let handler = MinimalHandler;
+
+            // These use the default implementations
+            assert!(handler.on_start().is_ok());
+            assert!(handler.on_stop().is_ok());
+            assert!(handler.on_change(&[]).is_ok());
+        }
+
+        // Test matches_pattern when pattern matches but ignore also matches
+        #[test]
+        fn test_matches_pattern_ignore_vs_pattern_priority() {
+            let config = WatchConfig {
+                patterns: vec!["**/*.rs".to_string()],
+                ignore_patterns: vec!["**/*.rs".to_string()], // Same pattern in ignore
+                debounce_ms: 300,
+                clear_screen: true,
+                run_on_start: true,
+                watch_dirs: vec![],
+            };
+            // Ignore patterns are checked first, so this should be ignored
+            assert!(!config.matches_pattern(Path::new("src/main.rs")));
+        }
+
+        // Test glob_match_segment with only question marks
+        #[test]
+        fn test_glob_match_segment_only_questions() {
+            assert!(WatchConfig::glob_match_segment("???", "abc"));
+            assert!(!WatchConfig::glob_match_segment("???", "ab"));
+            assert!(!WatchConfig::glob_match_segment("???", "abcd"));
+        }
+
+        // Test glob_match_segment with only stars
+        #[test]
+        fn test_glob_match_segment_only_stars() {
+            assert!(WatchConfig::glob_match_segment("*", ""));
+            assert!(WatchConfig::glob_match_segment("*", "anything"));
+            assert!(WatchConfig::glob_match_segment("***", "test"));
+        }
+
+        // Test glob_match_parts matching exactly
+        #[test]
+        fn test_glob_match_parts_exact_match() {
+            let pattern = vec!["src", "lib", "mod.rs"];
+            let path = vec!["src", "lib", "mod.rs"];
+            assert!(WatchConfig::glob_match_parts(&pattern, &path));
+        }
+
+        // Test config accessor returns reference
+        #[test]
+        fn test_file_watcher_config_reference() {
+            let original_debounce = 500;
+            let config = WatchConfig::new().with_debounce(original_debounce);
+            let watcher = FileWatcher::new(config).unwrap();
+            let config_ref = watcher.config();
+            assert_eq!(config_ref.debounce_ms, original_debounce);
+        }
+
+        // Test WatchBuilder default impl
+        #[test]
+        fn test_watch_builder_default_impl() {
+            let builder1 = WatchBuilder::default();
+            let builder2 = WatchBuilder::new();
+            // Both should produce configs with same defaults
+            assert_eq!(builder1.build().debounce_ms, builder2.build().debounce_ms);
+        }
+    }
 }

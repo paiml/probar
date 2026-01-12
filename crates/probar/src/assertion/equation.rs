@@ -1097,5 +1097,535 @@ mod tests {
 
             assert!(verifier.assert_all().is_ok());
         }
+
+        #[test]
+        fn test_verify_custom() {
+            let mut verifier = InvariantVerifier::new("custom");
+            verifier.verify_custom("custom_check", 42.0, 42.0);
+            assert!(verifier.assert_all().is_ok());
+        }
+
+        #[test]
+        fn test_invariant_verifier_accessor() {
+            let verifier = InvariantVerifier::new("test");
+            assert_eq!(verifier.verifier().name(), "test");
+        }
+    }
+
+    // Additional coverage tests for edge cases and uncovered branches
+    mod additional_coverage_tests {
+        use super::*;
+
+        #[test]
+        fn test_equation_result_display() {
+            // Test Display trait for EquationResult
+            let result = EquationResult::new("test_eq", 1.0, 1.0, 0.001);
+            let display = format!("{}", result);
+            assert!(display.contains("test_eq"));
+            assert!(display.contains("expected"));
+        }
+
+        #[test]
+        fn test_equation_result_relative_difference_zero_expected() {
+            // Cover the branch when expected is near zero (relative_difference = 0.0)
+            let result = EquationResult::new("zero_expected", 0.0, 0.0001, 0.001);
+            assert!((result.relative_difference - 0.0).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn test_equation_result_failed_message() {
+            // Cover the failed message branch in EquationResult::new
+            let result = EquationResult::new("fail_test", 10.0, 5.0, 0.001);
+            assert!(!result.passed);
+            assert!(result.message.contains("FAILED"));
+            assert!(result.message.contains(">"));
+        }
+
+        #[test]
+        fn test_equation_verifier_tolerance_accessor() {
+            // Test the tolerance() accessor method
+            let verifier = EquationVerifier::new("test").with_tolerance(0.01);
+            assert!((verifier.tolerance() - 0.01).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn test_equation_verifier_failures() {
+            // Test the failures() method
+            let mut verifier = EquationVerifier::new("test");
+            verifier.verify_eq("pass", 1.0, 1.0);
+            verifier.verify_eq("fail1", 10.0, 5.0);
+            verifier.verify_eq("fail2", 20.0, 15.0);
+
+            let failures = verifier.failures();
+            assert_eq!(failures.len(), 2);
+            assert!(failures.iter().any(|f| f.name == "fail1"));
+            assert!(failures.iter().any(|f| f.name == "fail2"));
+        }
+
+        #[test]
+        fn test_verify_in_range_below_min() {
+            // Test the branch when value < min in verify_in_range
+            let mut verifier = EquationVerifier::new("test");
+            verifier.verify_in_range("below_min", -5.0, 0.0, 10.0);
+
+            assert!(!verifier.all_passed());
+            let result = &verifier.results()[0];
+            assert!(!result.passed);
+            assert!((result.difference - 5.0).abs() < f64::EPSILON);
+            assert!(result.message.contains("outside range"));
+        }
+
+        #[test]
+        fn test_verify_positive_negative_value() {
+            // Test verify_positive with a negative value (covers difference calculation)
+            let mut verifier = EquationVerifier::new("test");
+            verifier.verify_positive("negative", -5.0);
+
+            assert!(!verifier.all_passed());
+            let result = &verifier.results()[0];
+            assert!(!result.passed);
+            assert!((result.difference - 5.0).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn test_kinematic_verifier_default() {
+            // Test Default implementation for KinematicVerifier
+            let verifier = KinematicVerifier::default();
+            assert_eq!(verifier.verifier().name(), "kinematics");
+        }
+
+        #[test]
+        fn test_kinematic_verifier_accessor() {
+            // Test verifier() accessor for KinematicVerifier
+            let verifier = KinematicVerifier::new();
+            let inner = verifier.verifier();
+            assert_eq!(inner.name(), "kinematics");
+        }
+
+        #[test]
+        fn test_energy_verifier_default() {
+            // Test Default implementation for EnergyVerifier
+            let verifier = EnergyVerifier::default();
+            assert_eq!(verifier.verifier().name(), "energy");
+        }
+
+        #[test]
+        fn test_energy_verifier_work_energy() {
+            // Test verify_work_energy method
+            let mut verifier = EnergyVerifier::new();
+            // Work = ΔKE = KE_final - KE_initial = 100 - 50 = 50
+            verifier.verify_work_energy(50.0, 50.0, 100.0);
+            assert!(verifier.assert_all().is_ok());
+        }
+
+        #[test]
+        fn test_energy_verifier_accessor() {
+            // Test verifier() accessor for EnergyVerifier
+            let verifier = EnergyVerifier::new();
+            let inner = verifier.verifier();
+            assert_eq!(inner.name(), "energy");
+        }
+
+        #[test]
+        fn test_momentum_verifier_default() {
+            // Test Default implementation for MomentumVerifier
+            let verifier = MomentumVerifier::default();
+            assert_eq!(verifier.verifier().name(), "momentum");
+        }
+
+        #[test]
+        fn test_momentum_verifier_accessor() {
+            // Test verifier() accessor for MomentumVerifier
+            let verifier = MomentumVerifier::new();
+            let inner = verifier.verifier();
+            assert_eq!(inner.name(), "momentum");
+        }
+
+        #[test]
+        fn test_equation_context_chaining() {
+            // Test chaining set() calls
+            let mut ctx = EquationContext::new();
+            ctx.set("a", 1.0).set("b", 2.0).set("c", 3.0);
+
+            assert_eq!(ctx.get("a"), Some(1.0));
+            assert_eq!(ctx.get("b"), Some(2.0));
+            assert_eq!(ctx.get("c"), Some(3.0));
+        }
+
+        #[test]
+        fn test_equation_context_has_missing() {
+            // Test has() for non-existent variable
+            let ctx = EquationContext::new();
+            assert!(!ctx.has("missing"));
+        }
+
+        #[test]
+        fn test_equation_result_relative_difference_calculation() {
+            // Test relative_difference calculation for non-zero expected
+            let result = EquationResult::new("rel_diff", 100.0, 90.0, 1.0);
+            // difference = 10, relative_difference = (10 / 100) * 100 = 10%
+            assert!((result.relative_difference - 10.0).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn test_verifier_chaining() {
+            // Test chaining of verify methods
+            let mut verifier = EquationVerifier::new("chain");
+            verifier
+                .verify_eq("eq1", 1.0, 1.0)
+                .verify_eq("eq2", 2.0, 2.0)
+                .verify_non_negative("nn", 5.0)
+                .verify_positive("pos", 1.0)
+                .verify_in_range("range", 5.0, 0.0, 10.0);
+
+            assert!(verifier.all_passed());
+            assert_eq!(verifier.results().len(), 5);
+        }
+
+        #[test]
+        fn test_invariant_verifier_health_out_of_range() {
+            // Test health verification when health is out of range
+            let mut verifier = InvariantVerifier::new("game");
+            verifier.verify_health(150.0, 100.0);
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_invariant_verifier_speed_exceeds_limit() {
+            // Test speed limit verification when speed exceeds limit
+            let mut verifier = InvariantVerifier::new("game");
+            verifier.verify_speed_limit(8.0, 6.0, 5.0); // speed = 10, limit = 5
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_kinematic_verifier_with_tolerance() {
+            // Test KinematicVerifier with custom tolerance
+            let mut verifier = KinematicVerifier::new().with_tolerance(0.1);
+            verifier.verify_velocity(20.05, 10.0, 2.0, 5.0);
+            assert!(verifier.assert_all().is_ok());
+        }
+
+        #[test]
+        fn test_momentum_verifier_with_tolerance() {
+            // Test MomentumVerifier with custom tolerance
+            let mut verifier = MomentumVerifier::new().with_tolerance(0.1);
+            verifier.verify_momentum(10.05, 2.0, 5.0);
+            assert!(verifier.assert_all().is_ok());
+        }
+
+        #[test]
+        fn test_invariant_verifier_with_tolerance() {
+            // Test InvariantVerifier with custom tolerance
+            let mut verifier = InvariantVerifier::new("test").with_tolerance(0.1);
+            verifier.verify_custom("approx", 10.0, 10.05);
+            assert!(verifier.assert_all().is_ok());
+        }
+
+        #[test]
+        fn test_kinematic_verifier_failed_assertion() {
+            // Test KinematicVerifier assert_all when failing
+            let mut verifier = KinematicVerifier::new();
+            verifier.verify_velocity(100.0, 10.0, 2.0, 5.0); // Expected: 20, got: 100
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_energy_verifier_failed_assertion() {
+            // Test EnergyVerifier assert_all when failing
+            let mut verifier = EnergyVerifier::new();
+            verifier.verify_kinetic_energy(100.0, 2.0, 3.0); // Expected: 9, got: 100
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_momentum_verifier_failed_assertion() {
+            // Test MomentumVerifier assert_all when failing
+            let mut verifier = MomentumVerifier::new();
+            verifier.verify_momentum(100.0, 2.0, 5.0); // Expected: 10, got: 100
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_invariant_verifier_failed_assertion() {
+            // Test InvariantVerifier assert_all when failing
+            let mut verifier = InvariantVerifier::new("test");
+            verifier.verify_score_non_negative(-10.0);
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_verify_in_range_at_boundaries() {
+            // Test verify_in_range at exact boundary values
+            let mut verifier = EquationVerifier::new("boundaries");
+            verifier.verify_in_range("at_min", 0.0, 0.0, 10.0);
+            verifier.verify_in_range("at_max", 10.0, 0.0, 10.0);
+            assert!(verifier.all_passed());
+        }
+
+        #[test]
+        fn test_equation_context_variables_list() {
+            // Test variables() accessor
+            let mut ctx = EquationContext::new();
+            ctx.set("x", 1.0).set("y", 2.0);
+
+            let vars = ctx.variables();
+            assert_eq!(vars.len(), 2);
+            assert!(vars.contains(&"x"));
+            assert!(vars.contains(&"y"));
+        }
+
+        #[test]
+        fn test_equation_verifier_empty_results() {
+            // Test all_passed and failures on empty verifier
+            let verifier = EquationVerifier::new("empty");
+            assert!(verifier.all_passed()); // No failures means all passed
+            assert!(verifier.failures().is_empty());
+            assert_eq!(verifier.passed_count(), 0);
+            assert_eq!(verifier.failed_count(), 0);
+        }
+
+        #[test]
+        fn test_equation_context_from_empty_variables() {
+            // Test from_variables with empty slice
+            let vars: Vec<Variable> = vec![];
+            let ctx = EquationContext::from_variables(&vars);
+            assert!(ctx.variables().is_empty());
+        }
+
+        #[test]
+        fn test_variable_clone() {
+            // Test Clone for Variable
+            let var1 = Variable::with_unit("velocity", 10.0, "m/s");
+            let var2 = var1.clone();
+            assert_eq!(var2.name, "velocity");
+            assert!((var2.value - 10.0).abs() < f64::EPSILON);
+            assert_eq!(var2.unit, Some("m/s".to_string()));
+        }
+
+        #[test]
+        fn test_equation_context_clone() {
+            // Test Clone for EquationContext
+            let mut ctx1 = EquationContext::new();
+            ctx1.set("x", 5.0);
+            let ctx2 = ctx1.clone();
+            assert_eq!(ctx2.get("x"), Some(5.0));
+        }
+
+        #[test]
+        fn test_equation_result_clone() {
+            // Test Clone for EquationResult
+            let result1 = EquationResult::new("clone_test", 10.0, 10.0, 0.001);
+            let result2 = result1.clone();
+            assert_eq!(result2.name, "clone_test");
+            assert!(result2.passed);
+        }
+
+        #[test]
+        fn test_equation_verifier_multiple_failures() {
+            // Test verifier with multiple failures shows all in assert_all error
+            let mut verifier = EquationVerifier::new("multi_fail");
+            verifier.verify_eq("fail1", 1.0, 100.0);
+            verifier.verify_eq("fail2", 2.0, 200.0);
+            verifier.verify_eq("fail3", 3.0, 300.0);
+
+            let result = verifier.assert_all();
+            assert!(result.is_err());
+            if let Err(ProbarError::AssertionFailed { message }) = result {
+                assert!(message.contains("fail1"));
+                assert!(message.contains("fail2"));
+                assert!(message.contains("fail3"));
+            }
+        }
+
+        #[test]
+        fn test_verify_in_range_message_passed() {
+            // Verify the message format when in_range passes
+            let mut verifier = EquationVerifier::new("test");
+            verifier.verify_in_range("in_bounds", 5.0, 0.0, 10.0);
+
+            let result = &verifier.results()[0];
+            assert!(result.message.contains("is within"));
+        }
+
+        #[test]
+        fn test_verify_non_negative_message() {
+            // Verify message format for non_negative
+            let mut verifier = EquationVerifier::new("test");
+            verifier.verify_non_negative("positive_val", 5.0);
+
+            let result = &verifier.results()[0];
+            assert!(result.message.contains(">= 0"));
+        }
+
+        #[test]
+        fn test_verify_positive_message() {
+            // Verify message format for positive
+            let mut verifier = EquationVerifier::new("test");
+            verifier.verify_positive("pos_val", 5.0);
+
+            let result = &verifier.results()[0];
+            assert!(result.message.contains("> 0"));
+        }
+
+        #[test]
+        fn test_equation_result_all_fields() {
+            // Test all fields of EquationResult are correctly set
+            let result = EquationResult::new("field_test", 100.0, 95.0, 1.0);
+            assert_eq!(result.name, "field_test");
+            assert!(!result.passed); // 5.0 > 1.0 tolerance
+            assert!((result.expected - 100.0).abs() < f64::EPSILON);
+            assert!((result.actual - 95.0).abs() < f64::EPSILON);
+            assert!((result.tolerance - 1.0).abs() < f64::EPSILON);
+            assert!((result.difference - 5.0).abs() < f64::EPSILON);
+            assert!((result.relative_difference - 5.0).abs() < f64::EPSILON); // 5%
+        }
+
+        #[test]
+        fn test_energy_verifier_conservation_fails() {
+            // Test energy conservation failure
+            let mut verifier = EnergyVerifier::new();
+            verifier.verify_conservation(50.0, 100.0, 80.0, 80.0); // 150 != 160
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_kinematic_verifier_position_fails() {
+            // Test position verification failure
+            let mut verifier = KinematicVerifier::new();
+            verifier.verify_position(100.0, 0.0, 10.0, 2.0, 5.0); // Expected: 75, got: 100
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_kinematic_verifier_velocity_squared_fails() {
+            // Test velocity squared verification failure
+            let mut verifier = KinematicVerifier::new();
+            verifier.verify_velocity_squared(100.0, 10.0, 2.0, 50.0, 0.0); // Expected v²=300, v=100 gives v²=10000
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_momentum_conservation_fails() {
+            // Test momentum conservation failure
+            let mut verifier = MomentumVerifier::new();
+            verifier.verify_conservation(1.0, 10.0, 1.0, 0.0, 5.0, 3.0); // p_initial=10, p_final=8
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_elastic_collision_ke_fails() {
+            // Test elastic collision where KE is not conserved
+            let mut verifier = MomentumVerifier::new();
+            // Momentum conserved but KE not (inelastic collision)
+            verifier.verify_elastic_collision(1.0, 10.0, 1.0, 0.0, 5.0, 5.0);
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_invariant_entity_count_fails() {
+            // Test entity count mismatch
+            let mut verifier = InvariantVerifier::new("game");
+            verifier.verify_entity_count(5, 10);
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_invariant_position_out_of_bounds() {
+            // Test position bounds failure
+            let mut verifier = InvariantVerifier::new("game");
+            verifier.verify_position_bounds(900.0, 700.0, 0.0, 800.0, 0.0, 600.0);
+            assert!(verifier.assert_all().is_err());
+        }
+
+        #[test]
+        fn test_verify_negative_value_non_negative() {
+            // Verify the difference calculation for negative values in non_negative
+            let mut verifier = EquationVerifier::new("test");
+            verifier.verify_non_negative("neg", -10.0);
+
+            let result = &verifier.results()[0];
+            assert!((result.difference - 10.0).abs() < f64::EPSILON);
+            assert!(result.message.contains("< 0"));
+        }
+
+        #[test]
+        fn test_verifier_debug_impl() {
+            // Test Debug implementation for EquationVerifier
+            let verifier = EquationVerifier::new("debug_test");
+            let debug_str = format!("{:?}", verifier);
+            assert!(debug_str.contains("debug_test"));
+        }
+
+        #[test]
+        fn test_kinematic_verifier_debug_impl() {
+            // Test Debug implementation for KinematicVerifier
+            let verifier = KinematicVerifier::new();
+            let debug_str = format!("{:?}", verifier);
+            assert!(debug_str.contains("KinematicVerifier"));
+        }
+
+        #[test]
+        fn test_energy_verifier_debug_impl() {
+            // Test Debug implementation for EnergyVerifier
+            let verifier = EnergyVerifier::new();
+            let debug_str = format!("{:?}", verifier);
+            assert!(debug_str.contains("EnergyVerifier"));
+        }
+
+        #[test]
+        fn test_momentum_verifier_debug_impl() {
+            // Test Debug implementation for MomentumVerifier
+            let verifier = MomentumVerifier::new();
+            let debug_str = format!("{:?}", verifier);
+            assert!(debug_str.contains("MomentumVerifier"));
+        }
+
+        #[test]
+        fn test_invariant_verifier_debug_impl() {
+            // Test Debug implementation for InvariantVerifier
+            let verifier = InvariantVerifier::new("test");
+            let debug_str = format!("{:?}", verifier);
+            assert!(debug_str.contains("InvariantVerifier"));
+        }
+
+        #[test]
+        fn test_variable_debug_impl() {
+            // Test Debug implementation for Variable
+            let var = Variable::new("x", 5.0);
+            let debug_str = format!("{:?}", var);
+            assert!(debug_str.contains("Variable"));
+        }
+
+        #[test]
+        fn test_equation_context_debug_impl() {
+            // Test Debug implementation for EquationContext
+            let ctx = EquationContext::new();
+            let debug_str = format!("{:?}", ctx);
+            assert!(debug_str.contains("EquationContext"));
+        }
+
+        #[test]
+        fn test_equation_result_debug_impl() {
+            // Test Debug implementation for EquationResult
+            let result = EquationResult::new("test", 1.0, 1.0, 0.001);
+            let debug_str = format!("{:?}", result);
+            assert!(debug_str.contains("EquationResult"));
+        }
+
+        #[test]
+        fn test_equation_context_default() {
+            // Test Default implementation for EquationContext
+            let ctx = EquationContext::default();
+            assert!(ctx.variables().is_empty());
+        }
+
+        #[test]
+        fn test_energy_work_energy_fails() {
+            // Test work-energy theorem failure
+            let mut verifier = EnergyVerifier::new();
+            verifier.verify_work_energy(100.0, 50.0, 100.0); // W=100, ΔKE=50, should fail
+            assert!(verifier.assert_all().is_err());
+        }
     }
 }

@@ -800,5 +800,524 @@ mod tests {
 
             assert!(multi.assert_bounds(&bounds).is_err());
         }
+
+        #[test]
+        fn test_default_implementation() {
+            let multi = MultiValueTracker::default();
+            assert!(multi.names().is_empty());
+        }
+
+        #[test]
+        fn test_assert_bounds_below_min() {
+            let mut multi = MultiValueTracker::new();
+            multi.record("health", 0, -10.0); // Below min
+
+            let mut bounds = HashMap::new();
+            bounds.insert("health".to_string(), (0.0, 100.0));
+
+            let result = multi.assert_bounds(&bounds);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                ProbarError::AssertionFailed { message } => {
+                    assert!(message.contains("outside bounds"));
+                }
+                _ => panic!("Expected AssertionFailed error"),
+            }
+        }
+
+        #[test]
+        fn test_assert_bounds_missing_tracker() {
+            let multi = MultiValueTracker::new();
+            let mut bounds = HashMap::new();
+            bounds.insert("nonexistent".to_string(), (0.0, 100.0));
+
+            // Should pass because the tracker doesn't exist
+            assert!(multi.assert_bounds(&bounds).is_ok());
+        }
+
+        #[test]
+        fn test_record_multiple_values_same_tracker() {
+            let mut multi = MultiValueTracker::new();
+            multi.record("score", 0, 100.0);
+            multi.record("score", 100, 200.0);
+            multi.record("score", 200, 300.0);
+
+            let tracker = multi.get("score").unwrap();
+            assert_eq!(tracker.len(), 3);
+            assert_eq!(*tracker.latest().unwrap(), 300.0);
+        }
+    }
+
+    mod soft_assertion_edge_cases {
+        use super::*;
+
+        #[test]
+        fn test_soft_not_to_contain_text_fail() {
+            let frame = TuiFrame::from_lines(&["Hello World"]);
+            let mut assertion = expect_frame(&frame).soft();
+
+            let _ = assertion.not_to_contain_text("World");
+            assert_eq!(assertion.errors().len(), 1);
+            assert!(assertion.errors()[0].contains("NOT to contain"));
+        }
+
+        #[test]
+        fn test_soft_to_match_fail() {
+            let frame = TuiFrame::from_lines(&["No numbers here"]);
+            let mut assertion = expect_frame(&frame).soft();
+
+            let _ = assertion.to_match(r"\d+");
+            assert_eq!(assertion.errors().len(), 1);
+            assert!(assertion.errors()[0].contains("match pattern"));
+        }
+
+        #[test]
+        fn test_soft_to_have_size_fail() {
+            let frame = TuiFrame::from_lines(&["Short"]);
+            let mut assertion = expect_frame(&frame).soft();
+
+            let _ = assertion.to_have_size(100, 100);
+            assert_eq!(assertion.errors().len(), 1);
+            assert!(assertion.errors()[0].contains("Expected frame size"));
+        }
+
+        #[test]
+        fn test_soft_to_be_identical_to_fail() {
+            let frame1 = TuiFrame::from_lines(&["Frame A"]);
+            let frame2 = TuiFrame::from_lines(&["Frame B"]);
+            let mut assertion = expect_frame(&frame1).soft();
+
+            let _ = assertion.to_be_identical_to(&frame2);
+            assert_eq!(assertion.errors().len(), 1);
+            assert!(assertion.errors()[0].contains("not identical"));
+        }
+
+        #[test]
+        fn test_soft_line_to_equal_nonexistent() {
+            let frame = TuiFrame::from_lines(&["Only line"]);
+            let mut assertion = expect_frame(&frame).soft();
+
+            let _ = assertion.line_to_equal(10, "anything");
+            assert_eq!(assertion.errors().len(), 1);
+            assert!(assertion.errors()[0].contains("does not exist"));
+        }
+
+        #[test]
+        fn test_soft_line_to_equal_mismatch() {
+            let frame = TuiFrame::from_lines(&["Actual"]);
+            let mut assertion = expect_frame(&frame).soft();
+
+            let _ = assertion.line_to_equal(0, "Expected");
+            assert_eq!(assertion.errors().len(), 1);
+            assert!(assertion.errors()[0].contains("Expected line 0 to equal"));
+        }
+
+        #[test]
+        fn test_soft_line_to_contain_nonexistent() {
+            let frame = TuiFrame::from_lines(&["Only line"]);
+            let mut assertion = expect_frame(&frame).soft();
+
+            let _ = assertion.line_to_contain(10, "anything");
+            assert_eq!(assertion.errors().len(), 1);
+            assert!(assertion.errors()[0].contains("does not exist"));
+        }
+
+        #[test]
+        fn test_soft_line_to_contain_mismatch() {
+            let frame = TuiFrame::from_lines(&["Actual content"]);
+            let mut assertion = expect_frame(&frame).soft();
+
+            let _ = assertion.line_to_contain(0, "Missing");
+            assert_eq!(assertion.errors().len(), 1);
+            assert!(assertion.errors()[0].contains("Expected line 0 to contain"));
+        }
+
+        #[test]
+        fn test_soft_multiple_mixed_errors() {
+            let frame = TuiFrame::from_lines(&["Hello"]);
+            let mut assertion = expect_frame(&frame).soft();
+
+            let _ = assertion.to_contain_text("Missing1");
+            let _ = assertion.not_to_contain_text("Hello");
+            let _ = assertion.to_have_size(999, 999);
+
+            assert_eq!(assertion.errors().len(), 3);
+            let result = assertion.finalize();
+            assert!(result.is_err());
+            let err_msg = format!("{:?}", result.unwrap_err());
+            assert!(err_msg.contains("3 assertion(s) failed"));
+        }
+    }
+
+    mod to_match_edge_cases {
+        use super::*;
+
+        #[test]
+        fn test_to_match_invalid_regex() {
+            let frame = TuiFrame::from_lines(&["Test"]);
+            let mut assertion = expect_frame(&frame);
+
+            // Invalid regex pattern
+            let result = assertion.to_match("[invalid");
+            assert!(result.is_err());
+        }
+    }
+
+    mod value_tracker_i64_tests {
+        use super::*;
+
+        #[test]
+        fn test_i64_is_increasing() {
+            let mut tracker: ValueTracker<i64> = ValueTracker::new("score");
+            tracker.record(0, 10);
+            tracker.record(100, 20);
+            tracker.record(200, 30);
+
+            assert!(tracker.is_increasing());
+        }
+
+        #[test]
+        fn test_i64_is_not_increasing() {
+            let mut tracker: ValueTracker<i64> = ValueTracker::new("health");
+            tracker.record(0, 100);
+            tracker.record(100, 50);
+            tracker.record(200, 80);
+
+            assert!(!tracker.is_increasing());
+        }
+
+        #[test]
+        fn test_i64_is_decreasing() {
+            let mut tracker: ValueTracker<i64> = ValueTracker::new("health");
+            tracker.record(0, 100);
+            tracker.record(100, 80);
+            tracker.record(200, 60);
+
+            assert!(tracker.is_decreasing());
+        }
+
+        #[test]
+        fn test_i64_is_not_decreasing() {
+            let mut tracker: ValueTracker<i64> = ValueTracker::new("score");
+            tracker.record(0, 10);
+            tracker.record(100, 30);
+            tracker.record(200, 20);
+
+            assert!(!tracker.is_decreasing());
+        }
+
+        #[test]
+        fn test_i64_single_value_is_increasing_and_decreasing() {
+            let mut tracker: ValueTracker<i64> = ValueTracker::new("single");
+            tracker.record(0, 50);
+
+            // With less than 2 values, both should return true
+            assert!(tracker.is_increasing());
+            assert!(tracker.is_decreasing());
+        }
+
+        #[test]
+        fn test_i64_empty_is_increasing_and_decreasing() {
+            let tracker: ValueTracker<i64> = ValueTracker::new("empty");
+
+            // Empty tracker should return true for both
+            assert!(tracker.is_increasing());
+            assert!(tracker.is_decreasing());
+        }
+
+        #[test]
+        fn test_i64_equal_values_is_both() {
+            let mut tracker: ValueTracker<i64> = ValueTracker::new("constant");
+            tracker.record(0, 50);
+            tracker.record(100, 50);
+            tracker.record(200, 50);
+
+            // Equal values satisfy both >= and <=
+            assert!(tracker.is_increasing());
+            assert!(tracker.is_decreasing());
+        }
+    }
+
+    mod value_tracker_additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_values_accessor() {
+            let mut tracker: ValueTracker<f64> = ValueTracker::new("test");
+            tracker.record(0, 1.0);
+            tracker.record(100, 2.0);
+            tracker.record(200, 3.0);
+
+            let values = tracker.values();
+            assert_eq!(values.len(), 3);
+            assert_eq!(values[0], (0, 1.0));
+            assert_eq!(values[1], (100, 2.0));
+            assert_eq!(values[2], (200, 3.0));
+        }
+
+        #[test]
+        fn test_latest_empty() {
+            let tracker: ValueTracker<f64> = ValueTracker::new("empty");
+            assert!(tracker.latest().is_none());
+        }
+
+        #[test]
+        fn test_change_count_empty() {
+            let tracker: ValueTracker<i64> = ValueTracker::new("empty");
+            assert_eq!(tracker.change_count(), 0);
+        }
+
+        #[test]
+        fn test_change_count_single_value() {
+            let mut tracker: ValueTracker<i64> = ValueTracker::new("single");
+            tracker.record(0, 100);
+            assert_eq!(tracker.change_count(), 0);
+        }
+
+        #[test]
+        fn test_change_count_no_changes() {
+            let mut tracker: ValueTracker<i64> = ValueTracker::new("constant");
+            tracker.record(0, 100);
+            tracker.record(100, 100);
+            tracker.record(200, 100);
+            assert_eq!(tracker.change_count(), 0);
+        }
+
+        #[test]
+        fn test_f64_single_value_is_increasing_and_decreasing() {
+            let mut tracker: ValueTracker<f64> = ValueTracker::new("single");
+            tracker.record(0, 50.0);
+
+            assert!(tracker.is_increasing());
+            assert!(tracker.is_decreasing());
+        }
+
+        #[test]
+        fn test_f64_empty_is_increasing_and_decreasing() {
+            let tracker: ValueTracker<f64> = ValueTracker::new("empty");
+
+            assert!(tracker.is_increasing());
+            assert!(tracker.is_decreasing());
+        }
+
+        #[test]
+        fn test_f64_is_not_decreasing() {
+            let mut tracker: ValueTracker<f64> = ValueTracker::new("up_down");
+            tracker.record(0, 10.0);
+            tracker.record(100, 20.0);
+            tracker.record(200, 15.0);
+
+            assert!(!tracker.is_decreasing());
+        }
+
+        #[test]
+        fn test_rate_of_change_single_value() {
+            let mut tracker: ValueTracker<f64> = ValueTracker::new("single");
+            tracker.record(0, 100.0);
+            assert!(tracker.rate_of_change().is_none());
+        }
+
+        #[test]
+        fn test_rate_of_change_negative() {
+            let mut tracker: ValueTracker<f64> = ValueTracker::new("decreasing");
+            tracker.record(0, 100.0);
+            tracker.record(1000, 0.0);
+
+            let rate = tracker.rate_of_change().unwrap();
+            assert!((rate - (-0.1)).abs() < 0.001);
+        }
+    }
+
+    mod frame_assertion_error_messages {
+        use super::*;
+
+        #[test]
+        fn test_to_contain_text_error_shows_content() {
+            let frame = TuiFrame::from_lines(&["Line one", "Line two"]);
+            let mut assertion = expect_frame(&frame);
+
+            let result = assertion.to_contain_text("NotFound");
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                ProbarError::AssertionFailed { message } => {
+                    assert!(message.contains("NotFound"));
+                    assert!(message.contains("Frame content:"));
+                    assert!(message.contains("Line one"));
+                }
+                _ => panic!("Expected AssertionFailed error"),
+            }
+        }
+
+        #[test]
+        fn test_not_to_contain_text_error_shows_content() {
+            let frame = TuiFrame::from_lines(&["Hello World"]);
+            let mut assertion = expect_frame(&frame);
+
+            let result = assertion.not_to_contain_text("Hello");
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                ProbarError::AssertionFailed { message } => {
+                    assert!(message.contains("NOT to contain"));
+                    assert!(message.contains("Hello"));
+                }
+                _ => panic!("Expected AssertionFailed error"),
+            }
+        }
+
+        #[test]
+        fn test_to_match_error_shows_pattern() {
+            let frame = TuiFrame::from_lines(&["No numbers"]);
+            let mut assertion = expect_frame(&frame);
+
+            let result = assertion.to_match(r"\d+");
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                ProbarError::AssertionFailed { message } => {
+                    assert!(message.contains(r"\d+"));
+                    assert!(message.contains("No numbers"));
+                }
+                _ => panic!("Expected AssertionFailed error"),
+            }
+        }
+
+        #[test]
+        fn test_line_to_contain_error_shows_actual() {
+            let frame = TuiFrame::from_lines(&["Actual content"]);
+            let mut assertion = expect_frame(&frame);
+
+            let result = assertion.line_to_contain(0, "Missing");
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                ProbarError::AssertionFailed { message } => {
+                    assert!(message.contains("Expected line 0"));
+                    assert!(message.contains("Missing"));
+                    assert!(message.contains("Actual content"));
+                }
+                _ => panic!("Expected AssertionFailed error"),
+            }
+        }
+
+        #[test]
+        fn test_line_to_equal_error_shows_actual() {
+            let frame = TuiFrame::from_lines(&["Actual"]);
+            let mut assertion = expect_frame(&frame);
+
+            let result = assertion.line_to_equal(0, "Expected");
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                ProbarError::AssertionFailed { message } => {
+                    assert!(message.contains("Expected line 0 to equal"));
+                    assert!(message.contains("Expected"));
+                    assert!(message.contains("Actual"));
+                }
+                _ => panic!("Expected AssertionFailed error"),
+            }
+        }
+
+        #[test]
+        fn test_line_to_equal_nonexistent_line_error() {
+            let frame = TuiFrame::from_lines(&["Only line"]);
+            let mut assertion = expect_frame(&frame);
+
+            let result = assertion.line_to_equal(5, "Anything");
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                ProbarError::AssertionFailed { message } => {
+                    assert!(message.contains("Line 5 does not exist"));
+                    assert!(message.contains("1 lines"));
+                }
+                _ => panic!("Expected AssertionFailed error"),
+            }
+        }
+
+        #[test]
+        fn test_to_have_size_error_shows_dimensions() {
+            let frame = TuiFrame::from_lines(&["Short"]);
+            let mut assertion = expect_frame(&frame);
+
+            let result = assertion.to_have_size(100, 50);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                ProbarError::AssertionFailed { message } => {
+                    assert!(message.contains("100x50"));
+                    assert!(message.contains("5x1"));
+                }
+                _ => panic!("Expected AssertionFailed error"),
+            }
+        }
+
+        #[test]
+        fn test_to_be_identical_to_error_shows_diff() {
+            let frame1 = TuiFrame::from_lines(&["Line A"]);
+            let frame2 = TuiFrame::from_lines(&["Line B"]);
+            let mut assertion = expect_frame(&frame1);
+
+            let result = assertion.to_be_identical_to(&frame2);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                ProbarError::AssertionFailed { message } => {
+                    assert!(message.contains("not identical"));
+                }
+                _ => panic!("Expected AssertionFailed error"),
+            }
+        }
+    }
+
+    mod frame_assertion_debug {
+        use super::*;
+
+        #[test]
+        fn test_frame_assertion_debug() {
+            let frame = TuiFrame::from_lines(&["Test"]);
+            let assertion = expect_frame(&frame);
+            let debug = format!("{:?}", assertion);
+            assert!(debug.contains("FrameAssertion"));
+        }
+    }
+
+    mod value_tracker_clone {
+        use super::*;
+
+        #[test]
+        fn test_value_tracker_clone() {
+            let mut tracker: ValueTracker<f64> = ValueTracker::new("test");
+            tracker.record(0, 1.0);
+            tracker.record(100, 2.0);
+
+            let cloned = tracker.clone();
+            assert_eq!(cloned.name(), tracker.name());
+            assert_eq!(cloned.len(), tracker.len());
+            assert_eq!(cloned.latest(), tracker.latest());
+        }
+
+        #[test]
+        fn test_value_tracker_debug() {
+            let mut tracker: ValueTracker<i64> = ValueTracker::new("debug_test");
+            tracker.record(0, 42);
+            let debug = format!("{:?}", tracker);
+            assert!(debug.contains("ValueTracker"));
+            assert!(debug.contains("debug_test"));
+        }
+    }
+
+    mod multi_value_tracker_debug {
+        use super::*;
+
+        #[test]
+        fn test_multi_value_tracker_debug() {
+            let mut multi = MultiValueTracker::new();
+            multi.record("test", 0, 1.0);
+            let debug = format!("{:?}", multi);
+            assert!(debug.contains("MultiValueTracker"));
+        }
     }
 }
