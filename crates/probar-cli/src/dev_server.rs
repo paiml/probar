@@ -1915,4 +1915,59 @@ mod tests {
         assert_eq!(result.errors.len(), 1);
         assert_eq!(result.errors[0].status, 404);
     }
+
+    // =========================================================================
+    // format_bytes Tests
+    // =========================================================================
+
+    #[test]
+    fn test_format_bytes_bytes() {
+        assert_eq!(format_bytes(0), "0 bytes");
+        assert_eq!(format_bytes(512), "512 bytes");
+        assert_eq!(format_bytes(1023), "1023 bytes");
+    }
+
+    #[test]
+    fn test_format_bytes_kilobytes() {
+        assert_eq!(format_bytes(1024), "1.0 KB");
+        assert_eq!(format_bytes(2048), "2.0 KB");
+        assert_eq!(format_bytes(1536), "1.5 KB");
+    }
+
+    #[test]
+    fn test_format_bytes_megabytes() {
+        assert_eq!(format_bytes(1048576), "1.0 MB");
+        assert_eq!(format_bytes(5242880), "5.0 MB");
+    }
+
+    #[test]
+    fn test_file_modified_renamed_with_sizes() {
+        let msg = HotReloadMessage::file_modified(
+            "src/renamed.rs",
+            FileChangeEvent::Renamed,
+            Some(100),
+            Some(100),
+        );
+        if let HotReloadMessage::FileModified { diff_summary, .. } = msg {
+            assert_eq!(diff_summary, "renamed");
+        } else {
+            panic!("Expected FileModified variant");
+        }
+    }
+
+    #[test]
+    fn test_file_modified_fallback_changed() {
+        // Test the fallback case for non-matching pattern
+        let msg = HotReloadMessage::file_modified(
+            "src/test.rs",
+            FileChangeEvent::Modified,
+            None, // No size before
+            None, // No size after
+        );
+        if let HotReloadMessage::FileModified { diff_summary, .. } = msg {
+            assert_eq!(diff_summary, "changed");
+        } else {
+            panic!("Expected FileModified variant");
+        }
+    }
 }

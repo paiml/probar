@@ -128,10 +128,11 @@ impl FrameMetrics {
         }
     }
 
-    /// Check if frame meets target FPS
+    /// Check if frame meets target FPS (with small tolerance for floating-point)
     #[must_use]
     pub fn meets_target(&self, target_fps: f64) -> bool {
-        self.fps() >= target_fps
+        const EPSILON: f64 = 1e-9;
+        self.fps() >= target_fps - EPSILON
     }
 }
 
@@ -310,5 +311,389 @@ mod tests {
         assert_eq!(format_bytes(1024), "1.0 KB");
         assert_eq!(format_bytes(1024 * 1024), "1.00 MB");
         assert_eq!(format_bytes(1024 * 1024 * 1024), "1.00 GB");
+    }
+
+    // =========================================================================
+    // Additional tests for 95%+ coverage
+    // =========================================================================
+
+    #[test]
+    fn test_statistics_empty_method() {
+        let stats = Statistics::empty();
+        assert_eq!(stats.count, 0);
+        assert!((stats.min - 0.0).abs() < f64::EPSILON);
+        assert!((stats.max - 0.0).abs() < f64::EPSILON);
+        assert!((stats.mean - 0.0).abs() < f64::EPSILON);
+        assert!((stats.median - 0.0).abs() < f64::EPSILON);
+        assert!((stats.std_dev - 0.0).abs() < f64::EPSILON);
+        assert!((stats.p95 - 0.0).abs() < f64::EPSILON);
+        assert!((stats.p99 - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_statistics_even_count_median() {
+        // Test median calculation for even number of elements
+        let stats = Statistics::from_values(&[1.0, 2.0, 3.0, 4.0]);
+        // Median of [1, 2, 3, 4] = (2 + 3) / 2 = 2.5
+        assert!((stats.median - 2.5).abs() < f64::EPSILON);
+        assert_eq!(stats.count, 4);
+    }
+
+    #[test]
+    fn test_statistics_two_values_median() {
+        let stats = Statistics::from_values(&[10.0, 20.0]);
+        // Median of [10, 20] = (10 + 20) / 2 = 15
+        assert!((stats.median - 15.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_statistics_percentiles() {
+        // Create 100 values for clear percentile testing
+        let values: Vec<f64> = (1..=100).map(|i| i as f64).collect();
+        let stats = Statistics::from_values(&values);
+
+        assert_eq!(stats.count, 100);
+        assert!((stats.min - 1.0).abs() < f64::EPSILON);
+        assert!((stats.max - 100.0).abs() < f64::EPSILON);
+        // p95 should be around 95
+        assert!(stats.p95 >= 94.0 && stats.p95 <= 96.0);
+        // p99 should be around 99
+        assert!(stats.p99 >= 98.0 && stats.p99 <= 100.0);
+    }
+
+    #[test]
+    fn test_statistics_std_dev() {
+        // Known standard deviation case: [2, 4, 4, 4, 5, 5, 7, 9]
+        // Mean = 5, Variance = 4, Std Dev = 2
+        let values = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
+        let stats = Statistics::from_values(&values);
+        assert!((stats.mean - 5.0).abs() < f64::EPSILON);
+        assert!((stats.std_dev - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_statistics_with_nan_values() {
+        // Test handling of NaN values in sorting
+        let stats = Statistics::from_values(&[1.0, f64::NAN, 3.0]);
+        // The function should handle NaN gracefully
+        assert_eq!(stats.count, 3);
+    }
+
+    #[test]
+    fn test_statistics_unsorted_input() {
+        // Ensure sorting works correctly
+        let stats = Statistics::from_values(&[5.0, 1.0, 4.0, 2.0, 3.0]);
+        assert!((stats.min - 1.0).abs() < f64::EPSILON);
+        assert!((stats.max - 5.0).abs() < f64::EPSILON);
+        assert!((stats.median - 3.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_frame_metrics_new() {
+        let metrics = FrameMetrics::new(16.67);
+        assert!((metrics.frame_time_ms - 16.67).abs() < f64::EPSILON);
+        assert_eq!(metrics.frame_number, 0);
+        assert!((metrics.timestamp_ms - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_frame_metrics_with_frame_number() {
+        let metrics = FrameMetrics::new(16.67).with_frame_number(42);
+        assert_eq!(metrics.frame_number, 42);
+        assert!((metrics.frame_time_ms - 16.67).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_frame_metrics_fps_zero_frame_time() {
+        let metrics = FrameMetrics::new(0.0);
+        assert!((metrics.fps() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_frame_metrics_fps_negative_frame_time() {
+        let metrics = FrameMetrics::new(-10.0);
+        assert!((metrics.fps() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_frame_metrics_meets_target_edge_case() {
+        // Test when FPS exactly equals target
+        let metrics = FrameMetrics::new(16.666666666666668); // Exactly 60 FPS
+        let fps = metrics.fps();
+        assert!((fps - 60.0).abs() < 0.001);
+        assert!(metrics.meets_target(60.0));
+    }
+
+    #[test]
+    fn test_memory_metrics_new() {
+        let metrics = MemoryMetrics::new(1024, 4096);
+        assert_eq!(metrics.heap_used, 1024);
+        assert_eq!(metrics.heap_total, 4096);
+        assert_eq!(metrics.peak_usage, 1024); // peak starts as heap_used
+    }
+
+    #[test]
+    fn test_memory_metrics_usage_percent_zero_total() {
+        let metrics = MemoryMetrics::new(1024, 0);
+        assert!((metrics.usage_percent() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_memory_metrics_usage_percent_full() {
+        let metrics = MemoryMetrics::new(1024, 1024);
+        assert!((metrics.usage_percent() - 100.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_memory_metrics_formatted_bytes() {
+        let metrics = MemoryMetrics::new(500, 1000);
+        assert_eq!(metrics.heap_used_formatted(), "500 B");
+    }
+
+    #[test]
+    fn test_memory_metrics_formatted_kb() {
+        let metrics = MemoryMetrics::new(2048, 4096);
+        assert!(metrics.heap_used_formatted().contains("KB"));
+    }
+
+    #[test]
+    fn test_memory_metrics_formatted_gb() {
+        let metrics = MemoryMetrics::new(2 * 1024 * 1024 * 1024, 4 * 1024 * 1024 * 1024);
+        assert!(metrics.heap_used_formatted().contains("GB"));
+    }
+
+    #[test]
+    fn test_format_bytes_boundaries() {
+        // Test exact boundaries
+        assert_eq!(format_bytes(0), "0 B");
+        assert_eq!(format_bytes(1023), "1023 B");
+        assert_eq!(format_bytes(1024), "1.0 KB");
+        assert_eq!(format_bytes(1024 * 1024 - 1), "1024.0 KB");
+        assert_eq!(format_bytes(1024 * 1024), "1.00 MB");
+        assert_eq!(format_bytes(1024 * 1024 * 1024 - 1), "1024.00 MB");
+        assert_eq!(format_bytes(1024 * 1024 * 1024), "1.00 GB");
+    }
+
+    #[test]
+    fn test_format_bytes_large_values() {
+        assert_eq!(format_bytes(10 * 1024 * 1024 * 1024), "10.00 GB");
+    }
+
+    #[test]
+    fn test_performance_metrics_from_trace() {
+        use super::super::trace::Tracer;
+
+        let mut tracer = Tracer::new();
+        tracer.start();
+
+        // Create spans with known names
+        for _ in 0..3 {
+            let _span = tracer.span("render");
+            std::thread::sleep(std::time::Duration::from_micros(100));
+        }
+        for _ in 0..2 {
+            let _span = tracer.span("update");
+            std::thread::sleep(std::time::Duration::from_micros(50));
+        }
+
+        let trace = tracer.stop();
+        let metrics = PerformanceMetrics::from_trace(&trace);
+
+        // Should have function times for both span types
+        assert!(metrics.function_times.contains_key("render"));
+        assert!(metrics.function_times.contains_key("update"));
+        assert_eq!(metrics.function_times.get("render").unwrap().count, 3);
+        assert_eq!(metrics.function_times.get("update").unwrap().count, 2);
+        assert!(metrics.duration.as_nanos() > 0);
+    }
+
+    #[test]
+    fn test_performance_metrics_from_empty_trace() {
+        use super::super::trace::Tracer;
+
+        let mut tracer = Tracer::new();
+        tracer.start();
+        let trace = tracer.stop();
+
+        let metrics = PerformanceMetrics::from_trace(&trace);
+
+        assert!(metrics.function_times.is_empty());
+        assert!(metrics.memory.is_none());
+        assert_eq!(metrics.frame_times.count, 0);
+    }
+
+    #[test]
+    fn test_performance_metrics_within_budget() {
+        use super::super::trace::Tracer;
+
+        let mut tracer = Tracer::new();
+        tracer.start();
+        let trace = tracer.stop();
+
+        let metrics = PerformanceMetrics::from_trace(&trace);
+
+        // Empty frame_times should be within any budget
+        assert!(metrics.within_budget(16.67));
+        assert!(metrics.within_budget(0.0));
+    }
+
+    #[test]
+    fn test_performance_metrics_duration_none() {
+        use super::super::trace::{Trace, TraceConfig};
+
+        // Create a trace with no duration
+        let trace = Trace {
+            spans: vec![],
+            duration: None,
+            config: TraceConfig::default(),
+        };
+
+        let metrics = PerformanceMetrics::from_trace(&trace);
+        assert_eq!(metrics.duration, Duration::default());
+    }
+
+    #[test]
+    fn test_performance_metrics_with_unclosed_spans() {
+        use super::super::span::Span;
+        use super::super::trace::{Trace, TraceConfig};
+
+        // Create a trace with spans that have no end_ns (unclosed)
+        let unclosed_span = Span::new("unclosed", 1000);
+        // Note: end_ns is None, so duration_ns() returns None
+
+        let trace = Trace {
+            spans: vec![unclosed_span],
+            duration: Some(Duration::from_millis(100)),
+            config: TraceConfig::default(),
+        };
+
+        let metrics = PerformanceMetrics::from_trace(&trace);
+
+        // Unclosed spans should not appear in function_times
+        assert!(!metrics.function_times.contains_key("unclosed"));
+    }
+
+    #[test]
+    fn test_performance_metrics_with_closed_spans() {
+        use super::super::span::Span;
+        use super::super::trace::{Trace, TraceConfig};
+
+        // Create a trace with properly closed spans
+        let mut span1 = Span::new("test_fn", 0);
+        span1.close(1_000_000); // 1ms in ns
+
+        let mut span2 = Span::new("test_fn", 2_000_000);
+        span2.close(3_000_000); // 1ms duration
+
+        let trace = Trace {
+            spans: vec![span1, span2],
+            duration: Some(Duration::from_millis(5)),
+            config: TraceConfig::default(),
+        };
+
+        let metrics = PerformanceMetrics::from_trace(&trace);
+
+        assert!(metrics.function_times.contains_key("test_fn"));
+        let stats = metrics.function_times.get("test_fn").unwrap();
+        assert_eq!(stats.count, 2);
+        // Each span is 1ms = 1.0 in the stats
+        assert!((stats.mean - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_statistics_clone_and_debug() {
+        let stats = Statistics::from_values(&[1.0, 2.0, 3.0]);
+        let cloned = stats.clone();
+        assert_eq!(cloned.count, stats.count);
+
+        let debug_str = format!("{:?}", stats);
+        assert!(debug_str.contains("Statistics"));
+    }
+
+    #[test]
+    fn test_frame_metrics_clone_and_debug() {
+        let metrics = FrameMetrics::new(16.67).with_frame_number(10);
+        let cloned = metrics.clone();
+        assert_eq!(cloned.frame_number, 10);
+
+        let debug_str = format!("{:?}", metrics);
+        assert!(debug_str.contains("FrameMetrics"));
+    }
+
+    #[test]
+    fn test_memory_metrics_clone_and_debug() {
+        let metrics = MemoryMetrics::new(1024, 4096);
+        let cloned = metrics.clone();
+        assert_eq!(cloned.heap_used, 1024);
+
+        let debug_str = format!("{:?}", metrics);
+        assert!(debug_str.contains("MemoryMetrics"));
+    }
+
+    #[test]
+    fn test_performance_metrics_clone_and_debug() {
+        use super::super::trace::Tracer;
+
+        let mut tracer = Tracer::new();
+        tracer.start();
+        let trace = tracer.stop();
+        let metrics = PerformanceMetrics::from_trace(&trace);
+
+        let cloned = metrics.clone();
+        assert_eq!(cloned.frame_times.count, metrics.frame_times.count);
+
+        let debug_str = format!("{:?}", metrics);
+        assert!(debug_str.contains("PerformanceMetrics"));
+    }
+
+    #[test]
+    fn test_statistics_serialize_deserialize() {
+        let stats = Statistics::from_values(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+        let json = serde_json::to_string(&stats).unwrap();
+        let deserialized: Statistics = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.count, stats.count);
+        assert!((deserialized.mean - stats.mean).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_frame_metrics_serialize_deserialize() {
+        let metrics = FrameMetrics::new(16.67).with_frame_number(42);
+        let json = serde_json::to_string(&metrics).unwrap();
+        let deserialized: FrameMetrics = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.frame_number, 42);
+        assert!((deserialized.frame_time_ms - 16.67).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_memory_metrics_serialize_deserialize() {
+        let metrics = MemoryMetrics::new(1024, 4096);
+        let json = serde_json::to_string(&metrics).unwrap();
+        let deserialized: MemoryMetrics = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.heap_used, 1024);
+        assert_eq!(deserialized.heap_total, 4096);
+    }
+
+    #[test]
+    fn test_performance_metrics_serialize_deserialize() {
+        use super::super::trace::Tracer;
+
+        let mut tracer = Tracer::new();
+        tracer.start();
+        {
+            let _span = tracer.span("test");
+        }
+        let trace = tracer.stop();
+        let metrics = PerformanceMetrics::from_trace(&trace);
+
+        let json = serde_json::to_string(&metrics).unwrap();
+        let deserialized: PerformanceMetrics = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(
+            deserialized.function_times.len(),
+            metrics.function_times.len()
+        );
     }
 }

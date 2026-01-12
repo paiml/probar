@@ -1587,4 +1587,109 @@ mod tests {
             let _ = PlaybookOutputFormat::Junit;
         }
     }
+
+    mod stress_args_tests {
+        use super::*;
+
+        fn make_stress_args(
+            atomics: bool,
+            worker_msg: bool,
+            render: bool,
+            trace: bool,
+            full: bool,
+            mode: &str,
+        ) -> StressArgs {
+            StressArgs {
+                mode: mode.to_string(),
+                duration: 30,
+                concurrency: 4,
+                output: "text".to_string(),
+                atomics,
+                worker_msg,
+                render,
+                trace,
+                full,
+            }
+        }
+
+        #[test]
+        fn test_get_mode_atomics() {
+            let args = make_stress_args(true, false, false, false, false, "default");
+            assert_eq!(args.get_mode(), "atomics");
+        }
+
+        #[test]
+        fn test_get_mode_worker_msg() {
+            let args = make_stress_args(false, true, false, false, false, "default");
+            assert_eq!(args.get_mode(), "worker-msg");
+        }
+
+        #[test]
+        fn test_get_mode_render() {
+            let args = make_stress_args(false, false, true, false, false, "default");
+            assert_eq!(args.get_mode(), "render");
+        }
+
+        #[test]
+        fn test_get_mode_trace() {
+            let args = make_stress_args(false, false, false, true, false, "default");
+            assert_eq!(args.get_mode(), "trace");
+        }
+
+        #[test]
+        fn test_get_mode_full() {
+            let args = make_stress_args(false, false, false, false, true, "default");
+            assert_eq!(args.get_mode(), "full");
+        }
+
+        #[test]
+        fn test_get_mode_default() {
+            let args = make_stress_args(false, false, false, false, false, "custom-mode");
+            assert_eq!(args.get_mode(), "custom-mode");
+        }
+
+        #[test]
+        fn test_stress_args_debug() {
+            let args = make_stress_args(true, false, false, false, false, "atomics");
+            let debug = format!("{args:?}");
+            assert!(debug.contains("StressArgs"));
+        }
+
+        #[test]
+        fn test_parse_stress_command() {
+            let cli = Cli::parse_from(["probar", "stress"]);
+            assert!(matches!(cli.command, Commands::Stress(_)));
+        }
+
+        #[test]
+        fn test_parse_stress_with_duration() {
+            let cli = Cli::parse_from(["probar", "stress", "--duration", "60"]);
+            if let Commands::Stress(args) = cli.command {
+                assert_eq!(args.duration, 60);
+            } else {
+                panic!("expected Stress command");
+            }
+        }
+
+        #[test]
+        fn test_parse_stress_with_concurrency() {
+            let cli = Cli::parse_from(["probar", "stress", "--concurrency", "8"]);
+            if let Commands::Stress(args) = cli.command {
+                assert_eq!(args.concurrency, 8);
+            } else {
+                panic!("expected Stress command");
+            }
+        }
+
+        #[test]
+        fn test_parse_stress_with_atomics_flag() {
+            let cli = Cli::parse_from(["probar", "stress", "--atomics"]);
+            if let Commands::Stress(args) = cli.command {
+                assert!(args.atomics);
+                assert_eq!(args.get_mode(), "atomics");
+            } else {
+                panic!("expected Stress command");
+            }
+        }
+    }
 }

@@ -973,4 +973,181 @@ mod tests {
         assert_eq!(variation.max, 100.0);
         assert_eq!(variation.base, 50.0);
     }
+
+    #[test]
+    fn test_parameter_variation_exponential() {
+        let var = ParameterVariation {
+            distribution: Distribution::Exponential { lambda: 1.0 },
+            min: 0.0,
+            max: 10.0,
+            base: 1.0,
+        };
+        // ln(0.5) / 1.0 ≈ 0.693
+        let sample = var.sample(0.5);
+        assert!(sample > 0.0);
+    }
+
+    #[test]
+    fn test_parameter_variation_poisson() {
+        let var = ParameterVariation {
+            distribution: Distribution::Poisson { lambda: 5.0 },
+            min: 0.0,
+            max: 20.0,
+            base: 5.0,
+        };
+        let sample = var.sample(0.5);
+        // Should be around 5.0 (random=0.5 * lambda=5.0 * 2.0 = 5.0)
+        assert!((sample - 5.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_sla_probability_low_risk() {
+        let sla = SlaProbability::new("p95 < 150ms", 0.85);
+        assert_eq!(sla.risk, RiskLevel::Low);
+    }
+
+    #[test]
+    fn test_sla_probability_medium_risk() {
+        let sla = SlaProbability::new("p95 < 100ms", 0.60);
+        assert_eq!(sla.risk, RiskLevel::Medium);
+    }
+
+    #[test]
+    fn test_risk_level_all_bars() {
+        assert_eq!(RiskLevel::Minimal.bar(), "█");
+        assert_eq!(RiskLevel::Low.bar(), "████");
+        assert_eq!(RiskLevel::Medium.bar(), "██████████");
+        assert_eq!(RiskLevel::High.bar(), "███████████████");
+    }
+
+    #[test]
+    fn test_risk_level_all_strings() {
+        assert_eq!(RiskLevel::Minimal.as_str(), "MINIMAL");
+        assert_eq!(RiskLevel::Low.as_str(), "LOW");
+        assert_eq!(RiskLevel::Medium.as_str(), "MEDIUM");
+        assert_eq!(RiskLevel::High.as_str(), "HIGH");
+    }
+
+    #[test]
+    fn test_impact_level_all_strings() {
+        assert_eq!(ImpactLevel::Low.as_str(), "LOW");
+        assert_eq!(ImpactLevel::Medium.as_str(), "MEDIUM");
+        assert_eq!(ImpactLevel::High.as_str(), "HIGH");
+    }
+
+    #[test]
+    fn test_impact_level_all_bars() {
+        assert_eq!(ImpactLevel::Low.bar(), "███");
+        assert_eq!(ImpactLevel::Medium.bar(), "████████████");
+        assert_eq!(ImpactLevel::High.bar(), "████████████████████");
+    }
+
+    #[test]
+    fn test_sensitivity_factor_medium_impact() {
+        let factor = SensitivityFactor::new("cache_hit_rate", 0.55);
+        assert_eq!(factor.impact, ImpactLevel::Medium);
+    }
+
+    #[test]
+    fn test_observation_severity_all_symbols() {
+        assert_eq!(ObservationSeverity::Info.symbol(), "ℹ");
+        assert_eq!(ObservationSeverity::Warning.symbol(), "⚠");
+        assert_eq!(ObservationSeverity::Error.symbol(), "✗");
+        assert_eq!(ObservationSeverity::Critical.symbol(), "💀");
+    }
+
+    #[test]
+    fn test_latency_distribution_empty() {
+        let dist = LatencyDistribution::from_samples(&[]);
+        assert_eq!(dist.mean_ms, 0.0);
+        assert_eq!(dist.std_dev_ms, 0.0);
+    }
+
+    #[test]
+    fn test_chaos_result_with_recovery_time() {
+        let mut result = ChaosResult::new("Recovery Test");
+        result.recovery_time_ms = Some(5000);
+        assert_eq!(result.recovery_time_ms, Some(5000));
+    }
+
+    #[test]
+    fn test_chaos_observation_fields() {
+        let obs = ChaosObservation::new(
+            1500,
+            "api_gateway",
+            "High latency detected",
+            ObservationSeverity::Error,
+        );
+        assert_eq!(obs.timestamp_ms, 1500);
+        assert_eq!(obs.component, "api_gateway");
+        assert_eq!(obs.description, "High latency detected");
+        assert_eq!(obs.severity, ObservationSeverity::Error);
+    }
+
+    #[test]
+    fn test_monte_carlo_result_full_workflow() {
+        let mut result = MonteCarloResult::new(500);
+
+        // Add distribution
+        result.latency_distribution = LatencyDistribution::from_samples(&[
+            50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0, 130.0, 140.0,
+        ]);
+
+        // Add multiple SLAs with different risk levels
+        result.add_sla(SlaProbability::new("p95 < 200ms", 0.98));
+        result.add_sla(SlaProbability::new("p99 < 300ms", 0.75));
+        result.add_sla(SlaProbability::new("p99.9 < 500ms", 0.45));
+
+        // Add multiple sensitivity factors
+        result.add_sensitivity(SensitivityFactor::new("network_latency", 0.88));
+        result.add_sensitivity(SensitivityFactor::new("db_connection_pool", 0.52));
+        result.add_sensitivity(SensitivityFactor::new("cache_ttl", 0.15));
+
+        // Add multiple recommendations
+        result.add_recommendation("Consider using connection pooling");
+        result.add_recommendation("Increase cache TTL for static assets");
+
+        assert_eq!(result.iterations, 500);
+        assert_eq!(result.sla_probabilities.len(), 3);
+        assert_eq!(result.sensitivity_analysis.len(), 3);
+        assert_eq!(result.recommendations.len(), 2);
+    }
+
+    #[test]
+    fn test_simulation_mode_parameterized() {
+        let mut multipliers = HashMap::new();
+        multipliers.insert("latency".to_string(), 1.5);
+        multipliers.insert("throughput".to_string(), 0.8);
+
+        let mode = SimulationMode::Parameterized { multipliers };
+        if let SimulationMode::Parameterized { multipliers: m } = mode {
+            assert_eq!(m.len(), 2);
+            assert_eq!(m.get("latency"), Some(&1.5));
+        } else {
+            panic!("Expected Parameterized mode");
+        }
+    }
+
+    #[test]
+    fn test_simulation_mode_chaos() {
+        let injections = vec![
+            FailureInjection::latency("network", 0.1, 100),
+            FailureInjection::packet_loss("network", 0.05),
+        ];
+
+        let mode = SimulationMode::Chaos { injections };
+        if let SimulationMode::Chaos { injections: i } = mode {
+            assert_eq!(i.len(), 2);
+        } else {
+            panic!("Expected Chaos mode");
+        }
+    }
+
+    #[test]
+    fn test_simulation_output_default() {
+        let output = SimulationOutput::default();
+        assert!(output.directory.is_none());
+        assert!(!output.save_iterations);
+        assert!(!output.generate_summary);
+    }
 }

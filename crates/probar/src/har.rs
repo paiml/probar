@@ -1390,4 +1390,495 @@ mod tests {
         assert!(content.text.is_none());
         assert_eq!(content.size, 0);
     }
+
+    // =========================================================================
+    // H₀-HAR-51 to H₀-HAR-70: Additional Coverage Tests
+    // =========================================================================
+
+    #[test]
+    fn h0_har_51_error_serialize_display() {
+        let err = HarError::SerializeError("failed to serialize".to_string());
+        let msg = format!("{err}");
+        assert!(msg.contains("serialize error"));
+        assert!(msg.contains("failed to serialize"));
+    }
+
+    #[test]
+    fn h0_har_52_error_io_display() {
+        let err = HarError::IoError("file not found".to_string());
+        let msg = format!("{err}");
+        assert!(msg.contains("I/O error"));
+        assert!(msg.contains("file not found"));
+    }
+
+    #[test]
+    fn h0_har_53_options_fallback_on_not_found() {
+        let options = HarOptions::fallback_on_not_found();
+        assert_eq!(options.not_found, NotFoundBehavior::Fallback);
+        assert!(!options.update);
+        assert!(options.url_pattern.is_none());
+    }
+
+    #[test]
+    fn h0_har_54_player_find_response_with_pattern_no_match() {
+        let mut har = Har::new();
+        har.add_entry(HarEntry::new(
+            HarRequest::get("http://test.com/users"),
+            HarResponse::ok(),
+        ));
+        let options = HarOptions::default().with_pattern("/api/");
+        let player = HarPlayer::new(har, options);
+        // URL doesn't match pattern, should return None
+        let resp = player.find_response("GET", "http://test.com/users");
+        assert!(resp.is_none());
+    }
+
+    #[test]
+    fn h0_har_55_player_find_response_with_pattern_match() {
+        let mut har = Har::new();
+        har.add_entry(HarEntry::new(
+            HarRequest::get("http://test.com/api/users"),
+            HarResponse::ok().with_json(r#"{"users": []}"#),
+        ));
+        let options = HarOptions::default().with_pattern("/api/");
+        let player = HarPlayer::new(har, options);
+        let resp = player.find_response("GET", "http://test.com/api/users");
+        assert!(resp.is_some());
+        assert_eq!(resp.unwrap().status, 200);
+    }
+
+    #[test]
+    fn h0_har_56_player_find_response_method_mismatch() {
+        let mut har = Har::new();
+        har.add_entry(HarEntry::new(
+            HarRequest::get("http://test.com/api"),
+            HarResponse::ok(),
+        ));
+        let player = HarPlayer::new(har, HarOptions::default());
+        // Wrong method
+        let resp = player.find_response("POST", "http://test.com/api");
+        assert!(resp.is_none());
+    }
+
+    #[test]
+    fn h0_har_57_timings_total_with_positive_values() {
+        let mut timings = HarTimings::new();
+        timings.blocked = 5.0;
+        timings.dns = 10.0;
+        timings.connect = 15.0;
+        timings.send = 2.0;
+        timings.wait = 100.0;
+        timings.receive = 50.0;
+        // Total should be 5 + 10 + 15 + 2 + 100 + 50 = 182
+        assert!((timings.total() - 182.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn h0_har_58_timings_total_with_mixed_values() {
+        let mut timings = HarTimings::new();
+        // blocked and dns remain -1 (not applicable)
+        timings.connect = 20.0;
+        timings.send = 5.0;
+        timings.wait = 30.0;
+        timings.receive = 10.0;
+        // Total = 20 + 5 + 30 + 10 = 65 (blocked/dns excluded)
+        assert!((timings.total() - 65.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn h0_har_59_find_matching_with_matches() {
+        let mut har = Har::new();
+        har.add_entry(HarEntry::new(
+            HarRequest::get("http://test.com/api/users"),
+            HarResponse::ok(),
+        ));
+        har.add_entry(HarEntry::new(
+            HarRequest::get("http://test.com/api/posts"),
+            HarResponse::ok(),
+        ));
+        har.add_entry(HarEntry::new(
+            HarRequest::get("http://test.com/static/image.png"),
+            HarResponse::ok(),
+        ));
+        let matches = har.find_matching("/api/");
+        assert_eq!(matches.len(), 2);
+    }
+
+    #[test]
+    fn h0_har_60_url_matches_pattern_glob_wildcards() {
+        // Pattern with ** glob
+        assert!(url_matches_pattern(
+            "http://test.com/api/users",
+            "**/api/**"
+        ));
+        // Pattern with * glob
+        assert!(url_matches_pattern("http://test.com/api/test", "*/api/*"));
+        // Exact substring
+        assert!(url_matches_pattern("http://example.com/path", "example"));
+        // No match
+        assert!(!url_matches_pattern("http://other.com", "example"));
+    }
+
+    #[test]
+    fn h0_har_61_url_matches_pattern_empty() {
+        // Empty pattern after stripping globs matches everything
+        assert!(url_matches_pattern("http://any.com/path", "**"));
+        assert!(url_matches_pattern("http://any.com/path", "*"));
+        assert!(url_matches_pattern("http://any.com/path", ""));
+    }
+
+    #[test]
+    fn h0_har_62_recorder_save_error() {
+        let recorder = HarRecorder::new("/nonexistent/path/that/cannot/be/written/test.har");
+        let result = recorder.save();
+        assert!(result.is_err());
+        if let Err(HarError::IoError(msg)) = result {
+            assert!(!msg.is_empty());
+        } else {
+            panic!("Expected IoError");
+        }
+    }
+
+    #[test]
+    fn h0_har_63_player_from_file_not_found() {
+        let result = HarPlayer::from_file("/nonexistent/file.har", HarOptions::default());
+        assert!(result.is_err());
+        if let Err(HarError::IoError(msg)) = result {
+            assert!(!msg.is_empty());
+        } else {
+            panic!("Expected IoError");
+        }
+    }
+
+    #[test]
+    fn h0_har_64_player_from_file_invalid_json() {
+        // Create a temp file with invalid JSON
+        let temp_path = std::env::temp_dir().join("test_invalid_har.json");
+        std::fs::write(&temp_path, "not valid json").unwrap();
+        let result = HarPlayer::from_file(&temp_path, HarOptions::default());
+        std::fs::remove_file(&temp_path).ok();
+        assert!(result.is_err());
+        if let Err(HarError::ParseError(msg)) = result {
+            assert!(!msg.is_empty());
+        } else {
+            panic!("Expected ParseError");
+        }
+    }
+
+    #[test]
+    fn h0_har_65_recorder_save_and_load_roundtrip() {
+        let temp_path = std::env::temp_dir().join("test_har_roundtrip.har");
+        let mut recorder = HarRecorder::new(&temp_path);
+        recorder.start();
+        recorder.record(HarEntry::new(
+            HarRequest::get("http://test.com/api").with_header("Accept", "application/json"),
+            HarResponse::ok().with_json(r#"{"status": "ok"}"#),
+        ));
+        recorder.stop();
+        recorder.save().expect("Save should succeed");
+
+        let player = HarPlayer::from_file(&temp_path, HarOptions::default()).unwrap();
+        assert_eq!(player.entry_count(), 1);
+        let resp = player.find_response("GET", "http://test.com/api");
+        assert!(resp.is_some());
+        assert_eq!(resp.unwrap().status, 200);
+
+        std::fs::remove_file(&temp_path).ok();
+    }
+
+    #[test]
+    fn h0_har_66_har_error_implements_error_trait() {
+        let err: Box<dyn std::error::Error> = Box::new(HarError::NotFound("test".to_string()));
+        // Just verify it compiles and can be used as Box<dyn Error>
+        assert!(!err.to_string().is_empty());
+    }
+
+    #[test]
+    fn h0_har_67_request_new_custom_method() {
+        let req = HarRequest::new("DELETE", "http://test.com/resource/123");
+        assert_eq!(req.method, "DELETE");
+        assert_eq!(req.url, "http://test.com/resource/123");
+        assert_eq!(req.http_version, "HTTP/1.1");
+        assert!(req.cookies.is_empty());
+        assert!(req.headers.is_empty());
+        assert!(req.query_string.is_empty());
+        assert!(req.post_data.is_none());
+        assert_eq!(req.headers_size, -1);
+        assert_eq!(req.body_size, -1);
+    }
+
+    #[test]
+    fn h0_har_68_response_new_custom_status() {
+        let resp = HarResponse::new(201, "Created");
+        assert_eq!(resp.status, 201);
+        assert_eq!(resp.status_text, "Created");
+        assert_eq!(resp.http_version, "HTTP/1.1");
+        assert!(resp.cookies.is_empty());
+        assert!(resp.headers.is_empty());
+        assert!(resp.redirect_url.is_empty());
+        assert_eq!(resp.headers_size, -1);
+        assert_eq!(resp.body_size, -1);
+    }
+
+    #[test]
+    fn h0_har_69_chrono_now_iso_format() {
+        // Verify the timestamp format is valid ISO 8601
+        let timestamp = chrono_now_iso();
+        assert!(timestamp.ends_with('Z'));
+        assert!(timestamp.contains('T'));
+        assert!(timestamp.contains('-'));
+    }
+
+    #[test]
+    fn h0_har_70_find_by_url_multiple_entries() {
+        let mut har = Har::new();
+        har.add_entry(HarEntry::new(
+            HarRequest::get("http://test.com/first"),
+            HarResponse::new(200, "First"),
+        ));
+        har.add_entry(HarEntry::new(
+            HarRequest::get("http://test.com/second"),
+            HarResponse::new(201, "Second"),
+        ));
+        har.add_entry(HarEntry::new(
+            HarRequest::get("http://test.com/first"),
+            HarResponse::new(202, "First Again"),
+        ));
+        // find_by_url returns the first match
+        let entry = har.find_by_url("http://test.com/first");
+        assert!(entry.is_some());
+        assert_eq!(entry.unwrap().response.status, 200);
+    }
+
+    #[test]
+    fn h0_har_71_har_log_browser_and_comment() {
+        let mut log = HarLog::new();
+        log.browser = Some(HarBrowser::new("Firefox", "115.0"));
+        log.comment = Some("Test HAR log".to_string());
+        assert!(log.browser.is_some());
+        assert_eq!(log.browser.as_ref().unwrap().name, "Firefox");
+        assert!(log.comment.is_some());
+    }
+
+    #[test]
+    fn h0_har_72_cookie_optional_fields() {
+        let mut cookie = HarCookie::new("session", "abc123");
+        cookie.path = Some("/".to_string());
+        cookie.domain = Some("example.com".to_string());
+        cookie.expires = Some("2025-01-01T00:00:00Z".to_string());
+        cookie.http_only = Some(true);
+        cookie.secure = Some(true);
+        cookie.comment = Some("Session cookie".to_string());
+
+        assert_eq!(cookie.path, Some("/".to_string()));
+        assert_eq!(cookie.domain, Some("example.com".to_string()));
+        assert_eq!(cookie.http_only, Some(true));
+        assert_eq!(cookie.secure, Some(true));
+    }
+
+    #[test]
+    fn h0_har_73_post_param_file_upload() {
+        let mut param = HarPostParam::new("file", "");
+        param.value = None;
+        param.file_name = Some("document.pdf".to_string());
+        param.content_type = Some("application/pdf".to_string());
+        param.comment = Some("Uploaded file".to_string());
+
+        assert!(param.value.is_none());
+        assert_eq!(param.file_name, Some("document.pdf".to_string()));
+        assert_eq!(param.content_type, Some("application/pdf".to_string()));
+    }
+
+    #[test]
+    fn h0_har_74_content_with_encoding() {
+        let mut content = HarContent::json(r#"{"data": "test"}"#);
+        content.encoding = Some("base64".to_string());
+        content.compression = Some(100);
+        content.comment = Some("Compressed content".to_string());
+
+        assert_eq!(content.encoding, Some("base64".to_string()));
+        assert_eq!(content.compression, Some(100));
+    }
+
+    #[test]
+    fn h0_har_75_cache_state_fields() {
+        let state = HarCacheState {
+            expires: Some("2025-12-31T23:59:59Z".to_string()),
+            last_access: Some("2024-01-01T00:00:00Z".to_string()),
+            etag: Some("abc123".to_string()),
+            hit_count: Some(42),
+            comment: Some("Cache hit".to_string()),
+        };
+
+        assert_eq!(state.hit_count, Some(42));
+        assert!(state.etag.is_some());
+    }
+
+    #[test]
+    fn h0_har_76_cache_with_states() {
+        let mut cache = HarCache::default();
+        cache.before_request = Some(HarCacheState {
+            expires: None,
+            last_access: None,
+            etag: Some("before".to_string()),
+            hit_count: Some(1),
+            comment: None,
+        });
+        cache.after_request = Some(HarCacheState {
+            expires: None,
+            last_access: None,
+            etag: Some("after".to_string()),
+            hit_count: Some(2),
+            comment: None,
+        });
+        cache.comment = Some("Cache test".to_string());
+
+        assert!(cache.before_request.is_some());
+        assert!(cache.after_request.is_some());
+        assert_eq!(
+            cache.before_request.as_ref().unwrap().etag,
+            Some("before".to_string())
+        );
+    }
+
+    #[test]
+    fn h0_har_77_timings_with_comment() {
+        let mut timings = HarTimings::new();
+        timings.comment = Some("Timing comment".to_string());
+        assert!(timings.comment.is_some());
+    }
+
+    #[test]
+    fn h0_har_78_entry_optional_fields() {
+        let mut entry = HarEntry::new(HarRequest::get("http://test.com"), HarResponse::ok());
+        entry.connection = Some("1234".to_string());
+        entry.comment = Some("Entry comment".to_string());
+
+        assert_eq!(entry.connection, Some("1234".to_string()));
+        assert!(entry.comment.is_some());
+    }
+
+    #[test]
+    fn h0_har_79_browser_with_comment() {
+        let mut browser = HarBrowser::new("Chrome", "120.0");
+        browser.comment = Some("Browser comment".to_string());
+        assert!(browser.comment.is_some());
+    }
+
+    #[test]
+    fn h0_har_80_creator_has_version() {
+        let creator = HarCreator::probar();
+        assert_eq!(creator.name, "Probar");
+        // Version should be cargo package version
+        assert!(!creator.version.is_empty());
+        assert!(creator.comment.is_none());
+    }
+
+    #[test]
+    fn h0_har_81_header_with_comment() {
+        let mut header = HarHeader::new("Content-Type", "application/json");
+        header.comment = Some("Header comment".to_string());
+        assert!(header.comment.is_some());
+    }
+
+    #[test]
+    fn h0_har_82_query_param_with_comment() {
+        let mut param = HarQueryParam::new("page", "1");
+        param.comment = Some("Pagination".to_string());
+        assert!(param.comment.is_some());
+    }
+
+    #[test]
+    fn h0_har_83_post_data_with_comment() {
+        let mut data = HarPostData::json(r#"{"test": true}"#);
+        data.comment = Some("POST body".to_string());
+        assert!(data.comment.is_some());
+    }
+
+    #[test]
+    fn h0_har_84_request_with_comment() {
+        let mut req = HarRequest::get("http://test.com");
+        req.comment = Some("Test request".to_string());
+        assert!(req.comment.is_some());
+    }
+
+    #[test]
+    fn h0_har_85_response_with_comment() {
+        let mut resp = HarResponse::ok();
+        resp.comment = Some("Test response".to_string());
+        assert!(resp.comment.is_some());
+    }
+
+    #[test]
+    fn h0_har_86_serialization_with_all_optional_fields() {
+        let mut har = Har::new();
+        har.log.browser = Some(HarBrowser::new("Chrome", "120.0"));
+        har.log.comment = Some("Test log".to_string());
+
+        let mut entry = HarEntry::new(HarRequest::get("http://test.com"), HarResponse::ok())
+            .with_server_ip("127.0.0.1")
+            .with_time(100.0);
+        entry.connection = Some("conn-1".to_string());
+        entry.comment = Some("Entry".to_string());
+
+        har.add_entry(entry);
+
+        // Serialize and deserialize
+        let json = har.to_json().unwrap();
+        let parsed = Har::from_json(&json).unwrap();
+
+        assert!(parsed.log.browser.is_some());
+        assert!(parsed.log.comment.is_some());
+        assert_eq!(parsed.entry_count(), 1);
+    }
+
+    #[test]
+    fn h0_har_87_timings_zero_values() {
+        let mut timings = HarTimings::new();
+        timings.blocked = 0.0; // Zero, not negative
+        timings.dns = 0.0;
+        timings.connect = 0.0;
+        timings.send = 0.0;
+        timings.wait = 0.0;
+        timings.receive = 0.0;
+        // Zero values for blocked/dns/connect should NOT be added (only > 0)
+        assert!((timings.total() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn h0_har_88_url_pattern_with_slashes() {
+        // Pattern with leading/trailing slashes should be trimmed
+        assert!(url_matches_pattern(
+            "http://test.com/api/v1/users",
+            "/api/v1/"
+        ));
+        assert!(url_matches_pattern(
+            "http://test.com/api/v1/users",
+            "api/v1"
+        ));
+    }
+
+    #[test]
+    fn h0_har_89_find_matching_partial_pattern() {
+        let mut har = Har::new();
+        har.add_entry(HarEntry::new(
+            HarRequest::get("http://example.com/users/123"),
+            HarResponse::ok(),
+        ));
+        har.add_entry(HarEntry::new(
+            HarRequest::get("http://other.com/posts"),
+            HarResponse::ok(),
+        ));
+        // Pattern "users" should match first entry
+        let matches = har.find_matching("users");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].request.url, "http://example.com/users/123");
+    }
+
+    #[test]
+    fn h0_har_90_not_found_behavior_equality() {
+        assert_eq!(NotFoundBehavior::Abort, NotFoundBehavior::Abort);
+        assert_eq!(NotFoundBehavior::Fallback, NotFoundBehavior::Fallback);
+        assert_ne!(NotFoundBehavior::Abort, NotFoundBehavior::Fallback);
+    }
 }

@@ -1674,7 +1674,7 @@ mod tests {
             let config = SvgConfig::new(1024, 768)
                 .with_title("Test Title")
                 .with_description("Test Desc");
-            let cloned = config.clone();
+            let cloned = config;
             assert_eq!(cloned.viewbox, (1024, 768));
             assert_eq!(cloned.title, Some("Test Title".to_string()));
             assert_eq!(cloned.description, Some("Test Desc".to_string()));
@@ -1690,7 +1690,7 @@ mod tests {
         #[test]
         fn test_svg_shape_clone() {
             let shape = SvgShape::rect(10.0, 20.0, 100.0, 50.0).with_fill("blue");
-            let cloned = shape.clone();
+            let cloned = shape;
             if let SvgShape::Rect { x, y, fill, .. } = cloned {
                 assert!((x - 10.0).abs() < f64::EPSILON);
                 assert!((y - 20.0).abs() < f64::EPSILON);

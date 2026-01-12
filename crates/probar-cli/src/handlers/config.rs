@@ -35,7 +35,9 @@ pub fn set_config_value(setting: &str) {
         println!("Setting {key} = {value}");
         // Config persistence would require a config file (e.g., .probar.toml)
         // For now, settings are applied via CLI flags only
-        println!("Note: Settings are applied via CLI flags. Use environment variables for persistence.");
+        println!(
+            "Note: Settings are applied via CLI flags. Use environment variables for persistence."
+        );
     } else {
         eprintln!("Invalid setting format. Use: key=value");
     }
@@ -53,13 +55,13 @@ pub fn print_default_config() {
 }
 
 /// Parse a config setting string into key-value pair
-#[must_use] 
+#[must_use]
 pub fn parse_setting(setting: &str) -> Option<(&str, &str)> {
     setting.split_once('=')
 }
 
 /// Validate a config key
-#[must_use] 
+#[must_use]
 pub fn is_valid_config_key(key: &str) -> bool {
     matches!(
         key,

@@ -2072,4 +2072,581 @@ mod tests {
         assert!(!result.matches, "Different dimensions should not match");
         assert_eq!(result.diff_percentage, 100.0);
     }
+
+    // =========================================================================
+    // Additional Coverage Tests (H₀-COV-XX)
+    // =========================================================================
+
+    #[test]
+    fn h0_cov_01_terminal_from_tracker() {
+        // Test TerminalHeatmap::from_tracker
+        let tracker = super::super::tracker::PixelCoverageTracker::new(100, 100, 5, 5);
+        let heatmap = TerminalHeatmap::from_tracker(&tracker);
+        let rendered = heatmap.render();
+        // Should render 5 rows
+        assert_eq!(rendered.lines().count(), 5);
+    }
+
+    #[test]
+    fn h0_cov_02_terminal_with_palette() {
+        let cells = vec![vec![0.5, 1.0], vec![0.0, 0.25]];
+        let heatmap = TerminalHeatmap::from_values(cells)
+            .with_palette(ColorPalette::traffic_light())
+            .without_color();
+        let rendered = heatmap.render();
+        assert!(rendered.contains('▒')); // 50% coverage
+        assert!(rendered.contains('█')); // 100% coverage
+    }
+
+    #[test]
+    fn h0_cov_03_terminal_render_with_color() {
+        let cells = vec![vec![0.0, 0.5, 1.0]];
+        let heatmap = TerminalHeatmap::from_values(cells);
+        // use_color is true by default
+        let rendered = heatmap.render();
+        // Should contain ANSI escape sequences
+        assert!(rendered.contains("\x1b[38;2;"));
+        assert!(rendered.contains("\x1b[0m"));
+    }
+
+    #[test]
+    fn h0_cov_04_terminal_border_with_color() {
+        let cells = vec![vec![0.5, 1.0]];
+        let heatmap = TerminalHeatmap::from_values(cells);
+        let rendered = heatmap.render_with_border();
+        // Should contain border chars and ANSI sequences
+        assert!(rendered.contains('┌'));
+        assert!(rendered.contains("\x1b[38;2;"));
+    }
+
+    #[test]
+    fn h0_cov_05_terminal_legend_with_color() {
+        let cells = vec![vec![1.0]];
+        let heatmap = TerminalHeatmap::from_values(cells);
+        let legend = heatmap.legend();
+        // Should contain ANSI escape sequences in legend
+        assert!(legend.contains("\x1b[38;2;"));
+        assert!(legend.contains("Legend:"));
+    }
+
+    #[test]
+    fn h0_cov_06_terminal_empty_cells_border() {
+        let cells: Vec<Vec<f32>> = vec![];
+        let heatmap = TerminalHeatmap::from_values(cells).without_color();
+        let rendered = heatmap.render_with_border();
+        // Should still render borders with width 0
+        assert!(rendered.contains('┌'));
+        assert!(rendered.contains('└'));
+    }
+
+    #[test]
+    fn h0_cov_07_png_with_margin() {
+        let cells = vec![vec![CoverageCell {
+            coverage: 0.5,
+            hit_count: 5,
+        }]];
+        let png = PngHeatmap::new(200, 200)
+            .with_margin(60)
+            .export(&cells)
+            .unwrap();
+        assert!(!png.is_empty());
+        assert_eq!(&png[0..8], &[137, 80, 78, 71, 13, 10, 26, 10]);
+    }
+
+    #[test]
+    fn h0_cov_08_png_with_background() {
+        let cells = vec![vec![CoverageCell {
+            coverage: 0.5,
+            hit_count: 5,
+        }]];
+        let png = PngHeatmap::new(200, 200)
+            .with_background(Rgb::new(0, 0, 0)) // Black background
+            .export(&cells)
+            .unwrap();
+        assert!(!png.is_empty());
+    }
+
+    #[test]
+    fn h0_cov_09_png_with_border_color() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5,
+                };
+                3
+            ];
+            3
+        ];
+        let png = PngHeatmap::new(200, 200)
+            .with_border_color(Rgb::new(255, 0, 0)) // Red borders
+            .export(&cells)
+            .unwrap();
+        assert!(!png.is_empty());
+    }
+
+    #[test]
+    fn h0_cov_10_bitmap_font_dimensions() {
+        let font = BitmapFont::default();
+        assert_eq!(font.char_width(), 5);
+        assert_eq!(font.char_height(), 7);
+        assert_eq!(font.spacing(), 1);
+    }
+
+    #[test]
+    fn h0_cov_11_bitmap_font_empty_text_width() {
+        let font = BitmapFont::default();
+        assert_eq!(font.text_width(""), 0);
+    }
+
+    #[test]
+    fn h0_cov_12_bitmap_font_single_char_width() {
+        let font = BitmapFont::default();
+        let width = font.text_width("A");
+        assert_eq!(width, 5); // Just char_width, no spacing
+    }
+
+    #[test]
+    fn h0_cov_13_bitmap_font_punctuation() {
+        let font = BitmapFont::default();
+        // Test all punctuation characters
+        let chars = [
+            '.', ',', ':', '-', '_', '/', '%', '(', ')', '=', '+', '*', '!', '?', ' ',
+        ];
+        for c in chars {
+            let glyph = font.glyph(c);
+            assert_eq!(glyph.len(), 35, "Glyph for '{}' should have 35 bits", c);
+        }
+    }
+
+    #[test]
+    fn h0_cov_14_bitmap_font_lowercase_to_uppercase() {
+        let font = BitmapFont::default();
+        // Lowercase should map to uppercase
+        let upper = font.glyph('A');
+        let lower = font.glyph('a');
+        assert_eq!(upper, lower, "Lowercase should map to uppercase");
+    }
+
+    #[test]
+    fn h0_cov_15_bitmap_font_all_uppercase() {
+        let font = BitmapFont::default();
+        for c in 'A'..='Z' {
+            let glyph = font.glyph(c);
+            // Each glyph should have some pixels set (not all false)
+            assert!(
+                glyph.iter().any(|&b| b),
+                "Glyph for '{}' should have some pixels",
+                c
+            );
+        }
+    }
+
+    #[test]
+    fn h0_cov_16_rgb_lerp_clamping() {
+        let black = Rgb::new(0, 0, 0);
+        let white = Rgb::new(255, 255, 255);
+
+        // Test clamping at negative values
+        let below = Rgb::lerp(black, white, -1.0);
+        assert_eq!(below, black);
+
+        // Test clamping above 1.0
+        let above = Rgb::lerp(black, white, 2.0);
+        assert_eq!(above, white);
+    }
+
+    #[test]
+    fn h0_cov_17_color_palette_default() {
+        let default = ColorPalette::default();
+        let viridis = ColorPalette::viridis();
+        assert_eq!(default.zero, viridis.zero);
+        assert_eq!(default.full, viridis.full);
+    }
+
+    #[test]
+    fn h0_cov_18_svg_with_palette() {
+        let cells = vec![vec![CoverageCell {
+            coverage: 0.5,
+            hit_count: 5,
+        }]];
+        let svg = SvgHeatmap::new(100, 100)
+            .with_palette(ColorPalette::magma())
+            .export(&cells);
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("</svg>"));
+    }
+
+    #[test]
+    fn h0_cov_19_reference_gap_cells_small() {
+        use super::visual_regression::*;
+        // Test with small grid that won't have gaps at division points
+        let cells = reference_gap_cells(2, 2);
+        assert_eq!(cells.len(), 2);
+        assert_eq!(cells[0].len(), 2);
+    }
+
+    #[test]
+    fn h0_cov_20_reference_gap_cells_medium() {
+        use super::visual_regression::*;
+        // Test with grid large enough for first gap but not second
+        let cells = reference_gap_cells(3, 3);
+        // rows/2 = 1, cols/2 = 1 -> gap at (1,1)
+        assert_eq!(cells[1][1].coverage, 0.0);
+        assert_eq!(cells[1][1].hit_count, 0);
+    }
+
+    #[test]
+    fn h0_cov_21_stats_panel_fields() {
+        let panel = StatsPanel {
+            line_coverage: 85.5,
+            pixel_coverage: 90.2,
+            overall_score: 87.85,
+            line_details: (17, 20),
+            pixel_details: (45, 50),
+            meets_threshold: true,
+        };
+        assert!((panel.line_coverage - 85.5).abs() < 0.01);
+        assert!((panel.pixel_coverage - 90.2).abs() < 0.01);
+        assert!((panel.overall_score - 87.85).abs() < 0.01);
+        assert_eq!(panel.line_details, (17, 20));
+        assert_eq!(panel.pixel_details, (45, 50));
+        assert!(panel.meets_threshold);
+    }
+
+    #[test]
+    fn h0_cov_22_stats_panel_fail_threshold() {
+        use super::super::tracker::{
+            CombinedCoverageReport, LineCoverageReport, PixelCoverageReport,
+        };
+
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.3,
+                    hit_count: 3,
+                };
+                5
+            ];
+            5
+        ];
+
+        // Create report that fails threshold
+        let line_report = LineCoverageReport::new(0.5, 0.5, 0.5, 10, 5);
+        let pixel_report = PixelCoverageReport {
+            overall_coverage: 0.3,
+            covered_cells: 15,
+            total_cells: 50,
+            ..Default::default()
+        };
+        let combined = CombinedCoverageReport::from_parts(line_report, pixel_report);
+
+        let png = PngHeatmap::new(400, 400)
+            .with_combined_stats(&combined)
+            .export(&cells)
+            .unwrap();
+
+        assert!(!png.is_empty());
+    }
+
+    #[test]
+    fn h0_cov_23_empty_subtitle() {
+        let cells = vec![vec![CoverageCell {
+            coverage: 0.5,
+            hit_count: 5,
+        }]];
+        let png = PngHeatmap::new(200, 200)
+            .with_subtitle("")
+            .export(&cells)
+            .unwrap();
+        assert!(!png.is_empty());
+    }
+
+    #[test]
+    fn h0_cov_24_title_and_subtitle() {
+        let cells = vec![vec![CoverageCell {
+            coverage: 0.5,
+            hit_count: 5,
+        }]];
+        let png = PngHeatmap::new(400, 300)
+            .with_title("Title")
+            .with_subtitle("Subtitle")
+            .export(&cells)
+            .unwrap();
+        assert!(!png.is_empty());
+    }
+
+    #[test]
+    fn h0_cov_25_coverage_boundaries() {
+        // Test exact boundary values for color_for_coverage
+        let palette = ColorPalette::viridis();
+
+        // Negative coverage
+        assert_eq!(palette.color_for_coverage(-0.1), palette.zero);
+
+        // Exactly 0.25
+        assert_eq!(palette.color_for_coverage(0.25), palette.low);
+
+        // Exactly 0.50
+        assert_eq!(palette.color_for_coverage(0.50), palette.medium);
+
+        // Exactly 0.75
+        assert_eq!(palette.color_for_coverage(0.75), palette.high);
+
+        // Above 0.75
+        assert_eq!(palette.color_for_coverage(0.76), palette.full);
+    }
+
+    #[test]
+    fn h0_cov_26_coverage_to_char_boundaries() {
+        // Test exact boundary values
+        assert_eq!(TerminalHeatmap::coverage_to_char(-0.1), ' ');
+        assert_eq!(TerminalHeatmap::coverage_to_char(0.25), '░');
+        assert_eq!(TerminalHeatmap::coverage_to_char(0.26), '▒');
+        assert_eq!(TerminalHeatmap::coverage_to_char(0.50), '▒');
+        assert_eq!(TerminalHeatmap::coverage_to_char(0.51), '▓');
+        assert_eq!(TerminalHeatmap::coverage_to_char(0.75), '▓');
+        assert_eq!(TerminalHeatmap::coverage_to_char(0.76), '█');
+    }
+
+    #[test]
+    fn h0_cov_27_interpolate_mid_segment() {
+        let palette = ColorPalette::viridis();
+
+        // Test interpolation within a segment (not at boundaries)
+        let c = palette.interpolate(0.125); // Middle of 0-0.25 segment
+                                            // Should be between zero and low
+        assert_ne!(c, palette.zero);
+        assert_ne!(c, palette.low);
+    }
+
+    #[test]
+    fn h0_cov_28_reference_gradient_single_cell() {
+        use super::visual_regression::*;
+        // Single cell grid (edge case with max(1) divisor)
+        let cells = reference_gradient_cells(1, 1);
+        assert_eq!(cells.len(), 1);
+        assert_eq!(cells[0].len(), 1);
+        // Coverage should be 0.0 (row=0, col=0, divided by max(1)=1)
+        assert!((cells[0][0].coverage - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn h0_cov_29_png_borders_disabled() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5,
+                };
+                3
+            ];
+            3
+        ];
+        let png = PngHeatmap::new(200, 200)
+            .with_borders(false)
+            .export(&cells)
+            .unwrap();
+        assert!(!png.is_empty());
+    }
+
+    #[test]
+    fn h0_cov_30_png_all_options() {
+        use super::super::tracker::{
+            CombinedCoverageReport, LineCoverageReport, PixelCoverageReport,
+        };
+
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0,
+                },
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5,
+                },
+            ],
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10,
+                },
+                CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0,
+                },
+            ],
+        ];
+
+        let line_report = LineCoverageReport::new(0.9, 0.95, 0.85, 20, 18);
+        let pixel_report = PixelCoverageReport {
+            overall_coverage: 0.5,
+            covered_cells: 2,
+            total_cells: 4,
+            ..Default::default()
+        };
+        let combined = CombinedCoverageReport::from_parts(line_report, pixel_report);
+
+        let png = PngHeatmap::new(600, 500)
+            .with_palette(ColorPalette::traffic_light())
+            .with_title("Full Options Test")
+            .with_subtitle("All features enabled")
+            .with_legend()
+            .with_gap_highlighting()
+            .with_borders(true)
+            .with_margin(50)
+            .with_background(Rgb::new(240, 240, 240))
+            .with_border_color(Rgb::new(100, 100, 100))
+            .with_combined_stats(&combined)
+            .export(&cells)
+            .unwrap();
+
+        assert!(!png.is_empty());
+        assert_eq!(&png[0..8], &[137, 80, 78, 71, 13, 10, 26, 10]);
+    }
+
+    #[test]
+    fn h0_cov_31_rgb_new() {
+        let color = Rgb::new(128, 64, 32);
+        assert_eq!(color.r, 128);
+        assert_eq!(color.g, 64);
+        assert_eq!(color.b, 32);
+    }
+
+    #[test]
+    fn h0_cov_32_comparison_result_fields() {
+        use super::visual_regression::*;
+
+        let cells = reference_uniform_cells(5, 5, 0.5);
+        let png = PngHeatmap::new(200, 200).export(&cells).unwrap();
+        let result = compare_png_with_tolerance(&png, &png, 0).unwrap();
+
+        // Verify all fields are accessible
+        assert!(result.matches);
+        assert_eq!(result.diff_count, 0);
+        assert_eq!(result.max_diff, 0);
+        assert!((result.diff_percentage - 0.0).abs() < 0.001);
+        assert!(result.total_pixels > 0);
+    }
+
+    #[test]
+    fn h0_cov_33_checksum_determinism() {
+        use super::visual_regression::*;
+
+        let data1 = vec![1, 2, 3, 4, 5];
+        let data2 = vec![1, 2, 3, 4, 5];
+        let data3 = vec![5, 4, 3, 2, 1];
+
+        assert_eq!(compute_checksum(&data1), compute_checksum(&data2));
+        assert_ne!(compute_checksum(&data1), compute_checksum(&data3));
+    }
+
+    #[test]
+    fn h0_cov_34_svg_multiple_cells() {
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 0.0,
+                    hit_count: 0,
+                },
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5,
+                },
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10,
+                },
+            ],
+            vec![
+                CoverageCell {
+                    coverage: 0.25,
+                    hit_count: 2,
+                },
+                CoverageCell {
+                    coverage: 0.75,
+                    hit_count: 7,
+                },
+                CoverageCell {
+                    coverage: 0.5,
+                    hit_count: 5,
+                },
+            ],
+        ];
+
+        let svg = SvgHeatmap::new(300, 200).export(&cells);
+
+        // Should have 6 rect elements (2 rows x 3 cols)
+        let rect_count = svg.matches("<rect").count();
+        assert_eq!(rect_count, 6);
+    }
+
+    #[test]
+    fn h0_cov_35_bitmap_font_render_bounds() {
+        use image::{ImageBuffer, RgbImage};
+
+        let font = BitmapFont::default();
+        let mut img: RgbImage = ImageBuffer::new(10, 10);
+
+        // Try to render text that would overflow bounds
+        font.render_text(&mut img, "HELLO WORLD TEST", 5, 5, Rgb::new(0, 0, 0));
+
+        // Should not panic - pixels outside bounds are simply skipped
+    }
+
+    #[test]
+    fn h0_cov_36_interpolate_at_segment_boundaries() {
+        let palette = ColorPalette::viridis();
+
+        // Test values just below boundaries
+        let c1 = palette.interpolate(0.249);
+        let c2 = palette.interpolate(0.251);
+        // These should be in different segments, producing different interpolations
+        assert!(c1.r != c2.r || c1.g != c2.g || c1.b != c2.b);
+    }
+
+    #[test]
+    fn h0_cov_37_heatmap_renderer_trait() {
+        // Test that HeatmapRenderer trait is properly defined
+        struct TestRenderer;
+        impl HeatmapRenderer for TestRenderer {
+            fn render(&self, cells: &[Vec<CoverageCell>]) -> String {
+                format!("{}x{}", cells.len(), cells.first().map_or(0, Vec::len))
+            }
+        }
+
+        let cells = vec![
+            vec![
+                CoverageCell {
+                    coverage: 1.0,
+                    hit_count: 10,
+                };
+                3
+            ];
+            2
+        ];
+        let renderer = TestRenderer;
+        assert_eq!(renderer.render(&cells), "2x3");
+    }
+
+    #[test]
+    fn h0_cov_38_terminal_multiple_rows() {
+        let cells = vec![
+            vec![0.0, 0.1, 0.2],
+            vec![0.3, 0.4, 0.5],
+            vec![0.6, 0.7, 0.8],
+            vec![0.9, 1.0, 0.0],
+        ];
+        let heatmap = TerminalHeatmap::from_values(cells).without_color();
+        let rendered = heatmap.render();
+
+        // Should have 4 lines
+        assert_eq!(rendered.lines().count(), 4);
+
+        // Each line should have 3 characters
+        for line in rendered.lines() {
+            assert_eq!(line.chars().count(), 3);
+        }
+    }
 }

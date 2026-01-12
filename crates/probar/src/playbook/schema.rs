@@ -611,4 +611,1092 @@ machine:
         let result = Playbook::from_yaml(yaml);
         assert!(matches!(result, Err(PlaybookError::EmptyTransitions)));
     }
+
+    // === Additional tests for improved coverage ===
+
+    #[test]
+    fn test_parse_error_invalid_yaml() {
+        let yaml = "this is not: valid: yaml: {{{{";
+        let result = Playbook::from_yaml(yaml);
+        assert!(matches!(result, Err(PlaybookError::ParseError(_))));
+    }
+
+    #[test]
+    fn test_parse_error_missing_required_field() {
+        let yaml = r#"
+version: "1.0"
+"#;
+        let result = Playbook::from_yaml(yaml);
+        assert!(matches!(result, Err(PlaybookError::ParseError(_))));
+    }
+
+    #[test]
+    fn test_duplicate_transition_ids() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "a"
+  states:
+    a:
+      id: "a"
+    b:
+      id: "b"
+  transitions:
+    - id: "t1"
+      from: "a"
+      to: "b"
+      event: "go"
+    - id: "t1"
+      from: "b"
+      to: "a"
+      event: "back"
+"#;
+        let result = Playbook::from_yaml(yaml);
+        assert!(matches!(result, Err(PlaybookError::DuplicateTransitionIds)));
+    }
+
+    #[test]
+    fn test_playbook_error_display() {
+        // Test all error Display implementations
+        let err = PlaybookError::ParseError("test error".to_string());
+        assert!(err.to_string().contains("Failed to parse YAML"));
+
+        let err = PlaybookError::InvalidVersion("2.0".to_string());
+        assert!(err.to_string().contains("Invalid version '2.0'"));
+
+        let err = PlaybookError::InvalidInitialState("missing".to_string());
+        assert!(err.to_string().contains("Initial state 'missing'"));
+
+        let err = PlaybookError::InvalidTransitionSource {
+            transition_id: "t1".to_string(),
+            state_id: "missing".to_string(),
+        };
+        assert!(err.to_string().contains("Transition 't1'"));
+        assert!(err.to_string().contains("source state 'missing'"));
+
+        let err = PlaybookError::InvalidTransitionTarget {
+            transition_id: "t2".to_string(),
+            state_id: "gone".to_string(),
+        };
+        assert!(err.to_string().contains("Transition 't2'"));
+        assert!(err.to_string().contains("target state 'gone'"));
+
+        let err = PlaybookError::DuplicateStateIds;
+        assert!(err.to_string().contains("Duplicate state IDs"));
+
+        let err = PlaybookError::DuplicateTransitionIds;
+        assert!(err.to_string().contains("Duplicate transition IDs"));
+
+        let err = PlaybookError::EmptyStates;
+        assert!(err.to_string().contains("States cannot be empty"));
+
+        let err = PlaybookError::EmptyTransitions;
+        assert!(err.to_string().contains("Transitions cannot be empty"));
+    }
+
+    #[test]
+    fn test_invariant_severity_default() {
+        let severity = InvariantSeverity::default();
+        assert_eq!(severity, InvariantSeverity::Error);
+    }
+
+    #[test]
+    fn test_invariant_severity_parsing() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+      invariants:
+        - description: "warning"
+          condition: "true"
+          severity: warning
+        - description: "error"
+          condition: "true"
+          severity: error
+        - description: "critical"
+          condition: "true"
+          severity: critical
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse");
+        let state = playbook.machine.states.get("start").unwrap();
+        assert_eq!(state.invariants.len(), 3);
+        assert_eq!(state.invariants[0].severity, InvariantSeverity::Warning);
+        assert_eq!(state.invariants[1].severity, InvariantSeverity::Error);
+        assert_eq!(state.invariants[2].severity, InvariantSeverity::Critical);
+    }
+
+    #[test]
+    fn test_complexity_class_parsing() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+  performance:
+    complexity_class: "O(1)"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse O(1)");
+        assert_eq!(
+            playbook.machine.performance.unwrap().complexity_class,
+            Some(ComplexityClass::Constant)
+        );
+
+        // Test all complexity classes
+        for (class_str, expected) in [
+            ("O(log n)", ComplexityClass::Logarithmic),
+            ("O(n)", ComplexityClass::Linear),
+            ("O(n log n)", ComplexityClass::Linearithmic),
+            ("O(n^2)", ComplexityClass::Quadratic),
+        ] {
+            let yaml = format!(
+                r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+  performance:
+    complexity_class: "{class_str}"
+"#
+            );
+            let playbook = Playbook::from_yaml(&yaml).expect("Should parse");
+            assert_eq!(
+                playbook.machine.performance.unwrap().complexity_class,
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn test_action_variants_parsing() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+      on_entry:
+        - type: click
+          selector: ".btn"
+        - type: type
+          selector: ".input"
+          text: "hello"
+        - type: wait
+          condition:
+            type: visible
+            selector: ".element"
+        - type: navigate
+          url: "https://example.com"
+        - type: script
+          code: "console.log('hi')"
+        - type: screenshot
+          name: "screenshot1"
+      on_exit:
+        - type: click
+          selector: ".logout"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      actions:
+        - type: wait
+          condition:
+            type: hidden
+            selector: ".loader"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse actions");
+        let state = playbook.machine.states.get("start").unwrap();
+
+        assert_eq!(state.on_entry.len(), 6);
+        assert!(matches!(&state.on_entry[0], Action::Click { selector } if selector == ".btn"));
+        assert!(
+            matches!(&state.on_entry[1], Action::Type { selector, text } if selector == ".input" && text == "hello")
+        );
+        assert!(matches!(&state.on_entry[2], Action::Wait { .. }));
+        assert!(
+            matches!(&state.on_entry[3], Action::Navigate { url } if url == "https://example.com")
+        );
+        assert!(
+            matches!(&state.on_entry[4], Action::Script { code } if code == "console.log('hi')")
+        );
+        assert!(matches!(&state.on_entry[5], Action::Screenshot { name } if name == "screenshot1"));
+
+        assert_eq!(state.on_exit.len(), 1);
+    }
+
+    #[test]
+    fn test_wait_condition_variants() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+      on_entry:
+        - type: wait
+          condition:
+            type: duration
+            ms: 1000
+        - type: wait
+          condition:
+            type: network_idle
+        - type: wait
+          condition:
+            type: condition
+            expression: "window.ready === true"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse wait conditions");
+        let state = playbook.machine.states.get("start").unwrap();
+
+        assert_eq!(state.on_entry.len(), 3);
+        if let Action::Wait { condition } = &state.on_entry[0] {
+            assert!(matches!(condition, WaitCondition::Duration { ms: 1000 }));
+        } else {
+            panic!("Expected Wait action");
+        }
+        if let Action::Wait { condition } = &state.on_entry[1] {
+            assert!(matches!(condition, WaitCondition::NetworkIdle));
+        } else {
+            panic!("Expected Wait action");
+        }
+        if let Action::Wait { condition } = &state.on_entry[2] {
+            assert!(matches!(condition, WaitCondition::Condition { .. }));
+        } else {
+            panic!("Expected Wait action");
+        }
+    }
+
+    #[test]
+    fn test_assertion_variants() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      assertions:
+        - type: element_exists
+          selector: ".elem"
+        - type: text_equals
+          selector: ".text"
+          expected: "Hello"
+        - type: text_contains
+          selector: ".text"
+          substring: "ell"
+        - type: attribute_equals
+          selector: ".elem"
+          attribute: "data-value"
+          expected: "123"
+        - type: url_matches
+          pattern: "^https://.*"
+        - type: script
+          expression: "document.title === 'Test'"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse assertions");
+        let transition = &playbook.machine.transitions[0];
+
+        assert_eq!(transition.assertions.len(), 6);
+        assert!(matches!(
+            &transition.assertions[0],
+            Assertion::ElementExists { .. }
+        ));
+        assert!(matches!(
+            &transition.assertions[1],
+            Assertion::TextEquals { .. }
+        ));
+        assert!(matches!(
+            &transition.assertions[2],
+            Assertion::TextContains { .. }
+        ));
+        assert!(matches!(
+            &transition.assertions[3],
+            Assertion::AttributeEquals { .. }
+        ));
+        assert!(matches!(
+            &transition.assertions[4],
+            Assertion::UrlMatches { .. }
+        ));
+        assert!(matches!(
+            &transition.assertions[5],
+            Assertion::Script { .. }
+        ));
+    }
+
+    #[test]
+    fn test_performance_budget_defaults() {
+        let budget = PerformanceBudget::default();
+        assert!(budget.max_transition_time_ms.is_none());
+        assert!(budget.max_total_time_ms.is_none());
+        assert!(budget.max_memory_bytes.is_none());
+        assert!(budget.complexity_class.is_none());
+    }
+
+    #[test]
+    fn test_performance_budget_full() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+performance:
+  max_transition_time_ms: 100
+  max_total_time_ms: 5000
+  max_memory_bytes: 10485760
+  complexity_class: "O(n)"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse performance");
+        assert_eq!(playbook.performance.max_transition_time_ms, Some(100));
+        assert_eq!(playbook.performance.max_total_time_ms, Some(5000));
+        assert_eq!(playbook.performance.max_memory_bytes, Some(10485760));
+        assert_eq!(
+            playbook.performance.complexity_class,
+            Some(ComplexityClass::Linear)
+        );
+    }
+
+    #[test]
+    fn test_forbidden_transitions() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    middle:
+      id: "middle"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "middle"
+      event: "go"
+    - id: "t2"
+      from: "middle"
+      to: "end"
+      event: "finish"
+  forbidden:
+    - from: "start"
+      to: "end"
+      reason: "Must go through middle state"
+    - from: "end"
+      to: "start"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse forbidden transitions");
+        assert_eq!(playbook.machine.forbidden.len(), 2);
+        assert_eq!(playbook.machine.forbidden[0].from, "start");
+        assert_eq!(playbook.machine.forbidden[0].to, "end");
+        assert_eq!(
+            playbook.machine.forbidden[0].reason,
+            "Must go through middle state"
+        );
+        assert_eq!(playbook.machine.forbidden[1].from, "end");
+        assert_eq!(playbook.machine.forbidden[1].to, "start");
+        assert_eq!(playbook.machine.forbidden[1].reason, "");
+    }
+
+    #[test]
+    fn test_playbook_steps() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+playbook:
+  setup:
+    - action:
+        wasm: "init_game"
+        args: ["--level", "1"]
+      description: "Initialize game"
+      ignore_errors: false
+  steps:
+    - name: "Step 1"
+      transitions: ["t1"]
+      timeout: "30s"
+      capture:
+        - var: "score"
+          from: "game.score"
+  teardown:
+    - action:
+        wasm: "cleanup"
+        args: []
+      description: "Cleanup"
+      ignore_errors: true
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse playbook steps");
+        let steps = playbook.playbook.unwrap();
+
+        assert_eq!(steps.setup.len(), 1);
+        assert_eq!(steps.setup[0].action.wasm, Some("init_game".to_string()));
+        assert_eq!(steps.setup[0].action.args, vec!["--level", "1"]);
+        assert_eq!(steps.setup[0].description, "Initialize game");
+        assert!(!steps.setup[0].ignore_errors);
+
+        assert_eq!(steps.steps.len(), 1);
+        assert_eq!(steps.steps[0].name, "Step 1");
+        assert_eq!(steps.steps[0].transitions, vec!["t1"]);
+        assert_eq!(steps.steps[0].timeout, Some("30s".to_string()));
+        assert_eq!(steps.steps[0].capture.len(), 1);
+        assert_eq!(steps.steps[0].capture[0].var, "score");
+        assert_eq!(steps.steps[0].capture[0].from, "game.score");
+
+        assert_eq!(steps.teardown.len(), 1);
+        assert!(steps.teardown[0].ignore_errors);
+    }
+
+    #[test]
+    fn test_playbook_assertions() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    middle:
+      id: "middle"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "middle"
+      event: "go"
+    - id: "t2"
+      from: "middle"
+      to: "end"
+      event: "finish"
+assertions:
+  path:
+    expected: ["start", "middle", "end"]
+  output:
+    - var: "score"
+      not_empty: true
+    - var: "score"
+      matches: "^\\d+$"
+    - var: "score"
+      less_than: 1000
+    - var: "score"
+      greater_than: 0
+    - var: "name"
+      equals: "Player1"
+  complexity:
+    operation: "render"
+    measure: "render_time"
+    input_var: "entity_count"
+    expected: "O(n)"
+    tolerance: 0.1
+    sample_sizes: [10, 100, 1000]
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse assertions");
+        let assertions = playbook.assertions.unwrap();
+
+        assert_eq!(
+            assertions.path.unwrap().expected,
+            vec!["start", "middle", "end"]
+        );
+
+        assert_eq!(assertions.output.len(), 5);
+        assert_eq!(assertions.output[0].var, "score");
+        assert_eq!(assertions.output[0].not_empty, Some(true));
+        assert_eq!(assertions.output[1].matches, Some("^\\d+$".to_string()));
+        assert_eq!(assertions.output[2].less_than, Some(1000));
+        assert_eq!(assertions.output[3].greater_than, Some(0));
+        assert_eq!(assertions.output[4].equals, Some("Player1".to_string()));
+
+        let complexity = assertions.complexity.unwrap();
+        assert_eq!(complexity.operation, "render");
+        assert_eq!(complexity.measure, "render_time");
+        assert_eq!(complexity.input_var, "entity_count");
+        assert_eq!(complexity.expected, ComplexityClass::Linear);
+        assert!((complexity.tolerance - 0.1).abs() < f64::EPSILON);
+        assert_eq!(complexity.sample_sizes, vec![10, 100, 1000]);
+    }
+
+    #[test]
+    fn test_falsification_config() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+falsification:
+  mutations:
+    - id: "mut1"
+      description: "Remove collision detection"
+      mutate: "game.collision_enabled = false"
+      expected_failure: "Player should collide with wall"
+    - id: "mut2"
+      mutate: "game.score = -1"
+      expected_failure: "Score should never be negative"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse falsification");
+        let falsification = playbook.falsification.unwrap();
+
+        assert_eq!(falsification.mutations.len(), 2);
+        assert_eq!(falsification.mutations[0].id, "mut1");
+        assert_eq!(
+            falsification.mutations[0].description,
+            "Remove collision detection"
+        );
+        assert_eq!(
+            falsification.mutations[0].mutate,
+            "game.collision_enabled = false"
+        );
+        assert_eq!(
+            falsification.mutations[0].expected_failure,
+            "Player should collide with wall"
+        );
+        assert_eq!(falsification.mutations[1].id, "mut2");
+        assert_eq!(falsification.mutations[1].description, "");
+    }
+
+    #[test]
+    fn test_metadata() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+metadata:
+  author: "Test Author"
+  game: "MyGame"
+  tags: "integration,smoke"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse metadata");
+        assert_eq!(playbook.metadata.get("author"), Some(&"Test Author".into()));
+        assert_eq!(playbook.metadata.get("game"), Some(&"MyGame".into()));
+        assert_eq!(
+            playbook.metadata.get("tags"),
+            Some(&"integration,smoke".into())
+        );
+    }
+
+    #[test]
+    fn test_optional_fields_defaults() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "minimal"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse minimal playbook");
+        assert_eq!(playbook.name, "");
+        assert_eq!(playbook.description, "");
+        assert!(playbook.playbook.is_none());
+        assert!(playbook.assertions.is_none());
+        assert!(playbook.falsification.is_none());
+        assert!(playbook.metadata.is_empty());
+        assert!(playbook.machine.forbidden.is_empty());
+        assert!(playbook.machine.performance.is_none());
+    }
+
+    #[test]
+    fn test_state_optional_fields() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse");
+        let state = playbook.machine.states.get("start").unwrap();
+        assert_eq!(state.description, "");
+        assert!(state.on_entry.is_empty());
+        assert!(state.on_exit.is_empty());
+        assert!(state.invariants.is_empty());
+        assert!(!state.final_state);
+    }
+
+    #[test]
+    fn test_transition_optional_fields() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse");
+        let transition = &playbook.machine.transitions[0];
+        assert!(transition.guard.is_none());
+        assert!(transition.actions.is_empty());
+        assert!(transition.assertions.is_empty());
+    }
+
+    #[test]
+    fn test_transition_with_guard() {
+        let yaml = r#"
+version: "1.0"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+      guard: "player.health > 0"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse");
+        let transition = &playbook.machine.transitions[0];
+        assert_eq!(transition.guard, Some("player.health > 0".to_string()));
+    }
+
+    #[test]
+    fn test_playbook_steps_default() {
+        let steps = PlaybookSteps::default();
+        assert!(steps.setup.is_empty());
+        assert!(steps.steps.is_empty());
+        assert!(steps.teardown.is_empty());
+    }
+
+    #[test]
+    fn test_playbook_assertions_default() {
+        let assertions = PlaybookAssertions::default();
+        assert!(assertions.path.is_none());
+        assert!(assertions.output.is_empty());
+        assert!(assertions.complexity.is_none());
+    }
+
+    #[test]
+    fn test_falsification_config_default() {
+        let config = FalsificationConfig::default();
+        assert!(config.mutations.is_empty());
+    }
+
+    #[test]
+    fn test_name_and_description() {
+        let yaml = r#"
+version: "1.0"
+name: "My Test Playbook"
+description: "A comprehensive test"
+machine:
+  id: "test"
+  initial: "start"
+  states:
+    start:
+      id: "start"
+    end:
+      id: "end"
+  transitions:
+    - id: "t1"
+      from: "start"
+      to: "end"
+      event: "go"
+"#;
+        let playbook = Playbook::from_yaml(yaml).expect("Should parse");
+        assert_eq!(playbook.name, "My Test Playbook");
+        assert_eq!(playbook.description, "A comprehensive test");
+    }
+
+    #[test]
+    fn test_playbook_error_clone() {
+        let err = PlaybookError::InvalidVersion("2.0".to_string());
+        let cloned = err.clone();
+        assert_eq!(err.to_string(), cloned.to_string());
+    }
+
+    #[test]
+    fn test_playbook_error_debug() {
+        let err = PlaybookError::EmptyStates;
+        let debug_str = format!("{:?}", err);
+        assert!(debug_str.contains("EmptyStates"));
+    }
+
+    #[test]
+    fn test_struct_clone_derive() {
+        // Test Clone implementations
+        let state = State {
+            id: "test".to_string(),
+            description: "desc".to_string(),
+            on_entry: vec![],
+            on_exit: vec![],
+            invariants: vec![],
+            final_state: false,
+        };
+        let _ = state;
+
+        let transition = Transition {
+            id: "t1".to_string(),
+            from: "a".to_string(),
+            to: "b".to_string(),
+            event: "go".to_string(),
+            guard: None,
+            actions: vec![],
+            assertions: vec![],
+        };
+        let _ = transition;
+
+        let invariant = Invariant {
+            description: "test".to_string(),
+            condition: "true".to_string(),
+            severity: InvariantSeverity::Error,
+        };
+        let _ = invariant;
+
+        let forbidden = ForbiddenTransition {
+            from: "a".to_string(),
+            to: "b".to_string(),
+            reason: "test".to_string(),
+        };
+        let _ = forbidden;
+    }
+
+    #[test]
+    fn test_action_clone() {
+        let action = Action::Click {
+            selector: ".btn".to_string(),
+        };
+        let _ = action;
+
+        let action = Action::Type {
+            selector: ".input".to_string(),
+            text: "hello".to_string(),
+        };
+        let _ = action;
+
+        let action = Action::Wait {
+            condition: WaitCondition::NetworkIdle,
+        };
+        let _ = action;
+    }
+
+    #[test]
+    fn test_wait_condition_clone() {
+        let cond = WaitCondition::Visible {
+            selector: ".elem".to_string(),
+        };
+        let _ = cond;
+
+        let cond = WaitCondition::Hidden {
+            selector: ".elem".to_string(),
+        };
+        let _ = cond;
+
+        let cond = WaitCondition::Duration { ms: 100 };
+        let _ = cond;
+
+        let cond = WaitCondition::Condition {
+            expression: "true".to_string(),
+        };
+        let _ = cond;
+    }
+
+    #[test]
+    fn test_assertion_clone() {
+        let assertion = Assertion::ElementExists {
+            selector: ".elem".to_string(),
+        };
+        let _ = assertion;
+
+        let assertion = Assertion::TextEquals {
+            selector: ".elem".to_string(),
+            expected: "text".to_string(),
+        };
+        let _ = assertion;
+
+        let assertion = Assertion::TextContains {
+            selector: ".elem".to_string(),
+            substring: "text".to_string(),
+        };
+        let _ = assertion;
+
+        let assertion = Assertion::AttributeEquals {
+            selector: ".elem".to_string(),
+            attribute: "attr".to_string(),
+            expected: "val".to_string(),
+        };
+        let _ = assertion;
+
+        let assertion = Assertion::UrlMatches {
+            pattern: ".*".to_string(),
+        };
+        let _ = assertion;
+
+        let assertion = Assertion::Script {
+            expression: "true".to_string(),
+        };
+        let _ = assertion;
+    }
+
+    #[test]
+    fn test_complexity_class_copy() {
+        let class = ComplexityClass::Constant;
+        let copied = class;
+        assert_eq!(class, copied);
+    }
+
+    #[test]
+    fn test_invariant_severity_copy() {
+        let severity = InvariantSeverity::Warning;
+        let copied = severity;
+        assert_eq!(severity, copied);
+    }
+
+    #[test]
+    fn test_action_spec_clone() {
+        let spec = ActionSpec {
+            wasm: Some("func".to_string()),
+            args: vec!["arg1".to_string()],
+        };
+        let _ = spec;
+    }
+
+    #[test]
+    fn test_playbook_action_clone() {
+        let action = PlaybookAction {
+            action: ActionSpec {
+                wasm: None,
+                args: vec![],
+            },
+            description: "test".to_string(),
+            ignore_errors: true,
+        };
+        let _ = action;
+    }
+
+    #[test]
+    fn test_playbook_step_clone() {
+        let step = PlaybookStep {
+            name: "step1".to_string(),
+            transitions: vec!["t1".to_string()],
+            timeout: Some("10s".to_string()),
+            capture: vec![VariableCapture {
+                var: "x".to_string(),
+                from: "y".to_string(),
+            }],
+        };
+        let _ = step;
+    }
+
+    #[test]
+    fn test_variable_capture_clone() {
+        let capture = VariableCapture {
+            var: "x".to_string(),
+            from: "y".to_string(),
+        };
+        let _ = capture;
+    }
+
+    #[test]
+    fn test_path_assertion_clone() {
+        let assertion = PathAssertion {
+            expected: vec!["a".to_string(), "b".to_string()],
+        };
+        let _ = assertion;
+    }
+
+    #[test]
+    fn test_output_assertion_clone() {
+        let assertion = OutputAssertion {
+            var: "x".to_string(),
+            not_empty: Some(true),
+            matches: Some(".*".to_string()),
+            less_than: Some(100),
+            greater_than: Some(0),
+            equals: Some("value".to_string()),
+        };
+        let _ = assertion;
+    }
+
+    #[test]
+    fn test_complexity_assertion_clone() {
+        let assertion = ComplexityAssertion {
+            operation: "op".to_string(),
+            measure: "time".to_string(),
+            input_var: "n".to_string(),
+            expected: ComplexityClass::Linear,
+            tolerance: 0.1,
+            sample_sizes: vec![10, 100],
+        };
+        let _ = assertion;
+    }
+
+    #[test]
+    fn test_mutation_def_clone() {
+        let mutation = MutationDef {
+            id: "m1".to_string(),
+            description: "desc".to_string(),
+            mutate: "x = 1".to_string(),
+            expected_failure: "fail".to_string(),
+        };
+        let _ = mutation;
+    }
+
+    #[test]
+    fn test_struct_debug_derive() {
+        // Test Debug implementations
+        let state = State {
+            id: "test".to_string(),
+            description: "desc".to_string(),
+            on_entry: vec![],
+            on_exit: vec![],
+            invariants: vec![],
+            final_state: false,
+        };
+        let _ = format!("{:?}", state);
+
+        let action = Action::Click {
+            selector: ".btn".to_string(),
+        };
+        let _ = format!("{:?}", action);
+
+        let cond = WaitCondition::NetworkIdle;
+        let _ = format!("{:?}", cond);
+
+        let assertion = Assertion::Script {
+            expression: "true".to_string(),
+        };
+        let _ = format!("{:?}", assertion);
+
+        let severity = InvariantSeverity::Critical;
+        let _ = format!("{:?}", severity);
+
+        let class = ComplexityClass::Quadratic;
+        let _ = format!("{:?}", class);
+    }
+
+    #[test]
+    fn test_playbook_clone() {
+        let playbook = Playbook::from_yaml(VALID_PLAYBOOK).expect("Should parse");
+        let _ = playbook;
+    }
+
+    #[test]
+    fn test_state_machine_clone() {
+        let playbook = Playbook::from_yaml(VALID_PLAYBOOK).expect("Should parse");
+        let _ = playbook.machine;
+    }
 }

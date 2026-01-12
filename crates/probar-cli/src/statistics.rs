@@ -816,4 +816,165 @@ mod tests {
         assert_eq!(sample.total_ms, 30.0);
         assert_eq!(sample.components.len(), 2);
     }
+
+    #[test]
+    fn test_apdex_reset() {
+        let mut apdex = ApdexCalculator::new(100, 400);
+        apdex.record(50);
+        apdex.record(200);
+        apdex.record(500);
+
+        assert_eq!(apdex.total_count(), 3);
+
+        apdex.reset();
+        assert_eq!(apdex.total_count(), 0);
+        assert_eq!(apdex.satisfied(), 0);
+        assert_eq!(apdex.tolerating(), 0);
+        assert_eq!(apdex.frustrated(), 0);
+    }
+
+    #[test]
+    fn test_apdex_default() {
+        let apdex = ApdexCalculator::default();
+        assert_eq!(apdex.satisfied_threshold_ms, 100);
+        assert_eq!(apdex.tolerating_threshold_ms, 400);
+    }
+
+    #[test]
+    fn test_apdex_rating_fair() {
+        let mut apdex = ApdexCalculator::new(100, 400);
+        // Need score between 0.70 and 0.84
+        // 7 satisfied + 1 tolerating + 2 frustrated = (7 + 0.5) / 10 = 0.75
+        for _ in 0..7 {
+            apdex.record(50); // satisfied
+        }
+        apdex.record(200); // tolerating
+        apdex.record(500); // frustrated
+        apdex.record(600); // frustrated
+
+        assert_eq!(apdex.rating(), ApdexRating::Fair);
+    }
+
+    #[test]
+    fn test_apdex_rating_excellent() {
+        let mut apdex = ApdexCalculator::new(100, 400);
+        // Need score >= 0.94
+        for _ in 0..10 {
+            apdex.record(50); // all satisfied
+        }
+        assert_eq!(apdex.rating(), ApdexRating::Excellent);
+    }
+
+    #[test]
+    fn test_apdex_empty_score() {
+        let apdex = ApdexCalculator::new(100, 400);
+        // Empty = perfect score
+        assert_eq!(apdex.score(), 1.0);
+    }
+
+    #[test]
+    fn test_apdex_rating_all_variants() {
+        assert_eq!(ApdexRating::Excellent.as_str(), "Excellent");
+        assert_eq!(ApdexRating::Good.as_str(), "Good");
+        assert_eq!(ApdexRating::Fair.as_str(), "Fair");
+        assert_eq!(ApdexRating::Poor.as_str(), "Poor");
+        assert_eq!(ApdexRating::Unacceptable.as_str(), "Unacceptable");
+    }
+
+    #[test]
+    fn test_knee_detector_insufficient_points() {
+        let mut detector = KneeDetector::new();
+        detector.add_point(10.0, 50.0);
+        detector.add_point(20.0, 60.0);
+        // Only 2 points, need at least 3
+        detector.detect();
+        assert!(detector.knee_point.is_none());
+    }
+
+    #[test]
+    fn test_knee_detector_default() {
+        let detector = KneeDetector::default();
+        assert!(detector.knee_point.is_none());
+        assert!(detector.recommended_capacity.is_none());
+    }
+
+    #[test]
+    fn test_calculate_variance_empty() {
+        let empty: Vec<f64> = vec![];
+        assert_eq!(calculate_variance(&empty), 0.0);
+    }
+
+    #[test]
+    fn test_calculate_variance_single() {
+        let single = vec![5.0];
+        assert_eq!(calculate_variance(&single), 0.0);
+    }
+
+    #[test]
+    fn test_quantile_regression_default() {
+        let qr = QuantileRegression::default();
+        assert!(qr.attributions.is_empty());
+    }
+
+    #[test]
+    fn test_variance_component_with_child_percentages() {
+        let mut parent = VarianceComponent::new("parent", 100.0);
+        let mut child1 = VarianceComponent::new("child1", 60.0);
+        child1.percentage = 60.0;
+        let mut child2 = VarianceComponent::new("child2", 40.0);
+        child2.percentage = 40.0;
+        parent.add_child(child1);
+        parent.add_child(child2);
+
+        // Recalculate based on total_variance=200.0
+        parent.recalculate_percentages(200.0);
+
+        // Children percentages should be recalculated relative to 200
+        assert_eq!(parent.children[0].percentage, 30.0); // 60/200 * 100
+        assert_eq!(parent.children[1].percentage, 20.0); // 40/200 * 100
+    }
+
+    #[test]
+    fn test_statistical_analysis_all_fields() {
+        let mut analysis = StatisticalAnalysis::new("Full Test");
+
+        // Add variance data
+        analysis
+            .variance_tree
+            .add_component(VarianceComponent::new("A", 100.0));
+        analysis.variance_tree.recalculate_percentages();
+
+        // Add apdex data
+        analysis.apdex.record(50);
+        analysis.apdex.record(200);
+
+        // Add knee detection
+        analysis.knee_detector.add_point(10.0, 50.0);
+        analysis.knee_detector.add_point(20.0, 55.0);
+        analysis.knee_detector.add_point(30.0, 80.0);
+        analysis.knee_detector.detect();
+
+        // Add quantile regression
+        analysis
+            .quantile_regression
+            .add_attribution(TailAttribution::new(95, 200, "Network latency"));
+
+        // Render should include all sections
+        let report = render_statistical_report(&analysis);
+        assert!(report.contains("Full Test"));
+        assert!(report.contains("VARIANCE"));
+        assert!(report.contains("APDEX"));
+    }
+
+    #[test]
+    fn test_tail_attribution_multiple_factors() {
+        let mut attr = TailAttribution::new(99, 500, "High tail latency");
+        attr.add_factor("GC pause", 0.45);
+        attr.add_factor("Network", 0.30);
+        attr.add_factor("Disk I/O", 0.25);
+
+        assert_eq!(attr.contributing_factors.len(), 3);
+        assert_eq!(attr.contributing_factors[0].0, "GC pause");
+        assert!((attr.contributing_factors[0].1 - 0.45).abs() < 0.01);
+    }
 }

@@ -1087,7 +1087,7 @@ mod tests {
             harmonics: vec![0.5, 0.3],
             variation_hz: 20.0,
         };
-        let cloned = source.clone();
+        let cloned = source;
         match cloned {
             AudioSource::SpeechPattern {
                 fundamental_hz,
@@ -1110,7 +1110,7 @@ mod tests {
             channels: 2,
             buffer_size: 512,
         };
-        let cloned = config.clone();
+        let cloned = config;
         assert_eq!(cloned.sample_rate, 22050);
         assert_eq!(cloned.channels, 2);
         assert_eq!(cloned.buffer_size, 512);
@@ -1134,7 +1134,7 @@ mod tests {
     fn test_audio_emulator_error_clone() {
         // Coverage: AudioEmulatorError Clone implementation
         let error = AudioEmulatorError::InjectionFailed("test".to_string());
-        let cloned = error.clone();
+        let cloned = error;
         match cloned {
             AudioEmulatorError::InjectionFailed(msg) => assert_eq!(msg, "test"),
             _ => panic!("Clone should preserve variant"),

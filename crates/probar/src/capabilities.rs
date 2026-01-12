@@ -2000,4 +2000,107 @@ mod tests {
         // State should be preserved after clear
         assert_eq!(emulator.state(), state_before);
     }
+
+    // ========================================================================
+    // Additional coverage tests
+    // ========================================================================
+
+    #[test]
+    fn test_shared_array_buffer_status_available() {
+        let caps = WasmThreadCapabilities::full_support();
+        assert_eq!(
+            caps.shared_array_buffer_status(),
+            CapabilityStatus::Available
+        );
+    }
+
+    #[test]
+    fn test_shared_array_buffer_status_not_secure() {
+        let caps = WasmThreadCapabilities {
+            shared_array_buffer: false,
+            is_secure_context: false,
+            cross_origin_isolated: true,
+            ..Default::default()
+        };
+        match caps.shared_array_buffer_status() {
+            CapabilityStatus::Unavailable(reason) => {
+                assert!(reason.contains("HTTPS"));
+            }
+            _ => panic!("Expected Unavailable"),
+        }
+    }
+
+    #[test]
+    fn test_shared_array_buffer_status_not_cross_origin() {
+        let caps = WasmThreadCapabilities {
+            shared_array_buffer: false,
+            is_secure_context: true,
+            cross_origin_isolated: false,
+            ..Default::default()
+        };
+        match caps.shared_array_buffer_status() {
+            CapabilityStatus::Unavailable(reason) => {
+                assert!(reason.contains("crossOriginIsolated"));
+            }
+            _ => panic!("Expected Unavailable"),
+        }
+    }
+
+    #[test]
+    fn test_shared_array_buffer_status_unknown() {
+        let caps = WasmThreadCapabilities {
+            shared_array_buffer: false,
+            is_secure_context: true,
+            cross_origin_isolated: true,
+            ..Default::default()
+        };
+        match caps.shared_array_buffer_status() {
+            CapabilityStatus::Unavailable(reason) => {
+                assert!(reason.contains("Unknown"));
+            }
+            _ => panic!("Expected Unavailable"),
+        }
+    }
+
+    #[test]
+    fn test_from_json_valid_with_headers() {
+        let json = r#"{
+            "crossOriginIsolated": true,
+            "sharedArrayBuffer": true,
+            "atomics": true,
+            "hardwareConcurrency": 8,
+            "isSecureContext": true,
+            "coopHeader": "same-origin",
+            "coepHeader": "require-corp"
+        }"#;
+        let caps = WasmThreadCapabilities::from_json(json).unwrap();
+        assert!(caps.cross_origin_isolated);
+        assert!(caps.shared_array_buffer);
+        assert!(caps.atomics);
+        assert_eq!(caps.hardware_concurrency, 8);
+        assert!(caps.is_secure_context);
+        assert_eq!(caps.coop_header, Some("same-origin".to_string()));
+        assert_eq!(caps.coep_header, Some("require-corp".to_string()));
+    }
+
+    #[test]
+    fn test_from_json_minimal_defaults() {
+        let json = r#"{}"#;
+        let caps = WasmThreadCapabilities::from_json(json).unwrap();
+        assert!(!caps.cross_origin_isolated);
+        assert!(!caps.shared_array_buffer);
+        assert_eq!(caps.hardware_concurrency, 1);
+    }
+
+    #[test]
+    fn test_capability_status_unknown_match() {
+        let status = CapabilityStatus::Unknown;
+        assert!(matches!(status, CapabilityStatus::Unknown));
+    }
+
+    #[test]
+    fn test_required_headers_values() {
+        assert_eq!(RequiredHeaders::COOP, "same-origin");
+        assert_eq!(RequiredHeaders::COEP, "require-corp");
+    }
 }

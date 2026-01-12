@@ -34,7 +34,7 @@ pub fn execute_init(_config: &CliConfig, args: &InitArgs) {
 }
 
 /// Generate the default Probar test configuration file content
-#[must_use] 
+#[must_use]
 pub const fn generate_probar_config() -> &'static str {
     r#"//! Basic Probar test
 use jugar_probar::prelude::*;
@@ -48,7 +48,7 @@ fn test_example() {
 }
 
 /// Check if a path is a valid init target
-#[must_use] 
+#[must_use]
 pub fn is_valid_init_path(path: &Path) -> bool {
     // Path should either not exist or be an empty directory
     if !path.exists() {
@@ -149,7 +149,11 @@ mod tests {
         std::fs::create_dir_all(project_path.join("tests")).unwrap();
 
         let old_content = "// old content";
-        std::fs::write(project_path.join("tests").join("basic_test.rs"), old_content).unwrap();
+        std::fs::write(
+            project_path.join("tests").join("basic_test.rs"),
+            old_content,
+        )
+        .unwrap();
 
         let config = CliConfig::default();
         let args = InitArgs {
@@ -159,7 +163,8 @@ mod tests {
 
         execute_init(&config, &args);
 
-        let content = std::fs::read_to_string(project_path.join("tests").join("basic_test.rs")).unwrap();
+        let content =
+            std::fs::read_to_string(project_path.join("tests").join("basic_test.rs")).unwrap();
         assert!(content.contains("jugar_probar"));
         assert!(!content.contains("old content"));
     }
@@ -171,7 +176,11 @@ mod tests {
         std::fs::create_dir_all(project_path.join("tests")).unwrap();
 
         let old_content = "// old content that should remain";
-        std::fs::write(project_path.join("tests").join("basic_test.rs"), old_content).unwrap();
+        std::fs::write(
+            project_path.join("tests").join("basic_test.rs"),
+            old_content,
+        )
+        .unwrap();
 
         let config = CliConfig::default();
         let args = InitArgs {
@@ -181,7 +190,8 @@ mod tests {
 
         execute_init(&config, &args);
 
-        let content = std::fs::read_to_string(project_path.join("tests").join("basic_test.rs")).unwrap();
+        let content =
+            std::fs::read_to_string(project_path.join("tests").join("basic_test.rs")).unwrap();
         assert!(content.contains("old content that should remain"));
     }
 }

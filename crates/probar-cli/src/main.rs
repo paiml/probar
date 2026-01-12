@@ -10,11 +10,21 @@
 //! ```
 
 use clap::Parser;
-use probador::{Cli, CliConfig, CliResult, ColorChoice, Commands, TestRunner, Verbosity};
+#[cfg(test)]
+use probador::handlers::comply::{check_makefile_cross_origin, check_probar_cross_origin_config};
+use probador::{
+    handlers::{
+        build::find_html_files,
+        comply::{
+            check_c001_code_execution, check_c002_console_errors, check_c003_custom_elements,
+            check_c004_threading_modes, check_c005_low_memory, check_c006_headers,
+            check_c007_replay_hash, check_c008_cache, check_c009_wasm_size, check_c010_panic_paths,
+            generate_comply_report, ComplianceResult,
+        },
+    },
+    Cli, CliConfig, CliResult, ColorChoice, Commands, TestRunner, Verbosity,
+};
 use std::process::ExitCode;
-
-// Re-export CoverageCell for use in create_sample_coverage_data
-use jugar_probar::pixel_coverage::CoverageCell;
 
 fn main() -> ExitCode {
     match run() {
@@ -44,7 +54,7 @@ fn run() -> CliResult<()> {
         }
         Commands::Coverage(args) => run_coverage(&config, &args),
         Commands::Init(args) => {
-            run_init(&args);
+            run_init(&config, &args);
             Ok(())
         }
         Commands::Config(args) => {
@@ -154,386 +164,20 @@ fn run_record(_config: &CliConfig, args: &probador::RecordArgs) {
     println!("Recording configuration ready. Run test with --record flag to capture.");
 }
 
-fn run_report(_config: &CliConfig, args: &probador::ReportArgs) {
-    use std::fs;
-    use std::io::Write;
-
-    println!("Generating report...");
-    println!("Format: {:?}", args.format);
-    println!("Output: {}", args.output.display());
-
-    // Create parent directories if needed
-    if let Some(parent) = args.output.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-
-    // Generate report based on format
-    let report_content = match args.format {
-        probador::ReportFormat::Html => generate_html_report(),
-        probador::ReportFormat::Json => generate_json_report(),
-        probador::ReportFormat::Lcov => generate_lcov_report(),
-        probador::ReportFormat::Junit => generate_junit_report(),
-        probador::ReportFormat::Cobertura => generate_cobertura_report(),
-    };
-
-    match fs::File::create(&args.output) {
-        Ok(mut file) => {
-            if let Err(e) = file.write_all(report_content.as_bytes()) {
-                eprintln!("Failed to write report: {e}");
-                return;
-            }
-            println!("Report generated at: {}", args.output.display());
-        }
-        Err(e) => {
-            eprintln!("Failed to create report file: {e}");
-            return;
-        }
-    }
-
-    if args.open {
-        println!("Opening report in browser...");
-        #[cfg(target_os = "macos")]
-        let _ = std::process::Command::new("open").arg(&args.output).spawn();
-        #[cfg(target_os = "linux")]
-        let _ = std::process::Command::new("xdg-open")
-            .arg(&args.output)
-            .spawn();
-        #[cfg(target_os = "windows")]
-        let _ = std::process::Command::new("start")
-            .arg(&args.output)
-            .spawn();
-    }
+fn run_report(config: &CliConfig, args: &probador::ReportArgs) {
+    probador::handlers::report::execute_report(config, args);
 }
 
-fn run_coverage(_config: &CliConfig, args: &probador::CoverageArgs) -> CliResult<()> {
-    use jugar_probar::pixel_coverage::{ColorPalette, CoverageCell, PngHeatmap};
-
-    println!("Generating coverage heatmap...");
-
-    // Load coverage data from input file or use sample data
-    let cells: Vec<Vec<CoverageCell>> = if let Some(ref input) = args.input {
-        println!("Loading coverage data from {}...", input.display());
-        load_coverage_from_json(input)?
-    } else {
-        println!("No input file specified, using sample data");
-        create_sample_coverage_data()
-    };
-
-    // Select palette
-    let palette = match args.palette {
-        probador::PaletteArg::Viridis => ColorPalette::viridis(),
-        probador::PaletteArg::Magma => ColorPalette::magma(),
-        probador::PaletteArg::Heat => ColorPalette::heat(),
-    };
-
-    // Build heatmap
-    let mut heatmap = PngHeatmap::new(args.width, args.height).with_palette(palette);
-
-    if args.legend {
-        heatmap = heatmap.with_legend();
-    }
-
-    if args.gaps {
-        heatmap = heatmap.with_gap_highlighting();
-    }
-
-    if let Some(ref title) = args.title {
-        heatmap = heatmap.with_title(title);
-    }
-
-    // Export PNG if path provided
-    if let Some(ref png_path) = args.png {
-        heatmap
-            .export_to_file(&cells, png_path)
-            .map_err(|e| probador::CliError::report_generation(e.to_string()))?;
-        println!("PNG heatmap exported to: {}", png_path.display());
-    }
-
-    // Export JSON if path provided
-    if let Some(ref json_path) = args.json {
-        let report = generate_coverage_report(&cells);
-        let json = serde_json::to_string_pretty(&report)
-            .map_err(|e| probador::CliError::report_generation(e.to_string()))?;
-        std::fs::write(json_path, json)
-            .map_err(|e| probador::CliError::report_generation(e.to_string()))?;
-        println!("Coverage report exported to: {}", json_path.display());
-    }
-
-    // Print summary if no output specified
-    if args.png.is_none() && args.json.is_none() {
-        let report = generate_coverage_report(&cells);
-        println!("\nCoverage Summary:");
-        println!(
-            "  Overall Coverage: {:.1}%",
-            report.overall_coverage * 100.0
-        );
-        println!(
-            "  Covered Cells: {}/{}",
-            report.covered_cells, report.total_cells
-        );
-        println!(
-            "  Meets Threshold: {}",
-            if report.meets_threshold { "✓" } else { "✗" }
-        );
-        println!("\nUse --png <path> to export a heatmap image.");
-    }
-
-    Ok(())
+fn run_coverage(config: &CliConfig, args: &probador::CoverageArgs) -> CliResult<()> {
+    probador::handlers::coverage::execute_coverage(config, args)
 }
 
-/// Load coverage data from a JSON file
-fn load_coverage_from_json(path: &std::path::Path) -> CliResult<Vec<Vec<CoverageCell>>> {
-    // Expected JSON format: { "cells": [[{coverage: f32, hit_count: u64}, ...], ...] }
-    // or just: [[{coverage: f32, hit_count: u64}, ...], ...]
-    #[derive(serde::Deserialize)]
-    struct CoverageData {
-        cells: Option<Vec<Vec<CoverageCell>>>,
-        #[serde(flatten)]
-        _extra: std::collections::HashMap<String, serde_json::Value>,
-    }
-
-    let content = std::fs::read_to_string(path).map_err(|e| {
-        probador::CliError::report_generation(format!("Failed to read {}: {}", path.display(), e))
-    })?;
-
-    // Try parsing as wrapped format first
-    if let Ok(data) = serde_json::from_str::<CoverageData>(&content) {
-        if let Some(cells) = data.cells {
-            return Ok(cells);
-        }
-    }
-
-    // Try parsing as bare array
-    serde_json::from_str::<Vec<Vec<CoverageCell>>>(&content)
-        .map_err(|e| probador::CliError::report_generation(format!("Invalid JSON format: {}", e)))
-}
-
-/// Check if a cell is in a gap region (no coverage)
-fn is_gap_cell(row: usize, col: usize) -> bool {
-    // Gap in the middle of row 5
-    let middle_gap = row == 5 && (5..=7).contains(&col);
-    // Gap at the end of row 2
-    let end_gap = row == 2 && col > 10;
-    middle_gap || end_gap
-}
-
-/// Calculate coverage value for a cell based on position
-fn calculate_coverage(row: usize, col: usize, rows: usize, cols: usize) -> f32 {
-    if is_gap_cell(row, col) {
-        return 0.0;
-    }
-    let x_factor = col as f32 / (cols - 1) as f32;
-    let y_factor = row as f32 / (rows - 1) as f32;
-    (x_factor + y_factor) / 2.0
-}
-
-/// Create sample coverage data for demonstration
-fn create_sample_coverage_data() -> Vec<Vec<CoverageCell>> {
-    const ROWS: usize = 10;
-    const COLS: usize = 15;
-
-    (0..ROWS)
-        .map(|row| {
-            (0..COLS)
-                .map(|col| {
-                    let coverage = calculate_coverage(row, col, ROWS, COLS);
-                    CoverageCell {
-                        coverage,
-                        hit_count: (coverage * 10.0) as u64,
-                    }
-                })
-                .collect()
-        })
-        .collect()
-}
-
-/// Generate coverage report from cells
-fn generate_coverage_report(
-    cells: &[Vec<CoverageCell>],
-) -> jugar_probar::pixel_coverage::PixelCoverageReport {
-    use jugar_probar::pixel_coverage::PixelCoverageReport;
-
-    let total_cells = cells.iter().map(|r| r.len()).sum::<usize>() as u32;
-    let covered_cells = cells
-        .iter()
-        .flat_map(|r| r.iter())
-        .filter(|c| c.coverage > 0.0)
-        .count() as u32;
-
-    let overall_coverage = if total_cells > 0 {
-        covered_cells as f32 / total_cells as f32
-    } else {
-        0.0
-    };
-
-    PixelCoverageReport {
-        grid_width: cells.first().map_or(0, |r| r.len() as u32),
-        grid_height: cells.len() as u32,
-        overall_coverage,
-        covered_cells,
-        total_cells,
-        min_coverage: 0.0,
-        max_coverage: 1.0,
-        total_interactions: 0,
-        meets_threshold: overall_coverage >= 0.8,
-        uncovered_regions: Vec::new(),
-    }
-}
-
-/// Generate HTML test report
-fn generate_html_report() -> String {
-    let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Probar Test Report</title>
-    <style>
-        body {{ font-family: system-ui, sans-serif; margin: 40px; background: #f5f5f5; }}
-        .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-        h1 {{ color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px; }}
-        .summary {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 20px 0; }}
-        .stat {{ background: #f9f9f9; padding: 20px; border-radius: 8px; text-align: center; }}
-        .stat-value {{ font-size: 2em; font-weight: bold; color: #4CAF50; }}
-        .stat-label {{ color: #666; margin-top: 5px; }}
-        .timestamp {{ color: #999; font-size: 0.9em; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Probar Test Report</h1>
-        <p class="timestamp">Generated: {timestamp}</p>
-        <div class="summary">
-            <div class="stat"><div class="stat-value">0</div><div class="stat-label">Tests Run</div></div>
-            <div class="stat"><div class="stat-value">0</div><div class="stat-label">Passed</div></div>
-            <div class="stat"><div class="stat-value">0</div><div class="stat-label">Failed</div></div>
-            <div class="stat"><div class="stat-value">0ms</div><div class="stat-label">Duration</div></div>
-        </div>
-        <p>Run <code>probar test</code> to generate test results.</p>
-    </div>
-</body>
-</html>"#
-    )
-}
-
-/// Generate JSON test report
-fn generate_json_report() -> String {
-    let timestamp = chrono::Utc::now().to_rfc3339();
-    format!(
-        r#"{{
-  "version": "1.0",
-  "timestamp": "{timestamp}",
-  "summary": {{
-    "total": 0,
-    "passed": 0,
-    "failed": 0,
-    "skipped": 0,
-    "duration_ms": 0
-  }},
-  "tests": []
-}}"#
-    )
-}
-
-/// Generate LCOV coverage report
-fn generate_lcov_report() -> String {
-    "TN:\nSF:src/lib.rs\nDA:1,0\nLF:1\nLH:0\nend_of_record\n".to_string()
-}
-
-/// Generate JUnit XML report
-fn generate_junit_report() -> String {
-    let timestamp = chrono::Utc::now().to_rfc3339();
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="probar" tests="0" failures="0" errors="0" time="0" timestamp="{timestamp}">
-  <testsuite name="probar" tests="0" failures="0" errors="0" time="0">
-  </testsuite>
-</testsuites>"#
-    )
-}
-
-/// Generate Cobertura XML report
-fn generate_cobertura_report() -> String {
-    let timestamp = chrono::Utc::now().timestamp();
-    format!(
-        r#"<?xml version="1.0" ?>
-<!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
-<coverage version="1.0" timestamp="{timestamp}" lines-valid="0" lines-covered="0" line-rate="0" branches-valid="0" branches-covered="0" branch-rate="0" complexity="0">
-  <packages>
-  </packages>
-</coverage>"#
-    )
-}
-
-fn run_init(args: &probador::InitArgs) {
-    println!("Initializing Probar project in: {}", args.path.display());
-
-    if args.force {
-        println!("Force mode enabled - overwriting existing files");
-    }
-
-    // Create project directory if it doesn't exist
-    if let Err(e) = std::fs::create_dir_all(&args.path) {
-        eprintln!("Failed to create directory: {e}");
-        return;
-    }
-
-    // Create basic test file
-    let test_file = args.path.join("tests").join("basic_test.rs");
-    if let Some(parent) = test_file.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let test_content = r#"//! Basic Probar test
-use jugar_probar::prelude::*;
-
-#[test]
-fn test_example() {
-    let result = TestResult::pass("example_test");
-    assert!(result.passed);
-}
-"#;
-    if !test_file.exists() || args.force {
-        let _ = std::fs::write(&test_file, test_content);
-        println!("Created: {}", test_file.display());
-    }
-
-    println!("Probar project initialized successfully!");
+fn run_init(config: &CliConfig, args: &probador::InitArgs) {
+    probador::handlers::init::execute_init(config, args);
 }
 
 fn run_config(config: &CliConfig, args: &probador::ConfigArgs) {
-    if args.show {
-        println!("Current configuration:");
-        println!("  Verbosity: {:?}", config.verbosity);
-        println!("  Color: {:?}", config.color);
-        println!("  Parallel jobs: {}", config.effective_jobs());
-        println!("  Fail fast: {}", config.fail_fast);
-        println!("  Coverage: {}", config.coverage);
-        println!("  Output dir: {}", config.output_dir);
-    }
-
-    if let Some(ref setting) = args.set {
-        // Parse key=value format
-        if let Some((key, value)) = setting.split_once('=') {
-            println!("Setting {key} = {value}");
-            // Config persistence would require a config file (e.g., .probar.toml)
-            // For now, settings are applied via CLI flags only
-            println!("Note: Settings are applied via CLI flags. Use environment variables for persistence.");
-        } else {
-            eprintln!("Invalid setting format. Use: key=value");
-        }
-    }
-
-    if args.reset {
-        println!("Configuration reset to defaults:");
-        let default = CliConfig::new();
-        println!("  Verbosity: {:?}", default.verbosity);
-        println!("  Color: {:?}", default.color);
-        println!("  Parallel jobs: {}", default.effective_jobs());
-        println!("  Fail fast: {}", default.fail_fast);
-        println!("  Coverage: {}", default.coverage);
-    }
+    probador::handlers::config::execute_config(config, args);
 }
 
 // =============================================================================
@@ -819,33 +463,6 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
             validation_errors.len()
         )))
     }
-}
-
-/// Find all HTML files in a directory
-#[allow(clippy::items_after_statements)]
-fn find_html_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
-    let mut html_files = Vec::new();
-
-    fn scan_dir(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
-        if let Ok(entries) = std::fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    // Skip node_modules and hidden directories
-                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    if !name.starts_with('.') && name != "node_modules" {
-                        scan_dir(&path, files);
-                    }
-                } else if path.extension().is_some_and(|ext| ext == "html") {
-                    files.push(path);
-                }
-            }
-        }
-    }
-
-    scan_dir(dir, &mut html_files);
-    html_files.sort();
-    html_files
 }
 
 /// Run browser validation asynchronously
@@ -1695,272 +1312,10 @@ fn run_comply(config: &CliConfig, args: &probador::ComplyArgs) -> CliResult<()> 
     }
 }
 
-/// Result of a single compliance check
-#[derive(Debug, Clone)]
-struct ComplianceResult {
-    id: String,
-    passed: bool,
-    details: Vec<String>,
-}
-
-impl ComplianceResult {
-    fn pass(id: &str) -> Self {
-        Self {
-            id: id.to_string(),
-            passed: true,
-            details: Vec::new(),
-        }
-    }
-
-    fn fail(id: &str, reason: &str) -> Self {
-        Self {
-            id: id.to_string(),
-            passed: false,
-            details: vec![reason.to_string()],
-        }
-    }
-
-    fn with_detail(mut self, detail: &str) -> Self {
-        self.details.push(detail.to_string());
-        self
-    }
-}
-
-/// C001: Verify code actually executes (not just mocked HTML)
-fn check_c001_code_execution(path: &std::path::Path) -> ComplianceResult {
-    // Look for WASM files or test files that indicate real execution
-    let wasm_exists = find_wasm_files(path).is_some();
-    let test_files = find_test_files(path);
-
-    if wasm_exists && !test_files.is_empty() {
-        ComplianceResult::pass("C001")
-            .with_detail(&format!("Found {} test file(s)", test_files.len()))
-    } else if !wasm_exists {
-        ComplianceResult::fail("C001", "No WASM files found - code may not execute")
-    } else {
-        ComplianceResult::fail("C001", "No test files found to verify execution")
-    }
-}
-
-/// C002: Console errors should fail tests
-fn check_c002_console_errors() -> ComplianceResult {
-    // This check verifies the test configuration captures console errors
-    // In a real implementation, this would check test runner configuration
-    ComplianceResult::pass("C002").with_detail("Console capture enabled (verify in test config)")
-}
-
-/// C003: Custom elements are tested
-fn check_c003_custom_elements(path: &std::path::Path) -> ComplianceResult {
-    // Look for custom element definitions in HTML/JS
-    let html_files = find_html_files_in_dir(path);
-    let has_custom_elements = html_files.iter().any(|f| {
-        std::fs::read_to_string(f)
-            .map(|content| content.contains("customElements.define") || content.contains("<wasm-"))
-            .unwrap_or(false)
-    });
-
-    if has_custom_elements {
-        ComplianceResult::pass("C003").with_detail("Custom elements detected")
-    } else {
-        ComplianceResult::pass("C003")
-            .with_detail("No custom elements found (may be OK if not used)")
-    }
-}
-
-/// C004: Both threading and non-threading modes tested
-fn check_c004_threading_modes() -> ComplianceResult {
-    // This would check test configuration for dual-mode testing
-    ComplianceResult::pass("C004").with_detail("Threading mode validation requires runtime check")
-}
-
-/// C005: Low memory scenario tested
-fn check_c005_low_memory() -> ComplianceResult {
-    // Check for memory pressure tests
-    ComplianceResult::pass("C005").with_detail("Low memory simulation available via WasmStrictMode")
-}
-
-/// C006: COOP/COEP headers present for SharedArrayBuffer
-fn check_c006_headers(path: &std::path::Path) -> ComplianceResult {
-    // Check for server configuration files that set headers
-    let has_server_config = path.join(".htaccess").exists()
-        || path.join("vercel.json").exists()
-        || path.join("netlify.toml").exists()
-        || path.join("_headers").exists();
-
-    // Check for probar configuration with cross-origin-isolated
-    let has_probar_config = check_probar_cross_origin_config(path);
-
-    // Check for Makefile/scripts using probador serve --cross-origin-isolated
-    let has_makefile_config = check_makefile_cross_origin(path);
-
-    if has_server_config {
-        ComplianceResult::pass("C006").with_detail("Server config found (verify COOP/COEP headers)")
-    } else if has_probar_config {
-        ComplianceResult::pass("C006").with_detail("probar.toml has cross_origin_isolated = true")
-    } else if has_makefile_config {
-        ComplianceResult::pass("C006")
-            .with_detail("Makefile uses probador serve --cross-origin-isolated")
-    } else {
-        ComplianceResult::fail("C006", "No server config found for COOP/COEP headers")
-            .with_detail("Add Cross-Origin-Opener-Policy: same-origin")
-            .with_detail("Add Cross-Origin-Embedder-Policy: require-corp")
-            .with_detail("Or use: probador serve --cross-origin-isolated")
-    }
-}
-
-/// Check probar.toml for cross_origin_isolated setting
-fn check_probar_cross_origin_config(path: &std::path::Path) -> bool {
-    let config_paths = [
-        path.join("probar.toml"),
-        path.join(".probar.toml"),
-        path.join("probador.toml"),
-        path.join(".probador.toml"),
-    ];
-
-    for config_path in &config_paths {
-        if let Ok(content) = std::fs::read_to_string(config_path) {
-            // Check for cross_origin_isolated = true
-            if content.contains("cross_origin_isolated")
-                && (content.contains("= true") || content.contains("=true"))
-            {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Check Makefile for probador serve --cross-origin-isolated
-fn check_makefile_cross_origin(path: &std::path::Path) -> bool {
-    let makefile_paths = [
-        path.join("Makefile"),
-        path.join("makefile"),
-        path.join("GNUmakefile"),
-    ];
-
-    for makefile_path in &makefile_paths {
-        if let Ok(content) = std::fs::read_to_string(makefile_path) {
-            // Check for probador serve with cross-origin-isolated flag
-            if content.contains("probador serve") && content.contains("--cross-origin-isolated") {
-                return true;
-            }
-            // Also check for probar serve variant
-            if content.contains("probar serve") && content.contains("--cross-origin-isolated") {
-                return true;
-            }
-        }
-    }
-
-    // Also check package.json scripts
-    let package_json = path.join("package.json");
-    if let Ok(content) = std::fs::read_to_string(package_json) {
-        if content.contains("probador serve") && content.contains("--cross-origin-isolated") {
-            return true;
-        }
-    }
-
-    false
-}
-
-/// C007: Replay hash matches for deterministic tests
-fn check_c007_replay_hash() -> ComplianceResult {
-    // This validates deterministic replay capability
-    ComplianceResult::pass("C007")
-        .with_detail("Replay hash validation available via SimulationRecording")
-}
-
-/// C008: Proper cache handling
-fn check_c008_cache() -> ComplianceResult {
-    ComplianceResult::pass("C008").with_detail("Cache handling verified at runtime")
-}
-
-/// C009: WASM binary under size limit
-fn check_c009_wasm_size(path: &std::path::Path, max_size: usize) -> ComplianceResult {
-    if let Some(wasm_files) = find_wasm_files(path) {
-        for wasm_path in wasm_files {
-            if let Ok(metadata) = std::fs::metadata(&wasm_path) {
-                let size = metadata.len() as usize;
-                if size > max_size {
-                    return ComplianceResult::fail(
-                        "C009",
-                        &format!("WASM too large: {} bytes > {} bytes limit", size, max_size),
-                    )
-                    .with_detail(&format!("File: {}", wasm_path.display()));
-                }
-            }
-        }
-        ComplianceResult::pass("C009")
-            .with_detail(&format!("All WASM files under {} byte limit", max_size))
-    } else {
-        ComplianceResult::pass("C009").with_detail("No WASM files to check")
-    }
-}
-
-/// C010: No panic paths in WASM
-fn check_c010_panic_paths(path: &std::path::Path) -> ComplianceResult {
-    // Check Cargo.toml for panic = "abort" in release profile
-    let cargo_toml = path.join("Cargo.toml");
-    if cargo_toml.exists() {
-        if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
-            if content.contains("panic = \"abort\"") {
-                return ComplianceResult::pass("C010").with_detail("panic = \"abort\" configured");
-            }
-        }
-    }
-
-    // Also check for #[no_panic] usage or panic-free patterns
-    ComplianceResult::pass("C010").with_detail("Verify panic-free via clippy::panic lint")
-}
-
-/// Find WASM files in directory
-fn find_wasm_files(dir: &std::path::Path) -> Option<Vec<std::path::PathBuf>> {
-    let mut files = Vec::new();
-    find_files_recursive(dir, "wasm", &mut files);
-    if files.is_empty() {
-        None
-    } else {
-        Some(files)
-    }
-}
-
-/// Find test files in directory
-fn find_test_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
-    let mut files = Vec::new();
-    find_files_recursive(dir, "rs", &mut files);
-    files.retain(|f| {
-        f.to_string_lossy().contains("test")
-            || f.file_name()
-                .is_some_and(|n| n.to_string_lossy().starts_with("test_"))
-    });
-    files
-}
-
-/// Find HTML files in directory
-fn find_html_files_in_dir(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
-    let mut files = Vec::new();
-    find_files_recursive(dir, "html", &mut files);
-    files
-}
-
-/// Recursively find files with extension
-fn find_files_recursive(dir: &std::path::Path, ext: &str, files: &mut Vec<std::path::PathBuf>) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if !name.starts_with('.') && name != "target" && name != "node_modules" {
-                    find_files_recursive(&path, ext, files);
-                }
-            } else if path.extension().is_some_and(|e| e == ext) {
-                files.push(path);
-            }
-        }
-    }
-}
-
 // =============================================================================
 // Comply Subcommand Handlers
+// NOTE: Compliance check functions (check_c001 through check_c010) and
+// ComplianceResult are now imported from probador::handlers::comply
 // =============================================================================
 
 /// Run comply check subcommand
@@ -2611,84 +1966,6 @@ Summary: {}/{} passed
     Ok(())
 }
 
-/// Generate compliance report in requested format
-fn generate_comply_report(
-    results: &[ComplianceResult],
-    format: &probador::ComplyOutputFormat,
-) -> String {
-    use probador::ComplyOutputFormat;
-    match format {
-        ComplyOutputFormat::Json => {
-            let json_results: Vec<_> = results
-                .iter()
-                .map(|r| {
-                    serde_json::json!({
-                        "id": r.id,
-                        "passed": r.passed,
-                        "details": r.details,
-                    })
-                })
-                .collect();
-            serde_json::json!({
-                "version": "1.0",
-                "timestamp": chrono::Utc::now().to_rfc3339(),
-                "results": json_results,
-                "summary": {
-                    "total": results.len(),
-                    "passed": results.iter().filter(|r| r.passed).count(),
-                    "failed": results.iter().filter(|r| !r.passed).count(),
-                }
-            })
-            .to_string()
-        }
-        ComplyOutputFormat::Junit => {
-            let timestamp = chrono::Utc::now().to_rfc3339();
-            let failures = results.iter().filter(|r| !r.passed).count();
-            let mut xml = format!(
-                r#"<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="probar-comply" tests="{}" failures="{}" timestamp="{}">
-  <testsuite name="compliance" tests="{}" failures="{}">"#,
-                results.len(),
-                failures,
-                timestamp,
-                results.len(),
-                failures
-            );
-            for r in results {
-                xml.push_str(&format!(
-                    r#"
-    <testcase name="{}" classname="probar.comply">{}</testcase>"#,
-                    r.id,
-                    if r.passed {
-                        String::new()
-                    } else {
-                        format!(
-                            r#"
-      <failure message="Check failed">{}</failure>"#,
-                            r.details.join("; ")
-                        )
-                    }
-                ));
-            }
-            xml.push_str("\n  </testsuite>\n</testsuites>");
-            xml
-        }
-        ComplyOutputFormat::Text => {
-            let mut text = String::from("PROBAR Compliance Report\n");
-            text.push_str(&"=".repeat(40));
-            text.push('\n');
-            for r in results {
-                let status = if r.passed { "PASS" } else { "FAIL" };
-                text.push_str(&format!("[{}] {}\n", status, r.id));
-                for detail in &r.details {
-                    text.push_str(&format!("  - {detail}\n"));
-                }
-            }
-            text
-        }
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
 mod tests {
@@ -2829,11 +2106,12 @@ mod tests {
             let temp_dir = std::env::temp_dir().join("probar_init_test");
             let _ = fs::remove_dir_all(&temp_dir);
 
+            let config = CliConfig::default();
             let args = InitArgs {
                 path: temp_dir.clone(),
                 force: false,
             };
-            run_init(&args);
+            run_init(&config, &args);
 
             // Cleanup
             let _ = fs::remove_dir_all(&temp_dir);
@@ -2844,14 +2122,15 @@ mod tests {
             let temp_dir = std::env::temp_dir().join("probar_init_force_test");
             let _ = fs::remove_dir_all(&temp_dir);
 
+            let config = CliConfig::default();
             let args = InitArgs {
                 path: temp_dir.clone(),
                 force: true,
             };
-            run_init(&args);
+            run_init(&config, &args);
 
             // Run again with force
-            run_init(&args);
+            run_init(&config, &args);
 
             // Cleanup
             let _ = fs::remove_dir_all(&temp_dir);
@@ -3042,137 +2321,8 @@ mod tests {
             let _ = std::fs::remove_file(&json_path);
         }
 
-        #[test]
-        fn test_create_sample_coverage_data() {
-            let cells = create_sample_coverage_data();
-            assert_eq!(cells.len(), 10);
-            assert_eq!(cells[0].len(), 15);
-
-            // Check for gaps
-            assert_eq!(cells[5][5].coverage, 0.0);
-            assert_eq!(cells[5][6].coverage, 0.0);
-            assert_eq!(cells[2][11].coverage, 0.0);
-        }
-
-        #[test]
-        fn test_generate_coverage_report() {
-            let cells = create_sample_coverage_data();
-            let report = generate_coverage_report(&cells);
-
-            assert_eq!(report.total_cells, 150);
-            assert!(report.covered_cells < 150); // Some gaps exist
-            assert!(report.overall_coverage > 0.0);
-            assert!(report.overall_coverage < 1.0);
-        }
-    }
-
-    // =========================================================================
-    // Additional coverage tests for main.rs pure functions
-    // =========================================================================
-
-    mod is_gap_cell_tests {
-        use super::*;
-
-        #[test]
-        fn test_is_gap_cell_middle_gap() {
-            // Gap in row 5, columns 5-7
-            assert!(is_gap_cell(5, 5));
-            assert!(is_gap_cell(5, 6));
-            assert!(is_gap_cell(5, 7));
-        }
-
-        #[test]
-        fn test_is_gap_cell_end_gap() {
-            // Gap at end of row 2 (col > 10)
-            assert!(is_gap_cell(2, 11));
-            assert!(is_gap_cell(2, 12));
-            assert!(is_gap_cell(2, 20));
-        }
-
-        #[test]
-        fn test_is_gap_cell_not_gap() {
-            // Not gaps
-            assert!(!is_gap_cell(0, 0));
-            assert!(!is_gap_cell(5, 4)); // Before middle gap
-            assert!(!is_gap_cell(5, 8)); // After middle gap
-            assert!(!is_gap_cell(2, 10)); // At boundary (not > 10)
-            assert!(!is_gap_cell(3, 11)); // Different row
-        }
-    }
-
-    mod calculate_coverage_tests {
-        use super::*;
-
-        #[test]
-        fn test_calculate_coverage_gap() {
-            // Gap cells should return 0.0
-            assert_eq!(calculate_coverage(5, 5, 10, 15), 0.0);
-            assert_eq!(calculate_coverage(2, 11, 10, 15), 0.0);
-        }
-
-        #[test]
-        fn test_calculate_coverage_corners() {
-            // Top-left corner: (0,0) -> (0 + 0) / 2 = 0
-            let tl = calculate_coverage(0, 0, 10, 15);
-            assert!((tl - 0.0).abs() < 0.01);
-
-            // Bottom-right corner: (1 + 1) / 2 = 1
-            let br = calculate_coverage(9, 14, 10, 15);
-            assert!((br - 1.0).abs() < 0.01);
-        }
-
-        #[test]
-        fn test_calculate_coverage_middle() {
-            // Middle point should be around 0.5
-            let mid = calculate_coverage(4, 7, 10, 15);
-            assert!(mid > 0.3 && mid < 0.7);
-        }
-    }
-
-    mod generate_report_tests {
-        use super::*;
-
-        #[test]
-        fn test_generate_html_report_structure() {
-            let html = generate_html_report();
-            assert!(html.contains("<!DOCTYPE html>"));
-            assert!(html.contains("<html"));
-            assert!(html.contains("Probar"));
-            assert!(html.contains("</html>"));
-        }
-
-        #[test]
-        fn test_generate_json_report_structure() {
-            let json = generate_json_report();
-            assert!(json.contains("summary"));
-            assert!(json.contains("tests"));
-            // Should be valid JSON-ish (contains braces)
-            assert!(json.contains('{'));
-            assert!(json.contains('}'));
-        }
-
-        #[test]
-        fn test_generate_lcov_report_format() {
-            let lcov = generate_lcov_report();
-            assert!(lcov.contains("TN:"));
-            assert!(lcov.contains("end_of_record"));
-        }
-
-        #[test]
-        fn test_generate_junit_report_xml() {
-            let junit = generate_junit_report();
-            assert!(junit.contains("<?xml"));
-            assert!(junit.contains("<testsuites"));
-            assert!(junit.contains("</testsuites>"));
-        }
-
-        #[test]
-        fn test_generate_cobertura_report_xml() {
-            let cobertura = generate_cobertura_report();
-            assert!(cobertura.contains("<?xml"));
-            assert!(cobertura.contains("<coverage"));
-            assert!(cobertura.contains("</coverage>"));
-        }
+        // Tests for coverage, report generation, and gap cell detection
+        // have been moved to handlers module for better testability
     }
 
     mod compliance_check_tests {
@@ -3389,73 +2539,7 @@ panic = "abort""#;
         }
     }
 
-    mod file_finder_tests {
-        use super::*;
-        use std::fs;
-        use tempfile::TempDir;
-
-        #[test]
-        fn test_find_wasm_files_found() {
-            let temp = TempDir::new().unwrap();
-            fs::write(temp.path().join("app.wasm"), b"wasm").unwrap();
-
-            let files = find_wasm_files(temp.path());
-            assert!(files.is_some());
-            assert_eq!(files.unwrap().len(), 1);
-        }
-
-        #[test]
-        fn test_find_wasm_files_nested() {
-            let temp = TempDir::new().unwrap();
-            let nested = temp.path().join("pkg");
-            fs::create_dir(&nested).unwrap();
-            fs::write(nested.join("module.wasm"), b"wasm").unwrap();
-
-            let files = find_wasm_files(temp.path());
-            assert!(files.is_some());
-        }
-
-        #[test]
-        fn test_find_wasm_files_none() {
-            let temp = TempDir::new().unwrap();
-
-            let files = find_wasm_files(temp.path());
-            assert!(files.is_none());
-        }
-
-        #[test]
-        fn test_find_test_files() {
-            let temp = TempDir::new().unwrap();
-            fs::write(temp.path().join("test.rs"), b"#[test]").unwrap();
-            fs::write(temp.path().join("mod.rs"), b"mod test").unwrap();
-
-            let files = find_test_files(temp.path());
-            assert!(!files.is_empty());
-        }
-
-        #[test]
-        fn test_find_html_files_in_dir() {
-            let temp = TempDir::new().unwrap();
-            fs::write(temp.path().join("index.html"), "<html>").unwrap();
-            fs::write(temp.path().join("about.html"), "<html>").unwrap();
-
-            let files = find_html_files_in_dir(temp.path());
-            assert_eq!(files.len(), 2);
-        }
-
-        #[test]
-        fn test_find_files_recursive() {
-            let temp = TempDir::new().unwrap();
-            let sub = temp.path().join("sub");
-            fs::create_dir(&sub).unwrap();
-            fs::write(temp.path().join("a.txt"), "").unwrap();
-            fs::write(sub.join("b.txt"), "").unwrap();
-
-            let mut files = Vec::new();
-            find_files_recursive(temp.path(), "txt", &mut files);
-            assert_eq!(files.len(), 2);
-        }
-    }
+    // NOTE: file_finder_tests moved to handlers/comply.rs
 
     mod cross_origin_config_tests {
         use super::*;
@@ -3602,31 +2686,5 @@ panic = "abort""#;
         }
     }
 
-    mod compliance_result_tests {
-        use super::*;
-
-        #[test]
-        fn test_compliance_result_pass() {
-            let result = ComplianceResult::pass("TEST");
-            assert!(result.passed);
-            assert_eq!(result.id, "TEST");
-        }
-
-        #[test]
-        fn test_compliance_result_fail() {
-            let result = ComplianceResult::fail("TEST", "reason");
-            assert!(!result.passed);
-            assert_eq!(result.id, "TEST");
-            // Failure reason is in details
-            assert!(result.details.iter().any(|d| d.contains("reason")));
-        }
-
-        #[test]
-        fn test_compliance_result_with_detail() {
-            let result = ComplianceResult::pass("TEST")
-                .with_detail("detail1")
-                .with_detail("detail2");
-            assert_eq!(result.details.len(), 2);
-        }
-    }
+    // NOTE: compliance_result_tests moved to handlers/comply.rs
 }

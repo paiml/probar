@@ -1264,4 +1264,430 @@ mod tests {
             assert!(monitor.assert_performance().is_err());
         }
     }
+
+    mod edge_case_coverage_tests {
+        use super::*;
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        // Test PerformanceProfiler::default()
+        #[test]
+        fn test_profiler_default() {
+            let profiler = PerformanceProfiler::default();
+            assert!(!profiler.is_active());
+            assert_eq!(profiler.profile().test_name, "");
+        }
+
+        // Test PerformanceMonitor::default()
+        #[test]
+        fn test_monitor_default() {
+            let monitor = PerformanceMonitor::default();
+            assert_eq!(monitor.frame_count(), 0);
+            assert_eq!(monitor.frame_drops(), 0);
+        }
+
+        // Test PerformanceProfilerBuilder::default()
+        #[test]
+        fn test_profiler_builder_default() {
+            let builder = PerformanceProfilerBuilder::default();
+            let profiler = builder.build();
+            assert_eq!(profiler.profile().test_name, "");
+        }
+
+        // Test PerformanceProfile::default()
+        #[test]
+        fn test_profile_default() {
+            let profile = PerformanceProfile::default();
+            assert!(profile.measurements.is_empty());
+            assert!(profile.start_time.is_none());
+            assert!(profile.duration_ms.is_none());
+            assert_eq!(profile.test_name, "");
+        }
+
+        // Test MetricType Hash implementation
+        #[test]
+        fn test_metric_type_hash() {
+            let metric1 = MetricType::FrameTime;
+            let metric2 = MetricType::FrameTime;
+            let metric3 = MetricType::ScriptTime;
+
+            let mut hasher1 = DefaultHasher::new();
+            let mut hasher2 = DefaultHasher::new();
+            let mut hasher3 = DefaultHasher::new();
+
+            metric1.hash(&mut hasher1);
+            metric2.hash(&mut hasher2);
+            metric3.hash(&mut hasher3);
+
+            assert_eq!(hasher1.finish(), hasher2.finish());
+            assert_ne!(hasher1.finish(), hasher3.finish());
+        }
+
+        // Test MetricType as HashMap key
+        #[test]
+        fn test_metric_type_as_hashmap_key() {
+            let mut map: HashMap<MetricType, i32> = HashMap::new();
+            map.insert(MetricType::FrameTime, 1);
+            map.insert(MetricType::ScriptTime, 2);
+            map.insert(MetricType::Custom, 3);
+
+            assert_eq!(map.get(&MetricType::FrameTime), Some(&1));
+            assert_eq!(map.get(&MetricType::ScriptTime), Some(&2));
+            assert_eq!(map.get(&MetricType::Custom), Some(&3));
+        }
+
+        // Test MetricType Clone
+        #[test]
+        fn test_metric_type_clone() {
+            let metric = MetricType::LayoutTime;
+            let cloned = metric;
+            assert_eq!(metric, cloned);
+        }
+
+        // Test PerformanceMonitor::with_warning_threshold
+        #[test]
+        fn test_monitor_with_warning_threshold() {
+            let monitor = PerformanceMonitor::new().with_warning_threshold(0.25);
+            assert!((monitor.warning_threshold - 0.25).abs() < f64::EPSILON);
+        }
+
+        // Test PerformanceMonitor buffer overflow behavior
+        #[test]
+        fn test_monitor_buffer_overflow() {
+            let mut monitor = PerformanceMonitor::new();
+            // Record more frames than max_buffer_size (1000)
+            for i in 0..1005 {
+                monitor.record_frame_time(16.0 + (i as f64 * 0.001));
+            }
+            // Buffer should be capped at max_buffer_size
+            assert_eq!(monitor.frame_count(), 1000);
+        }
+
+        // Test PerformanceMonitor::record_frame actual frame recording
+        #[test]
+        fn test_monitor_record_frame_actual() {
+            let mut monitor = PerformanceMonitor::new();
+            // First frame - no timing recorded (establishes baseline)
+            monitor.record_frame();
+            assert_eq!(monitor.frame_count(), 0);
+
+            // Small sleep then second frame
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            monitor.record_frame();
+            assert_eq!(monitor.frame_count(), 1);
+            assert!(monitor.frame_time_stats().mean >= 5.0);
+        }
+
+        // Test PerformanceMonitor::current_fps with zero frame time
+        #[test]
+        fn test_monitor_current_fps_zero_time() {
+            let mut monitor = PerformanceMonitor::new();
+            monitor.record_frame_time(0.0);
+            // When frame time is 0, FPS should be 0 (avoid division by zero)
+            let fps = monitor.current_fps();
+            assert!(fps == 0.0 || fps.is_infinite());
+        }
+
+        // Test PerformanceMonitor::current_fps with empty buffer
+        #[test]
+        fn test_monitor_current_fps_empty() {
+            let monitor = PerformanceMonitor::new();
+            assert!((monitor.current_fps() - 0.0).abs() < f64::EPSILON);
+        }
+
+        // Test PerformanceMonitor::is_within_target with empty buffer
+        #[test]
+        fn test_monitor_is_within_target_empty() {
+            let monitor = PerformanceMonitor::new();
+            assert!(monitor.is_within_target());
+        }
+
+        // Test PerformanceMonitor::assert_performance with empty buffer
+        #[test]
+        fn test_monitor_assert_performance_empty() {
+            let monitor = PerformanceMonitor::new();
+            assert!(monitor.assert_performance().is_ok());
+        }
+
+        // Test PerformanceThreshold::with_max_p99
+        #[test]
+        fn test_threshold_with_max_p99() {
+            let t = PerformanceThreshold::new("test").with_max_p99(100.0);
+            assert_eq!(t.max_p99, Some(100.0));
+        }
+
+        // Test PerformanceThreshold p99 check fails
+        #[test]
+        fn test_threshold_check_p99_fails() {
+            let t = PerformanceThreshold::new("test").with_max_p99(50.0);
+            let values: Vec<f64> = (1..=100).map(|i| i as f64).collect();
+            let stats = MetricStats::from_values(&values);
+            assert!(t.check(&stats).is_err());
+        }
+
+        // Test PerformanceThreshold::with_max_p95
+        #[test]
+        fn test_threshold_with_max_p95() {
+            let t = PerformanceThreshold::new("test").with_max_p95(80.0);
+            assert_eq!(t.max_p95, Some(80.0));
+        }
+
+        // Test PerformanceThreshold all checks pass
+        #[test]
+        fn test_threshold_all_checks_pass() {
+            let t = PerformanceThreshold::new("test")
+                .with_min(0.0)
+                .with_max(100.0)
+                .with_max_mean(50.0)
+                .with_max_p95(90.0)
+                .with_max_p99(99.0);
+
+            let stats = MetricStats::from_values(&[10.0, 20.0, 30.0, 40.0, 50.0]);
+            assert!(t.check(&stats).is_ok());
+        }
+
+        // Test PerformanceProfiler::record_memory
+        #[test]
+        fn test_profiler_record_memory() {
+            let mut profiler = PerformanceProfiler::new("test");
+            profiler.start();
+            profiler.record_memory("heap_usage", 1024 * 1024);
+            let profile = profiler.stop();
+            assert_eq!(profile.measurement_count(), 1);
+            let stats = profile.stats("heap_usage").unwrap();
+            assert!((stats.mean - 1_048_576.0).abs() < f64::EPSILON);
+        }
+
+        // Test PerformanceProfiler::record_timing
+        #[test]
+        fn test_profiler_record_timing() {
+            let mut profiler = PerformanceProfiler::new("test");
+            profiler.start();
+            profiler.record_timing("render_pass", 5.5);
+            profiler.record_timing("render_pass", 6.5);
+            let profile = profiler.stop();
+            let stats = profile.stats("render_pass").unwrap();
+            assert_eq!(stats.count, 2);
+            assert!((stats.mean - 6.0).abs() < f64::EPSILON);
+        }
+
+        // Test PerformanceProfiler::elapsed_ms
+        #[test]
+        fn test_profiler_elapsed_ms() {
+            let mut profiler = PerformanceProfiler::new("test");
+            profiler.start();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            let elapsed = profiler.elapsed_ms();
+            assert!(elapsed >= 10);
+        }
+
+        // Test PerformanceProfile::summary with no duration
+        #[test]
+        fn test_profile_summary_no_duration() {
+            let profile = PerformanceProfile::new("test");
+            let summary = profile.summary();
+            assert_eq!(summary.duration_ms, 0);
+        }
+
+        // Test PerformanceProfile::check_thresholds skips missing metrics
+        #[test]
+        fn test_profile_check_thresholds_missing_metric() {
+            let profile = PerformanceProfile::new("test");
+            let thresholds = vec![PerformanceThreshold::new("nonexistent").with_max(100.0)];
+            // Should pass because metric doesn't exist
+            assert!(profile.check_thresholds(&thresholds).is_ok());
+        }
+
+        // Test MetricStats percentile with two values (interpolation)
+        #[test]
+        fn test_metric_stats_percentile_interpolation() {
+            let stats = MetricStats::from_values(&[10.0, 20.0]);
+            // Median should be interpolated between 10 and 20
+            assert!((stats.median - 15.0).abs() < f64::EPSILON);
+        }
+
+        // Test MetricStats percentile with single value
+        #[test]
+        fn test_metric_stats_percentile_single() {
+            let stats = MetricStats::from_values(&[42.0]);
+            assert!((stats.median - 42.0).abs() < f64::EPSILON);
+            assert!((stats.p95 - 42.0).abs() < f64::EPSILON);
+            assert!((stats.p99 - 42.0).abs() < f64::EPSILON);
+        }
+
+        // Test Measurement clone
+        #[test]
+        fn test_measurement_clone() {
+            let m = Measurement::timing("test", 10.0).with_tag("key", "value");
+            let cloned = m.clone();
+            assert_eq!(cloned.name, m.name);
+            assert!((cloned.value - m.value).abs() < f64::EPSILON);
+            assert_eq!(cloned.tags, m.tags);
+        }
+
+        // Test MetricStats clone
+        #[test]
+        fn test_metric_stats_clone() {
+            let stats = MetricStats::from_values(&[1.0, 2.0, 3.0]);
+            let cloned = stats.clone();
+            assert_eq!(cloned.count, stats.count);
+            assert!((cloned.mean - stats.mean).abs() < f64::EPSILON);
+        }
+
+        // Test PerformanceThreshold clone
+        #[test]
+        fn test_threshold_clone() {
+            let t = PerformanceThreshold::new("test")
+                .with_min(1.0)
+                .with_max(100.0);
+            let cloned = t.clone();
+            assert_eq!(cloned.name, t.name);
+            assert_eq!(cloned.min, t.min);
+            assert_eq!(cloned.max, t.max);
+        }
+
+        // Test PerformanceProfile clone
+        #[test]
+        fn test_profile_clone() {
+            let mut profile = PerformanceProfile::new("test");
+            profile.add(Measurement::timing("render", 16.0));
+            let cloned = profile.clone();
+            assert_eq!(cloned.test_name, profile.test_name);
+            assert_eq!(cloned.measurement_count(), profile.measurement_count());
+        }
+
+        // Test PerformanceSummary clone
+        #[test]
+        fn test_summary_clone() {
+            let summary = PerformanceSummary {
+                test_name: "test".to_string(),
+                duration_ms: 1000,
+                metrics: HashMap::new(),
+            };
+            let cloned = summary.clone();
+            assert_eq!(cloned.test_name, summary.test_name);
+            assert_eq!(cloned.duration_ms, summary.duration_ms);
+        }
+
+        // Test PerformanceProfiler debug
+        #[test]
+        fn test_profiler_debug() {
+            let profiler = PerformanceProfiler::new("test");
+            let debug = format!("{:?}", profiler);
+            assert!(debug.contains("PerformanceProfiler"));
+        }
+
+        // Test PerformanceMonitor debug
+        #[test]
+        fn test_monitor_debug() {
+            let monitor = PerformanceMonitor::new();
+            let debug = format!("{:?}", monitor);
+            assert!(debug.contains("PerformanceMonitor"));
+        }
+
+        // Test PerformanceProfilerBuilder debug
+        #[test]
+        fn test_builder_debug() {
+            let builder = PerformanceProfilerBuilder::new("test");
+            let debug = format!("{:?}", builder);
+            assert!(debug.contains("PerformanceProfilerBuilder"));
+        }
+
+        // Test PerformanceProfile debug
+        #[test]
+        fn test_profile_debug() {
+            let profile = PerformanceProfile::new("test");
+            let debug = format!("{:?}", profile);
+            assert!(debug.contains("PerformanceProfile"));
+        }
+
+        // Test PerformanceThreshold debug
+        #[test]
+        fn test_threshold_debug() {
+            let t = PerformanceThreshold::new("test");
+            let debug = format!("{:?}", t);
+            assert!(debug.contains("PerformanceThreshold"));
+        }
+
+        // Test Measurement debug
+        #[test]
+        fn test_measurement_debug() {
+            let m = Measurement::timing("test", 10.0);
+            let debug = format!("{:?}", m);
+            assert!(debug.contains("Measurement"));
+        }
+
+        // Test PerformanceProfilerBuilder::threshold method
+        #[test]
+        fn test_builder_threshold() {
+            let profiler = PerformanceProfilerBuilder::new("test")
+                .threshold(PerformanceThreshold::new("custom").with_max(50.0))
+                .build();
+            assert_eq!(profiler.thresholds.len(), 1);
+        }
+
+        // Test multiple tags on measurement
+        #[test]
+        fn test_measurement_multiple_tags() {
+            let m = Measurement::timing("test", 10.0)
+                .with_tag("scene", "game")
+                .with_tag("phase", "render")
+                .with_tag("component", "ui");
+            assert_eq!(m.tags.len(), 3);
+            assert_eq!(m.tags.get("scene"), Some(&"game".to_string()));
+            assert_eq!(m.tags.get("phase"), Some(&"render".to_string()));
+            assert_eq!(m.tags.get("component"), Some(&"ui".to_string()));
+        }
+
+        // Test frame drop detection threshold exactly at 2x target
+        #[test]
+        fn test_frame_drop_at_boundary() {
+            let mut monitor = PerformanceMonitor::new(); // target_frame_time = 16.67
+                                                         // Exactly 2x target should not count as drop
+            monitor.record_frame_time(33.34);
+            assert_eq!(monitor.frame_drops(), 0);
+            // Just over 2x target should count as drop
+            monitor.record_frame_time(33.35);
+            assert_eq!(monitor.frame_drops(), 1);
+        }
+
+        // Test record_frame with very short intervals
+        #[test]
+        fn test_record_frame_rapid() {
+            let mut monitor = PerformanceMonitor::new();
+            monitor.record_frame();
+            monitor.record_frame();
+            monitor.record_frame();
+            // Only 2 intervals recorded (3 frames = 2 intervals)
+            assert_eq!(monitor.frame_count(), 2);
+        }
+
+        // Test profiler stats for nonexistent metric
+        #[test]
+        fn test_profiler_stats_nonexistent() {
+            let profiler = PerformanceProfiler::new("test");
+            assert!(profiler.stats("nonexistent").is_none());
+        }
+
+        // Test check_thresholds on profiler with no thresholds
+        #[test]
+        fn test_profiler_check_thresholds_empty() {
+            let mut profiler = PerformanceProfiler::new("test");
+            profiler.start();
+            profiler.record_frame_time(16.0);
+            profiler.stop();
+            assert!(profiler.check_thresholds().is_ok());
+        }
+
+        // Test check_thresholds with failing threshold
+        #[test]
+        fn test_profiler_check_thresholds_fails() {
+            let mut profiler = PerformanceProfiler::new("test");
+            profiler.add_threshold(PerformanceThreshold::new("frame_time").with_max(10.0));
+            profiler.start();
+            profiler.record_frame_time(20.0);
+            profiler.stop();
+            assert!(profiler.check_thresholds().is_err());
+        }
+    }
 }

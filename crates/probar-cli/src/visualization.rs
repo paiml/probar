@@ -856,4 +856,172 @@ mod tests {
         assert_eq!(point.timestamp_ms, 1000);
         assert_eq!(point.value, 42.5);
     }
+
+    #[test]
+    fn test_streaming_histogram_mean() {
+        let mut hist = StreamingHistogram::new(1, 100);
+        hist.record(10);
+        hist.record(20);
+        hist.record(30);
+        assert_eq!(hist.mean(), 20);
+    }
+
+    #[test]
+    fn test_streaming_histogram_mean_empty() {
+        let hist = StreamingHistogram::new(1, 100);
+        assert_eq!(hist.mean(), 0);
+    }
+
+    #[test]
+    fn test_streaming_histogram_min_empty() {
+        let hist = StreamingHistogram::new(1, 100);
+        assert_eq!(hist.min(), 0);
+    }
+
+    #[test]
+    fn test_streaming_histogram_percentile_empty() {
+        let hist = StreamingHistogram::new(1, 100);
+        assert_eq!(hist.percentile(50), 0);
+    }
+
+    #[test]
+    fn test_streaming_histogram_reset() {
+        let mut hist = StreamingHistogram::new(1, 100);
+        hist.record(50);
+        hist.record(100);
+        assert_eq!(hist.count(), 2);
+
+        hist.reset();
+        assert_eq!(hist.count(), 0);
+        assert_eq!(hist.max(), 0);
+    }
+
+    #[test]
+    fn test_streaming_histogram_default() {
+        let hist = StreamingHistogram::default();
+        assert_eq!(hist.count(), 0);
+    }
+
+    #[test]
+    fn test_streaming_histogram_overflow_bucket() {
+        let mut hist = StreamingHistogram::new(10, 10); // 10 buckets of 10ms each
+        hist.record(1000); // Way over the buckets
+        assert_eq!(hist.count(), 1);
+    }
+
+    #[test]
+    fn test_comparison_verdict_color() {
+        assert_eq!(ComparisonVerdict::Improved.color(), "green");
+        assert_eq!(ComparisonVerdict::Unchanged.color(), "yellow");
+        assert_eq!(ComparisonVerdict::Regressed.color(), "red");
+    }
+
+    #[test]
+    fn test_metrics_stream_default() {
+        let metrics = MetricsStream::default();
+        assert_eq!(metrics.latency.count(), 0);
+    }
+
+    #[test]
+    fn test_metrics_stream_update_error_rate() {
+        let mut metrics = MetricsStream::new();
+        metrics.update_error_rate(1000, 5.5);
+        assert_eq!(metrics.error_rate.current, 5.5);
+    }
+
+    #[test]
+    fn test_dashboard_state_with_endpoints() {
+        let mut state = DashboardState::new("Endpoint Test");
+        state.endpoints.push(EndpointMetrics {
+            name: "homepage".to_string(),
+            count: 100,
+            p50_ms: 50,
+            p95_ms: 100,
+            p99_ms: 200,
+            errors: 2,
+        });
+        state.start();
+
+        let output = render_dashboard(&state);
+        assert!(output.contains("homepage"));
+        assert!(output.contains("RUNNING"));
+    }
+
+    #[test]
+    fn test_dashboard_state_paused() {
+        let mut state = DashboardState::new("Pause Test");
+        state.start();
+        state.pause();
+
+        let output = render_dashboard(&state);
+        assert!(output.contains("PAUSED"));
+    }
+
+    #[test]
+    fn test_export_format_default() {
+        let format = ExportFormat::default();
+        assert!(matches!(format, ExportFormat::MessagePack));
+    }
+
+    #[test]
+    fn test_stage_info_creation() {
+        let stage = StageInfo {
+            name: "warmup".to_string(),
+            elapsed_secs: 30,
+            duration_secs: 60,
+            target_users: 100,
+        };
+        assert_eq!(stage.name, "warmup");
+        assert_eq!(stage.target_users, 100);
+    }
+
+    #[test]
+    fn test_report_viewer_config_creation() {
+        let config = ReportViewerConfig {
+            path: PathBuf::from("report.json"),
+            detailed: true,
+            baseline: Some(PathBuf::from("baseline.json")),
+        };
+        assert!(config.detailed);
+        assert!(config.baseline.is_some());
+    }
+
+    #[test]
+    fn test_report_comparison_creation() {
+        let comp = ReportComparison {
+            current_name: "current".to_string(),
+            baseline_name: "baseline".to_string(),
+            throughput_change: 10.0,
+            p50_change: -5.0,
+            p95_change: -3.0,
+            p99_change: -1.0,
+            error_rate_change: 0.0,
+            verdict: ComparisonVerdict::Unchanged,
+        };
+        let output = render_comparison(&comp);
+        assert!(output.contains("current"));
+        assert!(output.contains("baseline"));
+    }
+
+    #[test]
+    fn test_render_comparison_regressed() {
+        let comp = ReportComparison {
+            current_name: "new".to_string(),
+            baseline_name: "old".to_string(),
+            throughput_change: -20.0,
+            p50_change: 50.0,
+            p95_change: 80.0,
+            p99_change: 100.0,
+            error_rate_change: 5.0,
+            verdict: ComparisonVerdict::Regressed,
+        };
+        let output = render_comparison(&comp);
+        assert!(output.contains("REGRESSED"));
+    }
+
+    #[test]
+    fn test_time_series_empty_average() {
+        let ts = TimeSeries::new("empty", 10);
+        assert_eq!(ts.average(), 0.0);
+    }
 }

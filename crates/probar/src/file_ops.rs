@@ -843,4 +843,344 @@ mod tests {
         let cloned = download;
         assert_eq!(cloned.size(), 3);
     }
+
+    // =========================================================================
+    // H₀-FILE-41+: Additional coverage tests
+    // =========================================================================
+
+    #[test]
+    fn h0_file_41_from_path_with_contents() {
+        let file = FileInput::from_path_with_contents("docs/report.pdf", b"PDF content".to_vec());
+        assert_eq!(file.name(), "report.pdf");
+        assert_eq!(file.mime_type(), "application/pdf");
+        assert_eq!(file.contents(), b"PDF content");
+        assert!(file.path.is_some());
+        assert_eq!(file.path.unwrap().to_str().unwrap(), "docs/report.pdf");
+    }
+
+    #[test]
+    fn h0_file_42_from_path_no_filename() {
+        // Test path with no file name (edge case)
+        let file = FileInput::from_path("/");
+        assert_eq!(file.name(), "unknown");
+    }
+
+    #[test]
+    fn h0_file_43_from_path_with_contents_no_filename() {
+        // Test path with no file name (edge case)
+        let file = FileInput::from_path_with_contents("/", vec![1, 2, 3]);
+        assert_eq!(file.name(), "unknown");
+        assert_eq!(file.contents(), &[1, 2, 3]);
+    }
+
+    #[test]
+    fn h0_file_44_download_contents_accessor() {
+        let download = Download::completed("http://test", "file.txt", vec![1, 2, 3, 4, 5]);
+        assert_eq!(download.contents(), &[1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn h0_file_45_file_chooser_set_input_files() {
+        let mut chooser = FileChooser::multiple();
+        chooser.set_input_files(&["file1.txt", "file2.pdf"]);
+        assert_eq!(chooser.file_count(), 2);
+        assert_eq!(chooser.files()[0].name(), "file1.txt");
+        assert_eq!(chooser.files()[1].name(), "file2.pdf");
+    }
+
+    #[test]
+    fn h0_file_46_file_chooser_clear() {
+        let mut chooser = FileChooser::new();
+        chooser.set_files(vec![FileInput::text("test.txt", "content")]);
+        assert!(chooser.has_files());
+        chooser.clear();
+        assert!(!chooser.has_files());
+        assert_eq!(chooser.file_count(), 0);
+    }
+
+    #[test]
+    fn h0_file_47_file_chooser_default() {
+        let chooser = FileChooser::default();
+        assert!(!chooser.multiple);
+        assert!(chooser.accept.is_empty());
+        assert!(chooser.files.is_empty());
+    }
+
+    #[test]
+    fn h0_file_48_download_manager_last_mut() {
+        let mut manager = DownloadManager::new();
+        manager.add(Download::new("http://test", "file.txt"));
+
+        // Modify via last_mut
+        if let Some(download) = manager.last_mut() {
+            download.cancel();
+        }
+
+        assert_eq!(manager.last().unwrap().state, DownloadState::Cancelled);
+    }
+
+    #[test]
+    fn h0_file_49_download_manager_downloads_accessor() {
+        let mut manager = DownloadManager::new();
+        manager.add(Download::new("http://test/a", "a.txt"));
+        manager.add(Download::new("http://test/b", "b.txt"));
+
+        let downloads = manager.downloads();
+        assert_eq!(downloads.len(), 2);
+        assert_eq!(downloads[0].suggested_filename(), "a.txt");
+        assert_eq!(downloads[1].suggested_filename(), "b.txt");
+    }
+
+    #[test]
+    fn h0_file_50_download_manager_wait_for_download() {
+        let mut manager = DownloadManager::new();
+        assert!(manager.wait_for_download().is_none());
+
+        manager.add(Download::new("http://test", "file.txt"));
+        let waited = manager.wait_for_download();
+        assert!(waited.is_some());
+        assert_eq!(waited.unwrap().suggested_filename(), "file.txt");
+    }
+
+    #[test]
+    fn h0_file_51_download_manager_find_by_name_not_found() {
+        let manager = DownloadManager::new();
+        assert!(manager.find_by_name("nonexistent.txt").is_none());
+    }
+
+    #[test]
+    fn h0_file_52_download_manager_last_empty() {
+        let manager = DownloadManager::new();
+        assert!(manager.last().is_none());
+    }
+
+    #[test]
+    fn h0_file_53_download_manager_last_mut_empty() {
+        let mut manager = DownloadManager::new();
+        assert!(manager.last_mut().is_none());
+    }
+
+    #[test]
+    fn h0_file_54_is_accepted_all_wildcard() {
+        let chooser = FileChooser::new().accept(vec!["*/*"]);
+        let file = FileInput::text("test.txt", "");
+        assert!(chooser.is_accepted(&file));
+    }
+
+    #[test]
+    fn h0_file_55_guess_mime_htm() {
+        assert_eq!(guess_mime_type("page.htm"), "text/html");
+    }
+
+    #[test]
+    fn h0_file_56_guess_mime_gif() {
+        assert_eq!(guess_mime_type("animation.gif"), "image/gif");
+    }
+
+    #[test]
+    fn h0_file_57_guess_mime_webp() {
+        assert_eq!(guess_mime_type("image.webp"), "image/webp");
+    }
+
+    #[test]
+    fn h0_file_58_guess_mime_ico() {
+        assert_eq!(guess_mime_type("favicon.ico"), "image/x-icon");
+    }
+
+    #[test]
+    fn h0_file_59_guess_mime_audio() {
+        assert_eq!(guess_mime_type("song.mp3"), "audio/mpeg");
+        assert_eq!(guess_mime_type("sound.wav"), "audio/wav");
+    }
+
+    #[test]
+    fn h0_file_60_guess_mime_video() {
+        assert_eq!(guess_mime_type("movie.mp4"), "video/mp4");
+        assert_eq!(guess_mime_type("clip.webm"), "video/webm");
+    }
+
+    #[test]
+    fn h0_file_61_guess_mime_archive() {
+        assert_eq!(guess_mime_type("archive.zip"), "application/zip");
+        assert_eq!(guess_mime_type("archive.gz"), "application/gzip");
+        assert_eq!(guess_mime_type("archive.tar"), "application/x-tar");
+    }
+
+    #[test]
+    fn h0_file_62_guess_mime_office() {
+        assert_eq!(guess_mime_type("document.doc"), "application/msword");
+        assert_eq!(
+            guess_mime_type("document.docx"),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+        assert_eq!(
+            guess_mime_type("spreadsheet.xls"),
+            "application/vnd.ms-excel"
+        );
+        assert_eq!(
+            guess_mime_type("spreadsheet.xlsx"),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+    }
+
+    #[test]
+    fn h0_file_63_guess_mime_xml() {
+        assert_eq!(guess_mime_type("data.xml"), "application/xml");
+    }
+
+    #[test]
+    fn h0_file_64_guess_mime_javascript() {
+        assert_eq!(guess_mime_type("script.js"), "application/javascript");
+    }
+
+    #[test]
+    fn h0_file_65_file_input_path_accessor() {
+        let file = FileInput::new("test.txt", "text/plain", vec![]);
+        assert!(file.path.is_none());
+
+        let file_with_path = FileInput::from_path("folder/test.txt");
+        assert!(file_with_path.path.is_some());
+    }
+
+    #[test]
+    fn h0_file_66_download_state_debug() {
+        let states = vec![
+            DownloadState::InProgress,
+            DownloadState::Completed,
+            DownloadState::Cancelled,
+            DownloadState::Failed("error".to_string()),
+            DownloadState::Deleted,
+        ];
+
+        for state in &states {
+            // Test Debug impl
+            let _ = format!("{:?}", state);
+        }
+
+        // Test PartialEq
+        assert_eq!(DownloadState::InProgress, DownloadState::InProgress);
+        assert_ne!(DownloadState::InProgress, DownloadState::Completed);
+    }
+
+    #[test]
+    fn h0_file_67_file_input_debug() {
+        let file = FileInput::text("test.txt", "content");
+        let debug_str = format!("{:?}", file);
+        assert!(debug_str.contains("test.txt"));
+    }
+
+    #[test]
+    fn h0_file_68_download_debug() {
+        let download = Download::new("http://test", "file.txt");
+        let debug_str = format!("{:?}", download);
+        assert!(debug_str.contains("file.txt"));
+    }
+
+    #[test]
+    fn h0_file_69_file_chooser_debug() {
+        let chooser = FileChooser::new();
+        let debug_str = format!("{:?}", chooser);
+        assert!(debug_str.contains("FileChooser"));
+    }
+
+    #[test]
+    fn h0_file_70_download_manager_debug() {
+        let manager = DownloadManager::new();
+        let debug_str = format!("{:?}", manager);
+        assert!(debug_str.contains("DownloadManager"));
+    }
+
+    #[test]
+    fn h0_file_71_set_files_single_mode_empty() {
+        let mut chooser = FileChooser::single();
+        chooser.set_files(Vec::<FileInput>::new());
+        assert_eq!(chooser.file_count(), 0);
+    }
+
+    #[test]
+    fn h0_file_72_set_files_single_mode_exactly_one() {
+        let mut chooser = FileChooser::single();
+        chooser.set_files(vec![FileInput::text("single.txt", "content")]);
+        assert_eq!(chooser.file_count(), 1);
+        assert_eq!(chooser.files()[0].name(), "single.txt");
+    }
+
+    #[test]
+    fn h0_file_73_is_accepted_extension_case_insensitive() {
+        let chooser = FileChooser::new().accept(vec![".pdf"]);
+        let file = FileInput::from_path("doc.PDF");
+        assert!(chooser.is_accepted(&file));
+    }
+
+    #[test]
+    fn h0_file_74_is_accepted_mime_wildcard_image() {
+        let chooser = FileChooser::new().accept(vec!["image/*"]);
+
+        let gif = FileInput::new("test.gif", "image/gif", vec![]);
+        assert!(chooser.is_accepted(&gif));
+
+        let webp = FileInput::new("test.webp", "image/webp", vec![]);
+        assert!(chooser.is_accepted(&webp));
+    }
+
+    #[test]
+    fn h0_file_75_is_accepted_mime_wildcard_audio() {
+        let chooser = FileChooser::new().accept(vec!["audio/*"]);
+
+        let mp3 = FileInput::new("test.mp3", "audio/mpeg", vec![]);
+        assert!(chooser.is_accepted(&mp3));
+
+        let txt = FileInput::text("test.txt", "");
+        assert!(!chooser.is_accepted(&txt));
+    }
+
+    #[test]
+    fn h0_file_76_download_path_none_when_not_saved() {
+        let download = Download::new("http://test", "file.txt");
+        assert!(download.path().is_none());
+    }
+
+    #[test]
+    fn h0_file_77_set_input_files_single_mode() {
+        let mut chooser = FileChooser::single();
+        chooser.set_input_files(&["file1.txt", "file2.txt"]);
+        // Single mode should only keep first file
+        assert_eq!(chooser.file_count(), 1);
+        assert_eq!(chooser.files()[0].name(), "file1.txt");
+    }
+
+    #[test]
+    fn h0_file_78_file_input_serialize_deserialize() {
+        let file = FileInput::text("test.txt", "content");
+        let json = serde_json::to_string(&file).unwrap();
+        let deserialized: FileInput = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name(), "test.txt");
+        assert_eq!(deserialized.contents_string(), Some("content".to_string()));
+    }
+
+    #[test]
+    fn h0_file_79_download_serialize_deserialize() {
+        let download = Download::completed("http://test", "file.txt", b"data".to_vec());
+        let json = serde_json::to_string(&download).unwrap();
+        let deserialized: Download = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.suggested_filename(), "file.txt");
+        assert!(deserialized.is_complete());
+    }
+
+    #[test]
+    fn h0_file_80_download_state_serialize_deserialize() {
+        let states = vec![
+            DownloadState::InProgress,
+            DownloadState::Completed,
+            DownloadState::Cancelled,
+            DownloadState::Failed("Network error".to_string()),
+            DownloadState::Deleted,
+        ];
+
+        for state in states {
+            let json = serde_json::to_string(&state).unwrap();
+            let deserialized: DownloadState = serde_json::from_str(&json).unwrap();
+            assert_eq!(state, deserialized);
+        }
+    }
 }

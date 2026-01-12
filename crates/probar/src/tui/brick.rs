@@ -497,7 +497,7 @@ mod compute_block_tests {
         }
 
         fn budget(&self) -> BrickBudget {
-            self.budget.clone()
+            self.budget
         }
 
         fn verify(&self) -> BrickVerification {

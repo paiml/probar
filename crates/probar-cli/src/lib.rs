@@ -18,6 +18,7 @@ pub mod debug;
 pub mod dev_server;
 mod error;
 pub mod generate;
+pub mod handlers;
 pub mod lint;
 pub mod load_testing;
 mod output;

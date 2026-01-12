@@ -367,4 +367,576 @@ mod tests {
         let coverage = WebAssetCoverage::new();
         assert_eq!(coverage.coverage_percent(), 100.0);
     }
+
+    // =========================================================================
+    // H₀-WEB-06: WebAssetCoverage function_executed
+    // =========================================================================
+
+    #[test]
+    fn h0_web_06_function_executed_tracking() {
+        let mut coverage = WebAssetCoverage::new();
+
+        // Execute a function for the first time
+        coverage.function_executed("init");
+
+        assert!(coverage.js_functions.contains_key("init"));
+        let func = coverage.js_functions.get("init").unwrap();
+        assert_eq!(func.name, "init");
+        assert_eq!(func.execution_count, 1);
+
+        // Execute again - should increment count
+        coverage.function_executed("init");
+        let func = coverage.js_functions.get("init").unwrap();
+        assert_eq!(func.execution_count, 2);
+    }
+
+    #[test]
+    fn h0_web_07_function_coverage_calculation() {
+        let mut coverage = WebAssetCoverage::new();
+
+        // Add two JS functions - one executed, one not
+        coverage.js_functions.insert(
+            "fn1".to_string(),
+            FunctionCoverage {
+                name: "fn1".to_string(),
+                execution_count: 5,
+            },
+        );
+        coverage.js_functions.insert(
+            "fn2".to_string(),
+            FunctionCoverage {
+                name: "fn2".to_string(),
+                execution_count: 0,
+            },
+        );
+
+        let report = coverage.report();
+        assert_eq!(report.js_coverage, 50.0);
+    }
+
+    // =========================================================================
+    // H₀-WEB-08: Element interaction type deduplication
+    // =========================================================================
+
+    #[test]
+    fn h0_web_08_element_used_duplicate_interaction_type() {
+        let mut coverage = WebAssetCoverage::new();
+
+        // Use element with same interaction type multiple times
+        coverage.element_used("btn", "click");
+        coverage.element_used("btn", "click"); // Same type
+        coverage.element_used("btn", "hover"); // Different type
+
+        let elem = coverage.html_elements.get("btn").unwrap();
+        assert_eq!(elem.interaction_count, 3);
+        // Should only have 2 unique interaction types
+        assert_eq!(elem.interaction_types.len(), 2);
+        assert!(elem.interaction_types.contains(&"click".to_string()));
+        assert!(elem.interaction_types.contains(&"hover".to_string()));
+    }
+
+    // =========================================================================
+    // H₀-WEB-09: Rule applied tracking
+    // =========================================================================
+
+    #[test]
+    fn h0_web_09_rule_applied_multiple_times() {
+        let mut coverage = WebAssetCoverage::new();
+
+        coverage.rule_applied(".container");
+        coverage.rule_applied(".container");
+        coverage.rule_applied(".container");
+
+        let rule = coverage.css_rules.get(".container").unwrap();
+        assert_eq!(rule.selector, ".container");
+        assert_eq!(rule.application_count, 3);
+    }
+
+    // =========================================================================
+    // H₀-WEB-10: CSS coverage with partial coverage
+    // =========================================================================
+
+    #[test]
+    fn h0_web_10_css_coverage_partial() {
+        let mut coverage = WebAssetCoverage::new();
+
+        // Add 4 CSS rules, only 1 applied
+        coverage.css_rules.insert(
+            "#r1".to_string(),
+            RuleCoverage {
+                selector: "#r1".to_string(),
+                application_count: 1,
+            },
+        );
+        coverage.css_rules.insert(
+            "#r2".to_string(),
+            RuleCoverage {
+                selector: "#r2".to_string(),
+                application_count: 0,
+            },
+        );
+        coverage.css_rules.insert(
+            "#r3".to_string(),
+            RuleCoverage {
+                selector: "#r3".to_string(),
+                application_count: 0,
+            },
+        );
+        coverage.css_rules.insert(
+            "#r4".to_string(),
+            RuleCoverage {
+                selector: "#r4".to_string(),
+                application_count: 0,
+            },
+        );
+
+        let report = coverage.report();
+        assert_eq!(report.css_coverage, 25.0);
+    }
+
+    // =========================================================================
+    // H₀-WEB-11: Combined coverage calculation
+    // =========================================================================
+
+    #[test]
+    fn h0_web_11_overall_coverage_mixed() {
+        let mut coverage = WebAssetCoverage::new();
+
+        // 1 out of 2 HTML elements covered
+        coverage.html_elements.insert(
+            "e1".to_string(),
+            WebElementCoverage {
+                id: "e1".to_string(),
+                interaction_count: 1,
+                interaction_types: vec![],
+            },
+        );
+        coverage.html_elements.insert(
+            "e2".to_string(),
+            WebElementCoverage {
+                id: "e2".to_string(),
+                interaction_count: 0,
+                interaction_types: vec![],
+            },
+        );
+
+        // 1 out of 2 CSS rules covered
+        coverage.css_rules.insert(
+            "#c1".to_string(),
+            RuleCoverage {
+                selector: "#c1".to_string(),
+                application_count: 1,
+            },
+        );
+        coverage.css_rules.insert(
+            "#c2".to_string(),
+            RuleCoverage {
+                selector: "#c2".to_string(),
+                application_count: 0,
+            },
+        );
+
+        // 1 out of 2 JS functions covered
+        coverage.js_functions.insert(
+            "f1".to_string(),
+            FunctionCoverage {
+                name: "f1".to_string(),
+                execution_count: 1,
+            },
+        );
+        coverage.js_functions.insert(
+            "f2".to_string(),
+            FunctionCoverage {
+                name: "f2".to_string(),
+                execution_count: 0,
+            },
+        );
+
+        // 3 out of 6 total = 50%
+        assert_eq!(coverage.coverage_percent(), 50.0);
+
+        let report = coverage.report();
+        assert_eq!(report.html_coverage, 50.0);
+        assert_eq!(report.css_coverage, 50.0);
+        assert_eq!(report.js_coverage, 50.0);
+        assert_eq!(report.overall_coverage, 50.0);
+    }
+
+    // =========================================================================
+    // H₀-WEB-12: WebBundle with invalid JS
+    // =========================================================================
+
+    #[test]
+    fn h0_web_12_bundle_with_invalid_js() {
+        let html = HtmlBuilder::new()
+            .title("Test")
+            .canvas("c", 100, 100)
+            .build()
+            .unwrap();
+
+        let css = CssBuilder::new().build().unwrap();
+
+        // Create JS with security issue
+        let js = GeneratedJs {
+            content: "eval('bad')".to_string(),
+            line_count: 1,
+            functions: vec![],
+        };
+
+        let bundle = WebBundle::new(html, css, js);
+        assert!(!bundle.is_valid());
+    }
+
+    // =========================================================================
+    // H₀-WEB-13: WebBundle to_single_file content verification
+    // =========================================================================
+
+    #[test]
+    fn h0_web_13_single_file_contains_all_parts() {
+        let html = HtmlBuilder::new()
+            .title("My Game")
+            .canvas("game-canvas", 640, 480)
+            .build()
+            .unwrap();
+
+        let css = CssBuilder::new()
+            .variable("main-color", "#ff0000")
+            .reset()
+            .build()
+            .unwrap();
+
+        let js = JsBuilder::new("game.wasm", "game-canvas")
+            .memory(512, 2048)
+            .build()
+            .unwrap();
+
+        let bundle = WebBundle::new(html, css, js);
+        let output = bundle.to_single_file();
+
+        // Check HTML structure
+        assert!(output.contains("<html lang=\"en\">"));
+        assert!(output.contains("<meta charset=\"UTF-8\">"));
+        assert!(output.contains("<title>My Game</title>"));
+        assert!(output.contains("</html>"));
+
+        // Check CSS is embedded
+        assert!(output.contains("<style>"));
+        assert!(output.contains("</style>"));
+
+        // Check JS is embedded
+        assert!(output.contains("<script>"));
+        assert!(output.contains("</script>"));
+        assert!(output.contains("game.wasm"));
+    }
+
+    // =========================================================================
+    // H₀-WEB-14: Default trait implementations
+    // =========================================================================
+
+    #[test]
+    fn h0_web_14_web_element_coverage_default() {
+        let elem: WebElementCoverage = Default::default();
+        assert!(elem.id.is_empty());
+        assert_eq!(elem.interaction_count, 0);
+        assert!(elem.interaction_types.is_empty());
+    }
+
+    #[test]
+    fn h0_web_15_rule_coverage_default() {
+        let rule: RuleCoverage = Default::default();
+        assert!(rule.selector.is_empty());
+        assert_eq!(rule.application_count, 0);
+    }
+
+    #[test]
+    fn h0_web_16_function_coverage_default() {
+        let func: FunctionCoverage = Default::default();
+        assert!(func.name.is_empty());
+        assert_eq!(func.execution_count, 0);
+    }
+
+    // =========================================================================
+    // H₀-WEB-17: WebAssetCoverageReport fields
+    // =========================================================================
+
+    #[test]
+    fn h0_web_17_coverage_report_all_fields() {
+        let mut coverage = WebAssetCoverage::new();
+
+        // Setup with known values for predictable report
+        coverage.html_elements.insert(
+            "elem".to_string(),
+            WebElementCoverage {
+                id: "elem".to_string(),
+                interaction_count: 1,
+                interaction_types: vec!["click".to_string()],
+            },
+        );
+
+        let report = coverage.report();
+
+        // Verify all fields are accessible
+        assert_eq!(report.html_coverage, 100.0);
+        assert_eq!(report.css_coverage, 100.0); // Empty = 100%
+        assert_eq!(report.js_coverage, 100.0); // Empty = 100%
+        assert_eq!(report.overall_coverage, 100.0);
+    }
+
+    // =========================================================================
+    // H₀-WEB-18: Element used on new element
+    // =========================================================================
+
+    #[test]
+    fn h0_web_18_element_used_creates_new_entry() {
+        let mut coverage = WebAssetCoverage::new();
+
+        // Element doesn't exist yet
+        assert!(coverage.html_elements.is_empty());
+
+        // Using it creates an entry
+        coverage.element_used("new-elem", "focus");
+
+        assert_eq!(coverage.html_elements.len(), 1);
+        let elem = coverage.html_elements.get("new-elem").unwrap();
+        assert_eq!(elem.id, "new-elem");
+        assert_eq!(elem.interaction_count, 1);
+        assert_eq!(elem.interaction_types, vec!["focus".to_string()]);
+    }
+
+    // =========================================================================
+    // H₀-WEB-19: Clone and Debug traits
+    // =========================================================================
+
+    #[test]
+    fn h0_web_19_web_bundle_clone() {
+        let html = HtmlBuilder::new()
+            .title("Clone Test")
+            .canvas("c", 100, 100)
+            .build()
+            .unwrap();
+
+        let css = CssBuilder::new().build().unwrap();
+        let js = JsBuilder::new("app.wasm", "c").build().unwrap();
+
+        let bundle = WebBundle::new(html, css, js);
+        let cloned = bundle.clone();
+
+        assert_eq!(cloned.html.title, bundle.html.title);
+        assert_eq!(cloned.css.content, bundle.css.content);
+        assert_eq!(cloned.js.content, bundle.js.content);
+    }
+
+    #[test]
+    fn h0_web_20_web_asset_coverage_clone() {
+        let mut coverage = WebAssetCoverage::new();
+        coverage.element_used("test", "click");
+        coverage.rule_applied("#test");
+        coverage.function_executed("main");
+
+        let cloned = coverage.clone();
+
+        assert_eq!(cloned.html_elements.len(), coverage.html_elements.len());
+        assert_eq!(cloned.css_rules.len(), coverage.css_rules.len());
+        assert_eq!(cloned.js_functions.len(), coverage.js_functions.len());
+    }
+
+    #[test]
+    fn h0_web_21_coverage_report_clone() {
+        let report = WebAssetCoverageReport {
+            html_coverage: 75.0,
+            css_coverage: 80.0,
+            js_coverage: 90.0,
+            overall_coverage: 81.67,
+        };
+
+        let cloned = report.clone();
+        assert_eq!(cloned.html_coverage, report.html_coverage);
+        assert_eq!(cloned.css_coverage, report.css_coverage);
+        assert_eq!(cloned.js_coverage, report.js_coverage);
+        assert_eq!(cloned.overall_coverage, report.overall_coverage);
+    }
+
+    // =========================================================================
+    // H₀-WEB-22: Debug formatting
+    // =========================================================================
+
+    #[test]
+    fn h0_web_22_debug_formatting() {
+        let coverage = WebAssetCoverage::new();
+        let debug_str = format!("{:?}", coverage);
+        assert!(debug_str.contains("WebAssetCoverage"));
+
+        let elem_coverage = WebElementCoverage::default();
+        let debug_str = format!("{:?}", elem_coverage);
+        assert!(debug_str.contains("WebElementCoverage"));
+
+        let rule_coverage = RuleCoverage::default();
+        let debug_str = format!("{:?}", rule_coverage);
+        assert!(debug_str.contains("RuleCoverage"));
+
+        let func_coverage = FunctionCoverage::default();
+        let debug_str = format!("{:?}", func_coverage);
+        assert!(debug_str.contains("FunctionCoverage"));
+    }
+
+    #[test]
+    fn h0_web_23_coverage_report_debug() {
+        let report = WebAssetCoverageReport {
+            html_coverage: 100.0,
+            css_coverage: 100.0,
+            js_coverage: 100.0,
+            overall_coverage: 100.0,
+        };
+        let debug_str = format!("{:?}", report);
+        assert!(debug_str.contains("WebAssetCoverageReport"));
+        assert!(debug_str.contains("100"));
+    }
+
+    // =========================================================================
+    // H₀-WEB-24: Edge cases for coverage percent
+    // =========================================================================
+
+    #[test]
+    fn h0_web_24_coverage_percent_all_covered() {
+        let mut coverage = WebAssetCoverage::new();
+
+        coverage.html_elements.insert(
+            "e".to_string(),
+            WebElementCoverage {
+                id: "e".to_string(),
+                interaction_count: 1,
+                interaction_types: vec![],
+            },
+        );
+
+        coverage.css_rules.insert(
+            "#c".to_string(),
+            RuleCoverage {
+                selector: "#c".to_string(),
+                application_count: 1,
+            },
+        );
+
+        coverage.js_functions.insert(
+            "f".to_string(),
+            FunctionCoverage {
+                name: "f".to_string(),
+                execution_count: 1,
+            },
+        );
+
+        assert_eq!(coverage.coverage_percent(), 100.0);
+    }
+
+    #[test]
+    fn h0_web_25_coverage_percent_none_covered() {
+        let mut coverage = WebAssetCoverage::new();
+
+        coverage.html_elements.insert(
+            "e".to_string(),
+            WebElementCoverage {
+                id: "e".to_string(),
+                interaction_count: 0,
+                interaction_types: vec![],
+            },
+        );
+
+        coverage.css_rules.insert(
+            "#c".to_string(),
+            RuleCoverage {
+                selector: "#c".to_string(),
+                application_count: 0,
+            },
+        );
+
+        coverage.js_functions.insert(
+            "f".to_string(),
+            FunctionCoverage {
+                name: "f".to_string(),
+                execution_count: 0,
+            },
+        );
+
+        assert_eq!(coverage.coverage_percent(), 0.0);
+    }
+
+    // =========================================================================
+    // H₀-WEB-26: Verify bundle validation uses WebValidator
+    // =========================================================================
+
+    #[test]
+    fn h0_web_26_bundle_validation_reflects_html_errors() {
+        // Create HTML manually with missing DOCTYPE
+        let html = GeneratedHtml {
+            title: "Test".to_string(),
+            body_content: String::new(),
+            content: "<html><head><title>Test</title></head><body></body></html>".to_string(),
+            elements: vec![],
+        };
+
+        let css = CssBuilder::new().build().unwrap();
+        let js = JsBuilder::new("app.wasm", "c").build().unwrap();
+
+        let bundle = WebBundle::new(html, css, js);
+
+        // Validation should fail due to missing DOCTYPE
+        assert!(!bundle.is_valid());
+        assert!(!bundle.validation.html.is_valid());
+    }
+
+    // =========================================================================
+    // H₀-WEB-27: Test individual coverage calculation methods
+    // =========================================================================
+
+    #[test]
+    fn h0_web_27_html_coverage_zero_items() {
+        let coverage = WebAssetCoverage::new();
+        let report = coverage.report();
+        // Empty = 100% (no items to cover)
+        assert_eq!(report.html_coverage, 100.0);
+    }
+
+    #[test]
+    fn h0_web_28_css_coverage_zero_items() {
+        let coverage = WebAssetCoverage::new();
+        let report = coverage.report();
+        // Empty = 100% (no items to cover)
+        assert_eq!(report.css_coverage, 100.0);
+    }
+
+    #[test]
+    fn h0_web_29_js_coverage_zero_items() {
+        let coverage = WebAssetCoverage::new();
+        let report = coverage.report();
+        // Empty = 100% (no items to cover)
+        assert_eq!(report.js_coverage, 100.0);
+    }
+
+    // =========================================================================
+    // H₀-WEB-30: Multiple function execution tracking
+    // =========================================================================
+
+    #[test]
+    fn h0_web_30_multiple_functions_executed() {
+        let mut coverage = WebAssetCoverage::new();
+
+        coverage.function_executed("init");
+        coverage.function_executed("update");
+        coverage.function_executed("render");
+        coverage.function_executed("init"); // Call init again
+
+        assert_eq!(coverage.js_functions.len(), 3);
+        assert_eq!(
+            coverage.js_functions.get("init").unwrap().execution_count,
+            2
+        );
+        assert_eq!(
+            coverage.js_functions.get("update").unwrap().execution_count,
+            1
+        );
+        assert_eq!(
+            coverage.js_functions.get("render").unwrap().execution_count,
+            1
+        );
+    }
 }

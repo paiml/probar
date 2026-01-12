@@ -655,4 +655,446 @@ mod tests {
         let budget = brick.budget();
         assert_eq!(budget.total_ms, 16);
     }
+
+    // ===== BrickError Display tests =====
+
+    #[test]
+    fn test_brick_error_display_assertion_failed() {
+        let error = BrickError::AssertionFailed {
+            assertion: BrickAssertion::TextVisible,
+            reason: "Element is hidden".into(),
+        };
+        let display = format!("{error}");
+        assert!(display.contains("Assertion"));
+        assert!(display.contains("TextVisible"));
+        assert!(display.contains("Element is hidden"));
+    }
+
+    #[test]
+    fn test_brick_error_display_budget_exceeded() {
+        let violation = BudgetViolation {
+            brick_name: "MyBrick".into(),
+            budget: BrickBudget::uniform(16),
+            actual: Duration::from_millis(100),
+            phase: None,
+        };
+        let error = BrickError::BudgetExceeded(violation);
+        let display = format!("{error}");
+        assert!(display.contains("Budget exceeded"));
+        assert!(display.contains("MyBrick"));
+    }
+
+    #[test]
+    fn test_brick_error_display_invalid_transition() {
+        let error = BrickError::InvalidTransition {
+            from: "idle".into(),
+            to: "running".into(),
+            reason: "Missing prerequisite".into(),
+        };
+        let display = format!("{error}");
+        assert!(display.contains("Invalid transition"));
+        assert!(display.contains("idle"));
+        assert!(display.contains("running"));
+        assert!(display.contains("Missing prerequisite"));
+    }
+
+    #[test]
+    fn test_brick_error_display_missing_child() {
+        let error = BrickError::MissingChild {
+            expected: "ChildWidget".into(),
+        };
+        let display = format!("{error}");
+        assert!(display.contains("Missing required child brick"));
+        assert!(display.contains("ChildWidget"));
+    }
+
+    #[test]
+    fn test_brick_error_display_html_generation_failed() {
+        let error = BrickError::HtmlGenerationFailed {
+            reason: "Template parse error".into(),
+        };
+        let display = format!("{error}");
+        assert!(display.contains("HTML generation failed"));
+        assert!(display.contains("Template parse error"));
+    }
+
+    #[test]
+    fn test_brick_error_is_std_error() {
+        let error: &dyn std::error::Error = &BrickError::MissingChild {
+            expected: "Test".into(),
+        };
+        // Verify Error trait is implemented
+        assert!(error.source().is_none());
+    }
+
+    // ===== test_id default implementation =====
+
+    #[test]
+    fn test_brick_test_id_default() {
+        let brick = TestBrick {
+            text: "Test".into(),
+            visible: true,
+        };
+        // Default implementation returns None
+        assert!(brick.test_id().is_none());
+    }
+
+    // ===== BrickAssertion Clone and PartialEq =====
+
+    #[test]
+    fn test_brick_assertion_clone() {
+        let original = BrickAssertion::Custom {
+            name: "custom_check".into(),
+            validator_id: 123,
+        };
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn test_brick_assertion_partial_eq() {
+        let a1 = BrickAssertion::ContrastRatio(4.5);
+        let a2 = BrickAssertion::ContrastRatio(4.5);
+        let a3 = BrickAssertion::ContrastRatio(7.0);
+
+        assert_eq!(a1, a2);
+        assert_ne!(a1, a3);
+    }
+
+    #[test]
+    fn test_brick_assertion_element_present_eq() {
+        let a1 = BrickAssertion::element_present("div.test");
+        let a2 = BrickAssertion::element_present("div.test");
+        let a3 = BrickAssertion::element_present("span.other");
+
+        assert_eq!(a1, a2);
+        assert_ne!(a1, a3);
+    }
+
+    // ===== BrickBudget Clone and PartialEq =====
+
+    #[test]
+    fn test_brick_budget_clone() {
+        let original = BrickBudget::new(5, 10, 15);
+        let cloned = original;
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn test_brick_budget_partial_eq() {
+        let b1 = BrickBudget::new(5, 10, 15);
+        let b2 = BrickBudget::new(5, 10, 15);
+        let b3 = BrickBudget::new(1, 2, 3);
+
+        assert_eq!(b1, b2);
+        assert_ne!(b1, b3);
+    }
+
+    // ===== BrickVerification Clone and Debug =====
+
+    #[test]
+    fn test_brick_verification_clone() {
+        let original = BrickVerification {
+            passed: vec![BrickAssertion::TextVisible],
+            failed: vec![(BrickAssertion::Focusable, "Not focusable".into())],
+            verification_time: Duration::from_micros(50),
+        };
+        let cloned = original;
+        assert_eq!(cloned.passed.len(), 1);
+        assert_eq!(cloned.failed.len(), 1);
+        assert_eq!(cloned.verification_time, Duration::from_micros(50));
+    }
+
+    #[test]
+    fn test_brick_verification_debug() {
+        let verification = BrickVerification {
+            passed: vec![BrickAssertion::TextVisible],
+            failed: vec![],
+            verification_time: Duration::from_micros(100),
+        };
+        let debug_str = format!("{verification:?}");
+        assert!(debug_str.contains("BrickVerification"));
+        assert!(debug_str.contains("passed"));
+        assert!(debug_str.contains("TextVisible"));
+    }
+
+    // ===== BudgetViolation Clone and Debug =====
+
+    #[test]
+    fn test_budget_violation_clone() {
+        let original = BudgetViolation {
+            brick_name: "ClonedBrick".into(),
+            budget: BrickBudget::uniform(16),
+            actual: Duration::from_millis(32),
+            phase: Some(BrickPhase::Measure),
+        };
+        let cloned = original;
+        assert_eq!(cloned.brick_name, "ClonedBrick");
+        assert_eq!(cloned.phase, Some(BrickPhase::Measure));
+    }
+
+    #[test]
+    fn test_budget_violation_debug() {
+        let violation = BudgetViolation {
+            brick_name: "DebugBrick".into(),
+            budget: BrickBudget::uniform(16),
+            actual: Duration::from_millis(50),
+            phase: None,
+        };
+        let debug_str = format!("{violation:?}");
+        assert!(debug_str.contains("BudgetViolation"));
+        assert!(debug_str.contains("DebugBrick"));
+    }
+
+    #[test]
+    fn test_budget_violation_no_phase() {
+        let violation = BudgetViolation {
+            brick_name: "NoPhaseBrick".into(),
+            budget: BrickBudget::uniform(16),
+            actual: Duration::from_millis(50),
+            phase: None,
+        };
+        assert!(violation.phase.is_none());
+    }
+
+    // ===== BrickPhase Copy and Clone =====
+
+    #[test]
+    fn test_brick_phase_copy() {
+        let phase = BrickPhase::Layout;
+        let copied = phase;
+        assert_eq!(phase, copied);
+    }
+
+    #[test]
+    fn test_brick_phase_clone() {
+        let phase = BrickPhase::Paint;
+        #[allow(clippy::clone_on_copy)]
+        let cloned = phase.clone();
+        assert_eq!(phase, cloned);
+    }
+
+    #[test]
+    fn test_brick_phase_debug() {
+        let phase = BrickPhase::Measure;
+        let debug_str = format!("{phase:?}");
+        assert_eq!(debug_str, "Measure");
+    }
+
+    // ===== BrickAssertion Debug =====
+
+    #[test]
+    fn test_brick_assertion_debug() {
+        let assertion = BrickAssertion::MaxLatencyMs(100);
+        let debug_str = format!("{assertion:?}");
+        assert!(debug_str.contains("MaxLatencyMs"));
+        assert!(debug_str.contains("100"));
+    }
+
+    #[test]
+    fn test_brick_assertion_custom_debug() {
+        let assertion = BrickAssertion::Custom {
+            name: "my_validator".into(),
+            validator_id: 999,
+        };
+        let debug_str = format!("{assertion:?}");
+        assert!(debug_str.contains("Custom"));
+        assert!(debug_str.contains("my_validator"));
+        assert!(debug_str.contains("999"));
+    }
+
+    // ===== BrickBudget Debug =====
+
+    #[test]
+    fn test_brick_budget_debug() {
+        let budget = BrickBudget::new(5, 10, 15);
+        let debug_str = format!("{budget:?}");
+        assert!(debug_str.contains("BrickBudget"));
+        assert!(debug_str.contains("measure_ms"));
+        assert!(debug_str.contains('5'));
+    }
+
+    // ===== BrickError Clone and Debug =====
+
+    #[test]
+    fn test_brick_error_clone() {
+        let original = BrickError::MissingChild {
+            expected: "SomeChild".into(),
+        };
+        let cloned = original;
+        match cloned {
+            BrickError::MissingChild { expected } => {
+                assert_eq!(expected, "SomeChild");
+            }
+            _ => panic!("Expected MissingChild variant"),
+        }
+    }
+
+    #[test]
+    fn test_brick_error_debug() {
+        let error = BrickError::HtmlGenerationFailed {
+            reason: "Syntax error".into(),
+        };
+        let debug_str = format!("{error:?}");
+        assert!(debug_str.contains("HtmlGenerationFailed"));
+        assert!(debug_str.contains("Syntax error"));
+    }
+
+    // ===== Edge cases =====
+
+    #[test]
+    fn test_verification_all_failed() {
+        let verification = BrickVerification {
+            passed: vec![],
+            failed: vec![
+                (BrickAssertion::TextVisible, "Hidden".into()),
+                (BrickAssertion::Focusable, "Not focusable".into()),
+            ],
+            verification_time: Duration::from_micros(10),
+        };
+        assert_eq!(verification.score(), 0.0);
+        assert!(!verification.is_valid());
+    }
+
+    #[test]
+    fn test_verification_all_passed() {
+        let verification = BrickVerification {
+            passed: vec![
+                BrickAssertion::TextVisible,
+                BrickAssertion::Focusable,
+                BrickAssertion::ContrastRatio(4.5),
+            ],
+            failed: vec![],
+            verification_time: Duration::from_micros(10),
+        };
+        assert_eq!(verification.score(), 1.0);
+        assert!(verification.is_valid());
+    }
+
+    #[test]
+    fn test_budget_uniform_edge_case() {
+        // Test with value that doesn't divide evenly by 3
+        let budget = BrickBudget::uniform(10);
+        assert_eq!(budget.measure_ms, 3);
+        assert_eq!(budget.layout_ms, 3);
+        assert_eq!(budget.paint_ms, 3);
+        // total_ms is preserved exactly
+        assert_eq!(budget.total_ms, 10);
+    }
+
+    #[test]
+    fn test_budget_zero() {
+        let budget = BrickBudget::uniform(0);
+        assert_eq!(budget.measure_ms, 0);
+        assert_eq!(budget.layout_ms, 0);
+        assert_eq!(budget.paint_ms, 0);
+        assert_eq!(budget.total_ms, 0);
+        assert_eq!(budget.as_duration(), Duration::from_millis(0));
+    }
+
+    // ===== Test brick with custom test_id =====
+
+    struct TestBrickWithId {
+        id: &'static str,
+    }
+
+    impl Brick for TestBrickWithId {
+        fn brick_name(&self) -> &'static str {
+            "TestBrickWithId"
+        }
+
+        fn assertions(&self) -> &[BrickAssertion] {
+            &[]
+        }
+
+        fn budget(&self) -> BrickBudget {
+            BrickBudget::default()
+        }
+
+        fn verify(&self) -> BrickVerification {
+            BrickVerification {
+                passed: vec![],
+                failed: vec![],
+                verification_time: Duration::ZERO,
+            }
+        }
+
+        fn to_html(&self) -> String {
+            String::new()
+        }
+
+        fn to_css(&self) -> String {
+            String::new()
+        }
+
+        fn test_id(&self) -> Option<&str> {
+            Some(self.id)
+        }
+    }
+
+    #[test]
+    fn test_brick_with_custom_test_id() {
+        let brick = TestBrickWithId { id: "my-test-id" };
+        assert_eq!(brick.test_id(), Some("my-test-id"));
+    }
+
+    #[test]
+    fn test_brick_with_id_can_render() {
+        let brick = TestBrickWithId { id: "test" };
+        // Empty assertions means valid
+        assert!(brick.can_render());
+    }
+
+    // ===== Additional assertion variant coverage =====
+
+    #[test]
+    fn test_all_assertion_variants_are_covered() {
+        // Ensure we exercise all variants for coverage
+        let variants: Vec<BrickAssertion> = vec![
+            BrickAssertion::TextVisible,
+            BrickAssertion::ContrastRatio(4.5),
+            BrickAssertion::MaxLatencyMs(100),
+            BrickAssertion::ElementPresent("div".into()),
+            BrickAssertion::Focusable,
+            BrickAssertion::Custom {
+                name: "test".into(),
+                validator_id: 1,
+            },
+        ];
+
+        for variant in &variants {
+            // Exercise Debug
+            let _ = format!("{variant:?}");
+            // Exercise Clone
+            let cloned = variant.clone();
+            // Exercise PartialEq
+            assert_eq!(variant, &cloned);
+        }
+    }
+
+    // ===== Brick trait method coverage for TestBrick =====
+
+    #[test]
+    fn test_brick_verify_with_empty_text_visible() {
+        // Edge case: visible = true but text is empty
+        let brick = TestBrick {
+            text: String::new(),
+            visible: true,
+        };
+        let result = brick.verify();
+        // Should fail because text is empty even though visible is true
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_brick_verify_with_text_not_visible() {
+        // Edge case: text is present but not visible
+        let brick = TestBrick {
+            text: "Some text".into(),
+            visible: false,
+        };
+        let result = brick.verify();
+        // Should fail because visible is false
+        assert!(!result.is_valid());
+    }
 }

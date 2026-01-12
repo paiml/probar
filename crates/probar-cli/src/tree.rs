@@ -503,4 +503,242 @@ mod tests {
 
         assert_eq!(root.file_count(), 2);
     }
+
+    // Additional coverage tests
+
+    #[test]
+    fn test_file_node_new_file_empty_name() {
+        let node = FileNode::new_file(PathBuf::from("/"), 0);
+        assert_eq!(node.name, "");
+    }
+
+    #[test]
+    fn test_file_node_new_dir_no_filename() {
+        // Path like "/" has no file_name component
+        let node = FileNode::new_dir(PathBuf::from("/"));
+        assert_eq!(node.name, "/");
+    }
+
+    #[test]
+    fn test_file_node_total_size_single_file() {
+        let node = FileNode::new_file(PathBuf::from("test.txt"), 500);
+        assert_eq!(node.total_size(), 500);
+    }
+
+    #[test]
+    fn test_file_node_file_count_single_file() {
+        let node = FileNode::new_file(PathBuf::from("test.txt"), 100);
+        assert_eq!(node.file_count(), 1);
+    }
+
+    #[test]
+    fn test_file_node_file_count_empty_dir() {
+        let node = FileNode::new_dir(PathBuf::from("empty"));
+        assert_eq!(node.file_count(), 0);
+    }
+
+    #[test]
+    fn test_tree_config_invalid_filter() {
+        let config = TreeConfig::default().with_filter(Some("[invalid"));
+        assert!(config.filter.is_none());
+    }
+
+    #[test]
+    fn test_tree_config_none_filter() {
+        let config = TreeConfig::default().with_filter(None);
+        assert!(config.filter.is_none());
+    }
+
+    #[test]
+    fn test_render_tree_nested_directories() {
+        let mut root = FileNode::new_dir(PathBuf::from("project"));
+        let mut subdir = FileNode::new_dir(PathBuf::from("project/src"));
+        subdir.children.push(FileNode::new_file(
+            PathBuf::from("project/src/main.rs"),
+            512,
+        ));
+        root.children.push(subdir);
+        root.children
+            .push(FileNode::new_file(PathBuf::from("project/README.md"), 256));
+
+        let config = TreeConfig::default();
+        let output = render_tree(&root, &config);
+
+        assert!(output.contains("src/"));
+        assert!(output.contains("main.rs"));
+        assert!(output.contains("README.md"));
+        assert!(output.contains("│"));
+    }
+
+    #[test]
+    fn test_render_tree_no_sizes() {
+        let mut root = FileNode::new_dir(PathBuf::from("project"));
+        root.children
+            .push(FileNode::new_file(PathBuf::from("project/test.txt"), 1024));
+
+        let config = TreeConfig::default().with_sizes(false);
+        let output = render_tree(&root, &config);
+
+        assert!(output.contains("test.txt"));
+        // Size should not be in parentheses next to filename
+        // (summary line still includes total size)
+        assert!(!output.contains("(1.0 KB)"));
+    }
+
+    #[test]
+    fn test_render_tree_no_mime_types() {
+        let mut root = FileNode::new_dir(PathBuf::from("project"));
+        root.children
+            .push(FileNode::new_file(PathBuf::from("project/test.html"), 1024));
+
+        let config = TreeConfig::default().with_mime_types(false);
+        let output = render_tree(&root, &config);
+
+        assert!(output.contains("test.html"));
+        assert!(!output.contains("[text/html]"));
+    }
+
+    #[test]
+    fn test_build_tree_hidden_files() {
+        let temp = TempDir::new().unwrap();
+        std::fs::write(temp.path().join(".hidden"), "secret").unwrap();
+        std::fs::write(temp.path().join("visible.txt"), "public").unwrap();
+
+        let config = TreeConfig::default();
+        let tree = build_tree(temp.path(), &config).unwrap();
+
+        // Hidden files should be excluded
+        assert_eq!(tree.file_count(), 1);
+        assert_eq!(tree.children[0].name, "visible.txt");
+    }
+
+    #[test]
+    fn test_build_tree_ignores_node_modules() {
+        let temp = TempDir::new().unwrap();
+        let nm = temp.path().join("node_modules");
+        std::fs::create_dir(&nm).unwrap();
+        std::fs::write(nm.join("package.json"), "{}").unwrap();
+        std::fs::write(temp.path().join("index.js"), "code").unwrap();
+
+        let config = TreeConfig::default();
+        let tree = build_tree(temp.path(), &config).unwrap();
+
+        // node_modules should be excluded
+        assert_eq!(tree.children.len(), 1);
+        assert_eq!(tree.children[0].name, "index.js");
+    }
+
+    #[test]
+    fn test_build_tree_ignores_target() {
+        let temp = TempDir::new().unwrap();
+        let target = temp.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("debug"), "binary").unwrap();
+        std::fs::write(temp.path().join("Cargo.toml"), "[package]").unwrap();
+
+        let config = TreeConfig::default();
+        let tree = build_tree(temp.path(), &config).unwrap();
+
+        // target should be excluded
+        assert_eq!(tree.children.len(), 1);
+        assert_eq!(tree.children[0].name, "Cargo.toml");
+    }
+
+    #[test]
+    fn test_build_tree_nonexistent_path() {
+        let config = TreeConfig::default();
+        let result = build_tree(Path::new("/nonexistent/path"), &config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_build_tree_file_instead_of_directory() {
+        let temp = TempDir::new().unwrap();
+        let file_path = temp.path().join("file.txt");
+        std::fs::write(&file_path, "content").unwrap();
+
+        let config = TreeConfig::default();
+        let tree = build_tree(&file_path, &config).unwrap();
+
+        assert!(!tree.is_dir);
+        assert_eq!(tree.name, "file.txt");
+    }
+
+    #[test]
+    fn test_render_tree_empty_mime_type() {
+        let mut root = FileNode::new_dir(PathBuf::from("project"));
+        let mut file = FileNode::new_file(PathBuf::from("project/unknown"), 100);
+        file.mime_type = String::new(); // Empty mime type
+        root.children.push(file);
+
+        let config = TreeConfig::default().with_mime_types(true);
+        let output = render_tree(&root, &config);
+
+        // Should not have brackets for empty mime type
+        assert!(output.contains("unknown"));
+        assert!(!output.contains("[]"));
+    }
+
+    #[test]
+    fn test_display_tree() {
+        let temp = TempDir::new().unwrap();
+        std::fs::write(temp.path().join("test.txt"), "content").unwrap();
+
+        let config = TreeConfig::default();
+        let result = display_tree(temp.path(), &config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_display_tree_error() {
+        let config = TreeConfig::default();
+        let result = display_tree(Path::new("/nonexistent/path"), &config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_format_size_large_gigabytes() {
+        assert_eq!(format_size(10_737_418_240), "10.0 GB");
+    }
+
+    #[test]
+    fn test_format_size_precise() {
+        assert_eq!(format_size(1_572_864), "1.5 MB");
+    }
+
+    #[test]
+    fn test_tree_directories_sorted_first() {
+        let temp = TempDir::new().unwrap();
+        std::fs::write(temp.path().join("aaa.txt"), "content").unwrap();
+        let dir = temp.path().join("bbb");
+        std::fs::create_dir(&dir).unwrap();
+
+        let config = TreeConfig::default();
+        let tree = build_tree(temp.path(), &config).unwrap();
+
+        // Directory should come before file despite alphabetical order
+        assert_eq!(tree.children.len(), 2);
+        assert!(tree.children[0].is_dir);
+        assert!(!tree.children[1].is_dir);
+    }
+
+    #[test]
+    fn test_render_tree_multiple_files_last_item() {
+        let mut root = FileNode::new_dir(PathBuf::from("project"));
+        root.children
+            .push(FileNode::new_file(PathBuf::from("a.txt"), 100));
+        root.children
+            .push(FileNode::new_file(PathBuf::from("b.txt"), 100));
+        root.children
+            .push(FileNode::new_file(PathBuf::from("c.txt"), 100));
+
+        let config = TreeConfig::default();
+        let output = render_tree(&root, &config);
+
+        // Last item should use └── connector
+        assert!(output.contains("└── c.txt"));
+        // Middle items should use ├── connector
+        assert!(output.contains("├── a.txt"));
+        assert!(output.contains("├── b.txt"));
+    }
 }

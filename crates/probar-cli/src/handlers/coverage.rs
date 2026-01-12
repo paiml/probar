@@ -53,8 +53,7 @@ pub fn execute_coverage(_config: &CliConfig, args: &CoverageArgs) -> CliResult<(
         let report = generate_coverage_report(&cells);
         let json = serde_json::to_string_pretty(&report)
             .map_err(|e| CliError::report_generation(e.to_string()))?;
-        std::fs::write(json_path, json)
-            .map_err(|e| CliError::report_generation(e.to_string()))?;
+        std::fs::write(json_path, json).map_err(|e| CliError::report_generation(e.to_string()))?;
         println!("Coverage report exported to: {}", json_path.display());
     }
 
@@ -103,7 +102,7 @@ pub fn load_coverage_from_json(path: &Path) -> CliResult<Vec<Vec<CoverageCell>>>
 }
 
 /// Check if a cell is in a gap region (no coverage)
-#[must_use] 
+#[must_use]
 pub fn is_gap_cell(row: usize, col: usize) -> bool {
     let middle_gap = row == 5 && (5..=7).contains(&col);
     let end_gap = row == 2 && col > 10;
@@ -111,7 +110,7 @@ pub fn is_gap_cell(row: usize, col: usize) -> bool {
 }
 
 /// Calculate coverage value for a cell based on position
-#[must_use] 
+#[must_use]
 pub fn calculate_coverage(row: usize, col: usize, rows: usize, cols: usize) -> f32 {
     if is_gap_cell(row, col) {
         return 0.0;
@@ -122,7 +121,7 @@ pub fn calculate_coverage(row: usize, col: usize, rows: usize, cols: usize) -> f
 }
 
 /// Create sample coverage data for demonstration
-#[must_use] 
+#[must_use]
 pub fn create_sample_coverage_data() -> Vec<Vec<CoverageCell>> {
     const ROWS: usize = 10;
     const COLS: usize = 15;
@@ -143,7 +142,7 @@ pub fn create_sample_coverage_data() -> Vec<Vec<CoverageCell>> {
 }
 
 /// Generate coverage report from cells
-#[must_use] 
+#[must_use]
 pub fn generate_coverage_report(cells: &[Vec<CoverageCell>]) -> PixelCoverageReport {
     let total_cells = cells.iter().map(std::vec::Vec::len).sum::<usize>() as u32;
     let covered_cells = cells

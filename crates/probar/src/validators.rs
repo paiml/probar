@@ -2457,7 +2457,7 @@ mod tests {
         // With 64 unique values, entropy should be ~6 bits
         match content {
             ScreenshotContent::GameWorld { entropy } => {
-                assert!(entropy >= 3.0 && entropy < 6.0);
+                assert!((3.0..6.0).contains(&entropy));
             }
             ScreenshotContent::HighEntropy { entropy } => {
                 // Also acceptable for this pattern
@@ -2624,7 +2624,7 @@ mod tests {
             text: "test".to_string(),
             is_final: false,
         };
-        let cloned = result.clone();
+        let cloned = result;
         assert_eq!(cloned.text, "test");
     }
 
@@ -2634,7 +2634,7 @@ mod tests {
             timestamp_ms: 100.0,
             level: 0.5,
         };
-        let cloned = sample.clone();
+        let cloned = sample;
         assert!((cloned.level - 0.5).abs() < f32::EPSILON);
     }
 
@@ -2644,7 +2644,7 @@ mod tests {
             metric: StreamingMetric::BufferLevel(0.5),
             timestamp: Instant::now(),
         };
-        let cloned = record.clone();
+        let cloned = record;
         assert!(matches!(cloned.metric, StreamingMetric::BufferLevel(..)));
     }
 
@@ -2654,7 +2654,7 @@ mod tests {
             measured: Duration::from_millis(150),
             max: Duration::from_millis(100),
         };
-        let cloned = err.clone();
+        let cloned = err;
         assert!(matches!(
             cloned,
             StreamingValidationError::LatencyExceeded { .. }
@@ -2664,7 +2664,7 @@ mod tests {
     #[test]
     fn test_vu_meter_error_clone() {
         let err = VuMeterError::Clipping(1.5);
-        let cloned = err.clone();
+        let cloned = err;
         assert!(matches!(cloned, VuMeterError::Clipping(..)));
     }
 
@@ -2754,7 +2754,7 @@ mod tests {
             last_update_ms: 100,
             current_ms: 200,
         };
-        let cloned = err.clone();
+        let cloned = err;
         assert!(matches!(
             cloned,
             VuMeterError::Stale {
@@ -2770,7 +2770,7 @@ mod tests {
             measured_hz: 15.0,
             expected_hz: 30.0,
         };
-        let cloned = err.clone();
+        let cloned = err;
         match cloned {
             VuMeterError::SlowUpdateRate {
                 measured_hz,
@@ -2789,7 +2789,7 @@ mod tests {
             sample_count: 10,
             value: 0.5,
         };
-        let cloned = err.clone();
+        let cloned = err;
         match cloned {
             VuMeterError::NotAnimating {
                 sample_count,
@@ -3005,7 +3005,7 @@ mod tests {
         let content = ScreenshotContent::classify(&pixels);
         // Could be either UI or GameWorld depending on exact calculation
         let entropy = content.entropy();
-        assert!(entropy >= 2.5 && entropy <= 3.5);
+        assert!((2.5..=3.5).contains(&entropy));
     }
 
     #[test]
@@ -3020,7 +3020,7 @@ mod tests {
         }
         let content = ScreenshotContent::classify(&pixels);
         let entropy = content.entropy();
-        assert!(entropy >= 5.5 && entropy <= 6.5);
+        assert!((5.5..=6.5).contains(&entropy));
     }
 
     #[test]
@@ -3079,7 +3079,7 @@ mod tests {
             max_latency_recorded: Duration::from_millis(50),
             total_frames: 2000,
         };
-        let cloned = result.clone();
+        let cloned = result;
         assert_eq!(cloned.buffer_underruns, 3);
         assert_eq!(cloned.dropped_frames, 7);
         assert!((cloned.average_fps - 60.0).abs() < f64::EPSILON);
@@ -3517,7 +3517,7 @@ mod tests {
             threshold: 5,
         };
         assert!(err.to_string().contains("15"));
-        assert!(err.to_string().contains("5"));
+        assert!(err.to_string().contains('5'));
 
         let err = StreamingValidationError::DroppedFrameThreshold { count: 25, max: 10 };
         assert!(err.to_string().contains("25"));
@@ -4217,7 +4217,7 @@ mod tests {
     fn test_streaming_state_copy_clone() {
         let state = StreamingState::Streaming;
         let copied = state;
-        let cloned = state.clone();
+        let cloned = state;
         assert_eq!(copied, cloned);
         assert_eq!(state, StreamingState::Streaming);
     }
@@ -4226,7 +4226,7 @@ mod tests {
     fn test_compression_algorithm_copy_clone() {
         let algo = CompressionAlgorithm::Zstd;
         let copied = algo;
-        let cloned = algo.clone();
+        let cloned = algo;
         assert_eq!(copied, cloned);
         assert_eq!(algo, CompressionAlgorithm::Zstd);
     }

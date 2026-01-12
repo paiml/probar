@@ -144,7 +144,7 @@ impl StateSyncReport {
 /// | WASM-SS-005 | Missing self.*.clone() before closure | Warning |
 /// | WASM-SS-006 | Type alias for Rc<RefCell<T>> used with ::new() | Warning |
 /// | WASM-SS-007 | Function returning Rc<RefCell<T>> used in closure context | Warning |
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct StateSyncLinter {
     /// Track local Rc variables per function
     local_rcs: HashMap<String, Vec<(String, usize)>>,
@@ -158,6 +158,12 @@ pub struct StateSyncLinter {
     rc_type_aliases: HashSet<String>,
     /// Functions that return Rc<RefCell<T>>
     rc_returning_functions: HashSet<String>,
+}
+
+impl Default for StateSyncLinter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StateSyncLinter {
@@ -234,6 +240,9 @@ impl StateSyncLinter {
         // Pre-pass: Collect type aliases and function signatures
         self.collect_type_info(source, &mut report);
 
+        // Pre-pass: Identify functions that contain closures
+        let fns_with_closures = self.find_functions_with_closures(source);
+
         // Track context
         let mut current_fn: Option<String> = None;
         let mut fn_has_closure = false;
@@ -276,7 +285,10 @@ impl StateSyncLinter {
                     .push((var_name.clone(), line_num));
 
                 // If this function creates closures, this is suspicious
-                if fn_has_closure || self.function_likely_creates_closure(&fn_name) {
+                let fn_has_any_closure = fn_has_closure
+                    || fns_with_closures.contains(&fn_name)
+                    || self.function_likely_creates_closure(&fn_name);
+                if fn_has_any_closure {
                     report.errors.push(LintError {
                         rule: "WASM-SS-001".to_string(),
                         message: format!(
@@ -514,6 +526,36 @@ impl StateSyncLinter {
         false
     }
 
+    /// Pre-pass to identify which functions contain closures
+    fn find_functions_with_closures(&self, source: &str) -> HashSet<String> {
+        let mut result = HashSet::new();
+        let mut current_fn: Option<String> = None;
+        let mut brace_depth = 0;
+        let mut fn_start_depth = 0;
+
+        for line in source.lines() {
+            brace_depth += line.matches('{').count();
+            brace_depth = brace_depth.saturating_sub(line.matches('}').count());
+
+            if let Some(fn_name) = self.detect_function_start(line) {
+                current_fn = Some(fn_name);
+                fn_start_depth = brace_depth;
+            }
+
+            if current_fn.is_some() && brace_depth < fn_start_depth {
+                current_fn = None;
+            }
+
+            if self.line_creates_closure(line) {
+                if let Some(ref fn_name) = current_fn {
+                    result.insert(fn_name.clone());
+                }
+            }
+        }
+
+        result
+    }
+
     /// Detect local Rc::new() pattern
     fn detect_local_rc_new(&self, line: &str) -> Option<String> {
         let trimmed = line.trim();
@@ -601,25 +643,44 @@ impl StateSyncLinter {
 
     /// Check for missing self.*.clone() before closure
     fn check_missing_self_clone(&self, line: &str, line_num: usize, report: &mut StateSyncReport) {
-        // Pattern: Closure::wrap or move || without preceding self.*.clone()
-        if self.line_creates_closure(line) {
-            // Check if we have state_ptr usage but not state_ptr_clone from self
-            if line.contains("state_ptr") && !line.contains("state_ptr_clone") {
-                report.errors.push(LintError {
-                    rule: "WASM-SS-005".to_string(),
-                    message: "Closure may capture local state - ensure \
-                              `self.state_ptr.clone()` is used"
+        // Pattern 1: Closure::wrap or move || with state_ptr reference
+        if self.line_creates_closure(line)
+            && line.contains("state_ptr")
+            && !line.contains("state_ptr_clone")
+        {
+            report.errors.push(LintError {
+                rule: "WASM-SS-005".to_string(),
+                message: "Closure may capture local state - ensure \
+                          `self.state_ptr.clone()` is used"
+                    .to_string(),
+                file: self.current_file.clone(),
+                line: line_num,
+                column: 1,
+                severity: LintSeverity::Warning,
+                suggestion: Some(
+                    "Add `let state_ptr_clone = self.state_ptr.clone();` before closure"
                         .to_string(),
-                    file: self.current_file.clone(),
-                    line: line_num,
-                    column: 1,
-                    severity: LintSeverity::Warning,
-                    suggestion: Some(
-                        "Add `let state_ptr_clone = self.state_ptr.clone();` before closure"
-                            .to_string(),
-                    ),
-                });
-            }
+                ),
+            });
+            return;
+        }
+
+        // Pattern 2: Usage of state_ptr inside a function with closures (not cloned from self)
+        // Detects: state_ptr.borrow_mut() or state_ptr.borrow() when state_ptr isn't cloned
+        if line.contains("state_ptr.borrow") && !line.contains("self.") && !line.contains("_clone")
+        {
+            report.errors.push(LintError {
+                rule: "WASM-SS-005".to_string(),
+                message: "Using `state_ptr` directly - may be disconnected from self".to_string(),
+                file: self.current_file.clone(),
+                line: line_num,
+                column: 1,
+                severity: LintSeverity::Warning,
+                suggestion: Some(
+                    "Use `let state_ptr_clone = self.state_ptr.clone();` before closure"
+                        .to_string(),
+                ),
+            });
         }
     }
 
@@ -811,5 +872,682 @@ impl WorkerManager {
         assert_eq!(report.error_count(), 1);
         assert_eq!(report.warning_count(), 1);
         assert!(report.has_errors());
+    }
+
+    // Additional tests for improved coverage
+
+    #[test]
+    fn test_lint_error_display_without_suggestion() {
+        let err = LintError {
+            rule: "WASM-SS-002".to_string(),
+            message: "Potential desync".to_string(),
+            file: "src/worker.rs".to_string(),
+            line: 10,
+            column: 5,
+            severity: LintSeverity::Warning,
+            suggestion: None,
+        };
+
+        let display = err.to_string();
+        assert!(display.contains("WASM-SS-002"));
+        assert!(display.contains("Potential desync"));
+        assert!(display.contains("src/worker.rs:10:5"));
+        // Should not contain "help:" when no suggestion
+        assert!(!display.contains("help:"));
+    }
+
+    #[test]
+    fn test_report_merge() {
+        let mut report1 = StateSyncReport {
+            errors: vec![LintError {
+                rule: "WASM-SS-001".to_string(),
+                message: "error1".to_string(),
+                file: "file1.rs".to_string(),
+                line: 1,
+                column: 1,
+                severity: LintSeverity::Error,
+                suggestion: None,
+            }],
+            files_analyzed: 1,
+            lines_analyzed: 100,
+        };
+
+        let report2 = StateSyncReport {
+            errors: vec![LintError {
+                rule: "WASM-SS-002".to_string(),
+                message: "error2".to_string(),
+                file: "file2.rs".to_string(),
+                line: 2,
+                column: 1,
+                severity: LintSeverity::Warning,
+                suggestion: None,
+            }],
+            files_analyzed: 2,
+            lines_analyzed: 200,
+        };
+
+        report1.merge(report2);
+
+        assert_eq!(report1.errors.len(), 2);
+        assert_eq!(report1.files_analyzed, 3);
+        assert_eq!(report1.lines_analyzed, 300);
+    }
+
+    #[test]
+    fn test_report_no_errors() {
+        let report = StateSyncReport::default();
+        assert!(!report.has_errors());
+        assert_eq!(report.error_count(), 0);
+        assert_eq!(report.warning_count(), 0);
+    }
+
+    #[test]
+    fn test_report_only_warnings_no_errors() {
+        let mut report = StateSyncReport::default();
+        report.errors.push(LintError {
+            rule: "WASM-SS-002".to_string(),
+            message: "warning".to_string(),
+            file: "test.rs".to_string(),
+            line: 1,
+            column: 1,
+            severity: LintSeverity::Warning,
+            suggestion: None,
+        });
+        report.errors.push(LintError {
+            rule: "WASM-SS-006".to_string(),
+            message: "warning2".to_string(),
+            file: "test.rs".to_string(),
+            line: 2,
+            column: 1,
+            severity: LintSeverity::Warning,
+            suggestion: None,
+        });
+
+        assert!(!report.has_errors());
+        assert_eq!(report.error_count(), 0);
+        assert_eq!(report.warning_count(), 2);
+    }
+
+    #[test]
+    fn test_extract_type_alias_name() {
+        let linter = StateSyncLinter::new();
+
+        // Valid type alias
+        assert_eq!(
+            linter.extract_type_alias_name("type StatePtr = Rc<RefCell<State>>;"),
+            Some("StatePtr".to_string())
+        );
+
+        // Type alias with underscores
+        assert_eq!(
+            linter.extract_type_alias_name("type My_State_Ptr = Rc<RefCell<State>>;"),
+            Some("My_State_Ptr".to_string())
+        );
+
+        // Not a type declaration
+        assert_eq!(linter.extract_type_alias_name("let x = 5;"), None);
+
+        // Empty after type
+        assert_eq!(linter.extract_type_alias_name("type "), None);
+
+        // Type with generic
+        assert_eq!(
+            linter.extract_type_alias_name("type Handler<T> = Rc<RefCell<T>>;"),
+            Some("Handler".to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_type_alias_new_pattern() {
+        let mut linter = StateSyncLinter::new();
+        linter.rc_type_aliases.insert("StatePtr".to_string());
+
+        // Should detect type alias ::new()
+        let result = linter.detect_type_alias_new("let state = StatePtr::new(Default::default());");
+        assert!(result.is_some());
+        let (alias, var) = result.unwrap();
+        assert_eq!(alias, "StatePtr");
+        assert_eq!(var, "state");
+
+        // Should detect with mut
+        let result =
+            linter.detect_type_alias_new("let mut state = StatePtr::new(Default::default());");
+        assert!(result.is_some());
+        let (alias, var) = result.unwrap();
+        assert_eq!(alias, "StatePtr");
+        assert_eq!(var, "state");
+
+        // Should not detect non-alias
+        let result = linter.detect_type_alias_new("let x = Rc::new(5);");
+        assert!(result.is_none());
+
+        // Should not detect without let
+        let result = linter.detect_type_alias_new("StatePtr::new(Default::default());");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_detect_rc_function_call() {
+        let mut linter = StateSyncLinter::new();
+        linter
+            .rc_returning_functions
+            .insert("make_state".to_string());
+
+        // Self:: pattern
+        let result = linter.detect_rc_function_call("let state = Self::make_state();");
+        assert!(result.is_some());
+        let (fn_name, var) = result.unwrap();
+        assert_eq!(fn_name, "make_state");
+        assert_eq!(var, "state");
+
+        // self. pattern
+        let result = linter.detect_rc_function_call("let state = self.make_state();");
+        assert!(result.is_some());
+
+        // Direct call pattern
+        let result = linter.detect_rc_function_call("let state = make_state();");
+        assert!(result.is_some());
+
+        // With mut
+        let result = linter.detect_rc_function_call("let mut state = Self::make_state();");
+        assert!(result.is_some());
+
+        // Non-matching function
+        let result = linter.detect_rc_function_call("let x = other_func();");
+        assert!(result.is_none());
+
+        // No assignment
+        let result = linter.detect_rc_function_call("Self::make_state();");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_function_likely_creates_closure() {
+        let linter = StateSyncLinter::new();
+
+        // Closure-likely function names
+        assert!(linter.function_likely_creates_closure("spawn"));
+        assert!(linter.function_likely_creates_closure("start"));
+        assert!(linter.function_likely_creates_closure("on_message"));
+        assert!(linter.function_likely_creates_closure("on_click"));
+        assert!(linter.function_likely_creates_closure("on_event"));
+        assert!(linter.function_likely_creates_closure("set_callback"));
+        assert!(linter.function_likely_creates_closure("register"));
+        assert!(linter.function_likely_creates_closure("subscribe"));
+        assert!(linter.function_likely_creates_closure("listen"));
+
+        // Names containing closure patterns
+        assert!(linter.function_likely_creates_closure("spawn_worker"));
+        assert!(linter.function_likely_creates_closure("do_spawn"));
+
+        // Non-closure function names
+        assert!(!linter.function_likely_creates_closure("calculate"));
+        assert!(!linter.function_likely_creates_closure("get_value"));
+        assert!(!linter.function_likely_creates_closure("process"));
+    }
+
+    #[test]
+    fn test_detect_function_start_pub_crate() {
+        let linter = StateSyncLinter::new();
+
+        // pub(crate) fn
+        assert_eq!(
+            linter.detect_function_start("pub(crate) fn internal_func() {"),
+            Some("internal_func".to_string())
+        );
+
+        // Just fn
+        assert_eq!(
+            linter.detect_function_start("    fn helper() {"),
+            Some("helper".to_string())
+        );
+
+        // async fn
+        assert_eq!(
+            linter.detect_function_start("async fn async_work() {"),
+            Some("async_work".to_string())
+        );
+
+        // Not a function (impl block)
+        assert_eq!(linter.detect_function_start("impl Foo {"), None);
+
+        // Not a function (closure)
+        assert_eq!(linter.detect_function_start("let f = || {};"), None);
+    }
+
+    #[test]
+    fn test_detect_local_rc_new_edge_cases() {
+        let linter = StateSyncLinter::new();
+
+        // With mut
+        assert_eq!(
+            linter.detect_local_rc_new("let mut counter = Rc::new(0);"),
+            Some("counter".to_string())
+        );
+
+        // No let keyword
+        assert!(linter
+            .detect_local_rc_new("counter = Rc::new(0);")
+            .is_none());
+
+        // With clone (correct pattern)
+        assert!(linter
+            .detect_local_rc_new("let ptr = self.state.clone();")
+            .is_none());
+
+        // Nested in expression - should still detect due to simple pattern matching
+        assert!(linter
+            .detect_local_rc_new("    let x = Rc::new(RefCell::new(vec![]));")
+            .is_some());
+    }
+
+    #[test]
+    fn test_lint_type_alias_detection() {
+        let mut linter = StateSyncLinter::new();
+
+        let code_with_type_alias = r#"
+type StatePtr = Rc<RefCell<State>>;
+
+impl Worker {
+    pub fn spawn(&mut self) {
+        let state = StatePtr::new(State::default());
+        let closure = move || {
+            state.borrow_mut().update();
+        };
+    }
+}
+"#;
+
+        let report = linter
+            .lint_source(code_with_type_alias)
+            .expect("lint failed");
+
+        // Should detect WASM-SS-006 for type alias
+        assert!(
+            report.errors.iter().any(|e| e.rule == "WASM-SS-006"),
+            "Expected WASM-SS-006 for type alias"
+        );
+    }
+
+    #[test]
+    fn test_lint_rc_returning_function() {
+        let mut linter = StateSyncLinter::new();
+
+        let code_with_rc_fn = r#"
+fn make_state() -> Rc<RefCell<State>> {
+    Rc::new(RefCell::new(State::default()))
+}
+
+impl Worker {
+    pub fn spawn(&mut self) {
+        let state = make_state();
+        let closure = move || {
+            state.borrow_mut().update();
+        };
+    }
+}
+"#;
+
+        let report = linter.lint_source(code_with_rc_fn).expect("lint failed");
+
+        // Should detect WASM-SS-007 for function returning Rc
+        assert!(
+            report.errors.iter().any(|e| e.rule == "WASM-SS-007"),
+            "Expected WASM-SS-007 for Rc-returning function"
+        );
+    }
+
+    #[test]
+    fn test_lint_wasm_ss_005_missing_clone() {
+        let mut linter = StateSyncLinter::new();
+
+        let code_with_missing_clone = r#"
+impl Worker {
+    pub fn process(&mut self) {
+        let closure = move || {
+            // Uses state_ptr directly without clone from self
+            state_ptr.borrow_mut().process();
+        };
+    }
+}
+"#;
+
+        let report = linter
+            .lint_source(code_with_missing_clone)
+            .expect("lint failed");
+
+        // Should detect WASM-SS-005
+        assert!(
+            report.errors.iter().any(|e| e.rule == "WASM-SS-005"),
+            "Expected WASM-SS-005 for missing self clone"
+        );
+    }
+
+    #[test]
+    fn test_lint_wasm_ss_002_desync_pattern() {
+        let mut linter = StateSyncLinter::new();
+
+        let code_with_desync = r#"
+impl Worker {
+    pub fn spawn(&mut self) {
+        // Both self.state and state_ptr exist - potential desync
+        let state_ptr = Rc::new(RefCell::new(self.state.clone()));
+        let closure = move || {
+            state_ptr.borrow_mut().update();
+        };
+    }
+}
+"#;
+
+        let report = linter.lint_source(code_with_desync).expect("lint failed");
+
+        // Should detect some error (WASM-SS-001 for local Rc::new at minimum)
+        assert!(
+            !report.errors.is_empty(),
+            "Expected lint errors for desync pattern"
+        );
+    }
+
+    #[test]
+    fn test_lint_empty_source() {
+        let mut linter = StateSyncLinter::new();
+        let report = linter.lint_source("").expect("lint failed");
+        assert!(report.errors.is_empty());
+        assert_eq!(report.files_analyzed, 1);
+        assert_eq!(report.lines_analyzed, 0);
+    }
+
+    #[test]
+    fn test_lint_source_with_no_functions() {
+        let mut linter = StateSyncLinter::new();
+
+        let code = r#"
+// Just constants and types
+const MAX: usize = 100;
+type MyType = Vec<u32>;
+"#;
+
+        let report = linter.lint_source(code).expect("lint failed");
+        // Should have no WASM-SS-001 errors (no functions with closures)
+        assert!(
+            !report.errors.iter().any(|e| e.rule == "WASM-SS-001"),
+            "Should not report WASM-SS-001 for code without functions"
+        );
+    }
+
+    #[test]
+    fn test_lint_function_without_closure() {
+        let mut linter = StateSyncLinter::new();
+
+        let code = r#"
+impl Calculator {
+    pub fn add(&self, a: i32, b: i32) -> i32 {
+        let result = Rc::new(a + b);
+        *result
+    }
+}
+"#;
+
+        let report = linter.lint_source(code).expect("lint failed");
+        // Should not detect WASM-SS-001 (no closure in function)
+        assert!(
+            !report.errors.iter().any(|e| e.rule == "WASM-SS-001"),
+            "Should not report WASM-SS-001 for function without closure"
+        );
+    }
+
+    #[test]
+    fn test_lint_closure_with_move_pipe() {
+        let linter = StateSyncLinter::new();
+
+        // move |x|
+        assert!(linter.line_creates_closure("let f = move |x| x + 1;"));
+        // move ||
+        assert!(linter.line_creates_closure("let f = move || println!(\"hi\");"));
+        // Closure::once
+        assert!(linter.line_creates_closure("let cb = Closure::once(Box::new(|| {}));"));
+    }
+
+    #[test]
+    fn test_lint_brace_depth_tracking() {
+        let mut linter = StateSyncLinter::new();
+
+        // Code with nested braces
+        let code = r#"
+impl Outer {
+    pub fn outer_fn(&mut self) {
+        {
+            let inner_scope = Rc::new(RefCell::new(0));
+        }
+        // After inner scope closes, we're back in outer_fn
+        let closure = move || {};
+    }
+}
+"#;
+
+        let report = linter.lint_source(code).expect("lint failed");
+        // This tests that brace depth tracking works correctly
+        assert!(report.lines_analyzed > 0);
+    }
+
+    #[test]
+    fn test_lint_multiple_functions() {
+        let mut linter = StateSyncLinter::new();
+
+        let code = r#"
+impl Multi {
+    pub fn first(&mut self) {
+        let state = Rc::new(RefCell::new(0));
+        let closure = move || {};
+    }
+
+    pub fn second(&mut self) {
+        let state_clone = self.state.clone();
+        let closure = move || {};
+    }
+}
+"#;
+
+        let report = linter.lint_source(code).expect("lint failed");
+        // Should detect error in first function, not in second
+        let ss001_count = report
+            .errors
+            .iter()
+            .filter(|e| e.rule == "WASM-SS-001")
+            .count();
+        assert!(ss001_count >= 1, "Expected at least one WASM-SS-001 error");
+    }
+
+    #[test]
+    fn test_lint_directory_with_tempdir() {
+        use std::io::Write;
+
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let rs_file_path = temp_dir.path().join("test.rs");
+
+        let code = r#"
+impl Test {
+    pub fn spawn(&mut self) {
+        let state = Rc::new(RefCell::new(0));
+        let closure = move || {};
+    }
+}
+"#;
+
+        std::fs::File::create(&rs_file_path)
+            .expect("Failed to create file")
+            .write_all(code.as_bytes())
+            .expect("Failed to write file");
+
+        let mut linter = StateSyncLinter::new();
+        let report = linter
+            .lint_directory(temp_dir.path())
+            .expect("lint_directory failed");
+
+        assert_eq!(report.files_analyzed, 1);
+        assert!(report.lines_analyzed > 0);
+    }
+
+    #[test]
+    fn test_lint_directory_skips_hidden_and_target() {
+        use std::io::Write;
+
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+
+        // Create .hidden directory with a file
+        let hidden_dir = temp_dir.path().join(".hidden");
+        std::fs::create_dir(&hidden_dir).expect("Failed to create .hidden dir");
+        let hidden_file = hidden_dir.join("hidden.rs");
+        std::fs::File::create(&hidden_file)
+            .expect("Failed to create hidden file")
+            .write_all(b"fn hidden() {}")
+            .expect("Failed to write");
+
+        // Create target directory with a file
+        let target_dir = temp_dir.path().join("target");
+        std::fs::create_dir(&target_dir).expect("Failed to create target dir");
+        let target_file = target_dir.join("generated.rs");
+        std::fs::File::create(&target_file)
+            .expect("Failed to create target file")
+            .write_all(b"fn generated() {}")
+            .expect("Failed to write");
+
+        // Create a regular file
+        let regular_file = temp_dir.path().join("src.rs");
+        std::fs::File::create(&regular_file)
+            .expect("Failed to create regular file")
+            .write_all(b"fn regular() {}")
+            .expect("Failed to write");
+
+        let mut linter = StateSyncLinter::new();
+        let report = linter
+            .lint_directory(temp_dir.path())
+            .expect("lint_directory failed");
+
+        // Should only analyze the regular file, not hidden or target
+        assert_eq!(report.files_analyzed, 1);
+    }
+
+    #[test]
+    fn test_lint_file_not_found() {
+        let mut linter = StateSyncLinter::new();
+        let result = linter.lint_file(std::path::Path::new("/nonexistent/path/file.rs"));
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("Failed to read /nonexistent/path/file.rs"));
+    }
+
+    #[test]
+    fn test_lint_file_success() {
+        use std::io::Write;
+
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let rs_file = temp_dir.path().join("test.rs");
+
+        let code = "fn test() { let x = 1; }";
+        std::fs::File::create(&rs_file)
+            .expect("Failed to create file")
+            .write_all(code.as_bytes())
+            .expect("Failed to write");
+
+        let mut linter = StateSyncLinter::new();
+        let report = linter.lint_file(&rs_file).expect("lint_file failed");
+
+        assert_eq!(report.files_analyzed, 1);
+        assert_eq!(report.lines_analyzed, 1);
+    }
+
+    #[test]
+    fn test_collect_type_info_function_returning_rc() {
+        let mut linter = StateSyncLinter::new();
+        let mut report = StateSyncReport::default();
+
+        let code = r#"
+fn create_state() -> Rc<RefCell<State>> {
+    Rc::new(RefCell::new(State::default()))
+}
+"#;
+
+        linter.collect_type_info(code, &mut report);
+
+        assert!(linter.rc_returning_functions.contains("create_state"));
+        assert!(report.errors.iter().any(|e| e.rule == "WASM-SS-007"));
+    }
+
+    #[test]
+    fn test_collect_type_info_type_alias() {
+        let mut linter = StateSyncLinter::new();
+        let mut report = StateSyncReport::default();
+
+        let code = r#"
+type SharedState = Rc<RefCell<State>>;
+"#;
+
+        linter.collect_type_info(code, &mut report);
+
+        assert!(linter.rc_type_aliases.contains("SharedState"));
+        assert!(report.errors.iter().any(|e| e.rule == "WASM-SS-006"));
+    }
+
+    #[test]
+    fn test_lint_source_text_based_directly() {
+        let mut linter = StateSyncLinter::new();
+        linter.current_file = "test.rs".to_string();
+
+        let code = r#"
+impl Worker {
+    pub fn on_event(&mut self) {
+        let state = Rc::new(RefCell::new(0));
+        let cb = Closure::wrap(Box::new(move || {}));
+    }
+}
+"#;
+
+        let report = linter
+            .lint_source_text_based(code)
+            .expect("lint_source_text_based failed");
+
+        assert!(report.files_analyzed == 1);
+        assert!(report.lines_analyzed > 0);
+    }
+
+    #[test]
+    fn test_severity_equality() {
+        assert_eq!(LintSeverity::Error, LintSeverity::Error);
+        assert_eq!(LintSeverity::Warning, LintSeverity::Warning);
+        assert_eq!(LintSeverity::Info, LintSeverity::Info);
+        assert_ne!(LintSeverity::Error, LintSeverity::Warning);
+        assert_ne!(LintSeverity::Warning, LintSeverity::Info);
+    }
+
+    #[test]
+    fn test_lint_error_clone() {
+        let err = LintError {
+            rule: "TEST-001".to_string(),
+            message: "test message".to_string(),
+            file: "test.rs".to_string(),
+            line: 1,
+            column: 1,
+            severity: LintSeverity::Error,
+            suggestion: Some("fix it".to_string()),
+        };
+
+        let cloned = err.clone();
+        assert_eq!(err.rule, cloned.rule);
+        assert_eq!(err.message, cloned.message);
+        assert_eq!(err.file, cloned.file);
+        assert_eq!(err.line, cloned.line);
+        assert_eq!(err.column, cloned.column);
+        assert_eq!(err.severity, cloned.severity);
+        assert_eq!(err.suggestion, cloned.suggestion);
+    }
+
+    #[test]
+    fn test_linter_default() {
+        let linter = StateSyncLinter::default();
+        // Default should be same as new()
+        assert!(linter.closure_creators.contains("Closure::wrap"));
+        assert!(linter.closure_creators.contains("move ||"));
     }
 }

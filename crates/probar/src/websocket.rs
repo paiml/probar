@@ -1058,4 +1058,455 @@ mod tests {
             assert_eq!(monitor.mocks.len(), 2);
         }
     }
+
+    mod additional_coverage_tests {
+        use super::*;
+
+        #[test]
+        fn test_websocket_connection_send_binary() {
+            let conn = WebSocketConnection::new("conn_1", "ws://example.com");
+            conn.send_binary(vec![0x01, 0x02, 0x03, 0x04]);
+
+            let messages = conn.messages();
+            assert_eq!(messages.len(), 1);
+            assert!(messages[0].is_binary());
+            assert!(messages[0].is_sent());
+            assert!(messages[0].raw_data.is_some());
+            assert_eq!(
+                messages[0].raw_data.as_ref().unwrap(),
+                &vec![0x01, 0x02, 0x03, 0x04]
+            );
+        }
+
+        #[test]
+        fn test_websocket_connection_receive_binary() {
+            let conn = WebSocketConnection::new("conn_1", "ws://example.com");
+            conn.receive_binary(vec![0xDE, 0xAD, 0xBE, 0xEF]);
+
+            let messages = conn.messages();
+            assert_eq!(messages.len(), 1);
+            assert!(messages[0].is_binary());
+            assert!(messages[0].is_received());
+            assert!(messages[0].raw_data.is_some());
+        }
+
+        #[test]
+        fn test_websocket_connection_elapsed_ms() {
+            let conn = WebSocketConnection::new("conn_1", "ws://example.com");
+            // elapsed_ms should return some value >= 0
+            let elapsed = conn.elapsed_ms();
+            assert!(elapsed < 1000); // Should be very small, just created
+        }
+
+        #[test]
+        fn test_mock_websocket_response_with_binary() {
+            let response = MockWebSocketResponse::new()
+                .with_binary(vec![1, 2, 3])
+                .with_binary(vec![4, 5, 6]);
+            assert_eq!(response.messages.len(), 2);
+            assert!(response.messages[0].is_binary());
+            assert!(response.messages[1].is_binary());
+        }
+
+        #[test]
+        fn test_mock_websocket_response_default() {
+            let response = MockWebSocketResponse::default();
+            assert!(response.messages.is_empty());
+            assert_eq!(response.delay_ms, 0);
+        }
+
+        #[test]
+        fn test_websocket_monitor_default() {
+            let monitor = WebSocketMonitor::default();
+            assert!(!monitor.is_active());
+            assert_eq!(monitor.connection_count(), 0);
+        }
+
+        #[test]
+        fn test_websocket_monitor_connections_list() {
+            let mut monitor = WebSocketMonitor::new();
+            let id1 = monitor.connect("ws://example1.com");
+            let id2 = monitor.connect("ws://example2.com");
+
+            let connections = monitor.connections();
+            assert_eq!(connections.len(), 2);
+            assert!(connections.contains(&id1));
+            assert!(connections.contains(&id2));
+        }
+
+        #[test]
+        fn test_websocket_mock_on_open() {
+            let mock = WebSocketMock::new("example.com")
+                .on_open(MockWebSocketResponse::new().with_text("welcome"));
+
+            assert_eq!(mock.url_pattern, "example.com");
+            assert!(mock.message_pattern.is_none());
+            assert_eq!(mock.response.messages.len(), 1);
+        }
+
+        #[test]
+        fn test_websocket_message_json_error() {
+            let msg = WebSocketMessage::text("not valid json {{{", MessageDirection::Sent, 0);
+            let result: Result<serde_json::Value, _> = msg.json();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_websocket_mock_matches_message_no_pattern() {
+            let mock = WebSocketMock::new("example.com");
+            // When message_pattern is None, matches_message should return false
+            assert!(!mock.matches_message("any message"));
+        }
+
+        #[test]
+        fn test_websocket_mock_once_matches_message() {
+            let mut mock = WebSocketMock::new("example.com")
+                .on_message("hello", MockWebSocketResponse::new())
+                .once();
+
+            assert!(mock.matches_message("say hello"));
+            mock.mark_used();
+            assert!(!mock.matches_message("say hello"));
+        }
+
+        #[test]
+        fn test_websocket_monitor_get_connection_not_found() {
+            let monitor = WebSocketMonitor::new();
+            let result = monitor.get_connection("nonexistent");
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_websocket_monitor_send_to_nonexistent() {
+            let mut monitor = WebSocketMonitor::new();
+            // Should not panic when sending to nonexistent connection
+            monitor.send("nonexistent", "message");
+            assert_eq!(monitor.all_messages().len(), 0);
+        }
+
+        #[test]
+        fn test_websocket_monitor_receive_to_nonexistent() {
+            let monitor = WebSocketMonitor::new();
+            // Should not panic when receiving on nonexistent connection
+            monitor.receive("nonexistent", "message");
+            assert_eq!(monitor.all_messages().len(), 0);
+        }
+
+        #[test]
+        fn test_websocket_monitor_disconnect_nonexistent() {
+            let mut monitor = WebSocketMonitor::new();
+            // Should not panic when disconnecting nonexistent connection
+            monitor.disconnect("nonexistent", 1000, "Normal");
+        }
+
+        #[test]
+        fn test_websocket_state_enum_variants() {
+            // Test all WebSocketState variants
+            let connecting = WebSocketState::Connecting;
+            let open = WebSocketState::Open;
+            let closing = WebSocketState::Closing;
+            let closed = WebSocketState::Closed;
+
+            assert!(matches!(connecting, WebSocketState::Connecting));
+            assert!(matches!(open, WebSocketState::Open));
+            assert!(matches!(closing, WebSocketState::Closing));
+            assert!(matches!(closed, WebSocketState::Closed));
+        }
+
+        #[test]
+        fn test_message_type_enum_variants() {
+            // Test all MessageType variants
+            assert!(matches!(MessageType::Text, MessageType::Text));
+            assert!(matches!(MessageType::Binary, MessageType::Binary));
+            assert!(matches!(MessageType::Ping, MessageType::Ping));
+            assert!(matches!(MessageType::Pong, MessageType::Pong));
+            assert!(matches!(MessageType::Close, MessageType::Close));
+        }
+
+        #[test]
+        fn test_message_direction_enum_variants() {
+            // Test all MessageDirection variants
+            assert!(matches!(MessageDirection::Sent, MessageDirection::Sent));
+            assert!(matches!(
+                MessageDirection::Received,
+                MessageDirection::Received
+            ));
+        }
+
+        #[test]
+        fn test_websocket_message_is_not_text() {
+            let msg = WebSocketMessage::binary(vec![1, 2, 3], MessageDirection::Sent, 0);
+            assert!(!msg.is_text());
+        }
+
+        #[test]
+        fn test_websocket_message_is_not_binary() {
+            let msg = WebSocketMessage::text("hello", MessageDirection::Sent, 0);
+            assert!(!msg.is_binary());
+        }
+
+        #[test]
+        fn test_websocket_message_is_not_sent() {
+            let msg = WebSocketMessage::text("hello", MessageDirection::Received, 0);
+            assert!(!msg.is_sent());
+        }
+
+        #[test]
+        fn test_websocket_message_is_not_received() {
+            let msg = WebSocketMessage::text("hello", MessageDirection::Sent, 0);
+            assert!(!msg.is_received());
+        }
+
+        #[test]
+        fn test_websocket_connection_state_transitions() {
+            let mut conn = WebSocketConnection::new("conn_1", "ws://example.com");
+            assert!(matches!(conn.state, WebSocketState::Connecting));
+            assert!(!conn.is_open());
+            assert!(!conn.is_closed());
+
+            conn.open();
+            assert!(matches!(conn.state, WebSocketState::Open));
+            assert!(conn.is_open());
+            assert!(!conn.is_closed());
+
+            conn.close(1000, "goodbye");
+            assert!(matches!(conn.state, WebSocketState::Closed));
+            assert!(!conn.is_open());
+            assert!(conn.is_closed());
+        }
+
+        #[test]
+        fn test_websocket_message_close_format() {
+            let close = WebSocketMessage::close(1001, "Going Away", 100);
+            assert!(close.data.contains("1001"));
+            assert!(close.data.contains("Going Away"));
+            assert_eq!(close.timestamp_ms, 100);
+        }
+
+        #[test]
+        fn test_websocket_monitor_multiple_mocks_same_url() {
+            let mut monitor = WebSocketMonitor::new();
+            monitor.mock(
+                WebSocketMock::new("example.com")
+                    .on_open(MockWebSocketResponse::new().with_text("welcome1")),
+            );
+            monitor.mock(
+                WebSocketMock::new("example.com")
+                    .on_open(MockWebSocketResponse::new().with_text("welcome2")),
+            );
+
+            let _id = monitor.connect("ws://example.com/socket");
+            let pending = monitor.take_pending_responses();
+
+            // Both mocks should trigger
+            assert_eq!(pending.len(), 2);
+        }
+
+        #[test]
+        fn test_websocket_monitor_mock_message_url_mismatch() {
+            let mut monitor = WebSocketMonitor::new();
+            monitor.mock(
+                WebSocketMock::new("other.com")
+                    .on_message("hello", MockWebSocketResponse::new().with_text("response")),
+            );
+
+            let id = monitor.connect("ws://example.com");
+            monitor.send(&id, "hello");
+
+            // Mock should not trigger because URL doesn't match
+            let pending = monitor.take_pending_responses();
+            assert!(pending.is_empty());
+        }
+
+        #[test]
+        fn test_websocket_connection_record_message_sets_connection_id() {
+            let conn = WebSocketConnection::new("my_conn", "ws://example.com");
+            let msg = WebSocketMessage::text("test", MessageDirection::Sent, 0);
+
+            conn.record_message(msg);
+
+            let messages = conn.messages();
+            assert_eq!(messages.len(), 1);
+            assert_eq!(messages[0].connection_id, "my_conn");
+        }
+
+        #[test]
+        fn test_websocket_monitor_clear_resets_counter() {
+            let mut monitor = WebSocketMonitor::new();
+            let _id1 = monitor.connect("ws://example1.com");
+            let _id2 = monitor.connect("ws://example2.com");
+
+            monitor.clear();
+
+            // After clear, connection counter resets
+            let id3 = monitor.connect("ws://example3.com");
+            assert_eq!(id3, "ws_1"); // Counter should be reset to 0, so first new conn is ws_1
+        }
+
+        #[test]
+        fn test_websocket_monitor_builder_default() {
+            let builder = WebSocketMonitorBuilder::default();
+            let monitor = builder.build();
+            assert!(!monitor.is_active());
+            assert_eq!(monitor.mocks.len(), 0);
+        }
+
+        #[test]
+        fn test_websocket_message_ping_direction() {
+            let ping = WebSocketMessage::ping(50);
+            assert!(ping.is_sent()); // Ping is sent from client
+            assert_eq!(ping.timestamp_ms, 50);
+            assert!(ping.data.is_empty());
+        }
+
+        #[test]
+        fn test_websocket_message_pong_direction() {
+            let pong = WebSocketMessage::pong(75);
+            assert!(pong.is_received()); // Pong is received from server
+            assert_eq!(pong.timestamp_ms, 75);
+            assert!(pong.data.is_empty());
+        }
+
+        #[test]
+        fn test_websocket_message_binary_base64_encoding() {
+            let data = vec![0x48, 0x65, 0x6c, 0x6c, 0x6f]; // "Hello" in bytes
+            let msg = WebSocketMessage::binary(data.clone(), MessageDirection::Sent, 0);
+
+            // Verify the data is base64 encoded
+            assert!(!msg.data.is_empty());
+            // Decode and verify
+            let decoded =
+                base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &msg.data)
+                    .unwrap();
+            assert_eq!(decoded, data);
+        }
+
+        #[test]
+        fn test_websocket_connection_empty_messages() {
+            let conn = WebSocketConnection::new("conn_1", "ws://example.com");
+            assert!(conn.messages().is_empty());
+            assert!(conn.sent_messages().is_empty());
+            assert!(conn.received_messages().is_empty());
+            assert_eq!(conn.message_count(), 0);
+        }
+
+        #[test]
+        fn test_websocket_mock_response_chaining() {
+            let response = MockWebSocketResponse::new()
+                .with_text("msg1")
+                .with_binary(vec![1, 2])
+                .with_text("msg2")
+                .with_delay(500);
+
+            assert_eq!(response.messages.len(), 3);
+            assert_eq!(response.delay_ms, 500);
+            assert!(response.messages[0].is_text());
+            assert!(response.messages[1].is_binary());
+            assert!(response.messages[2].is_text());
+        }
+
+        #[test]
+        fn test_websocket_message_json_valid_nested() {
+            let msg = WebSocketMessage::text(
+                r#"{"user":{"name":"Alice","age":30},"active":true}"#,
+                MessageDirection::Received,
+                0,
+            );
+            let data: serde_json::Value = msg.json().unwrap();
+            assert_eq!(data["user"]["name"], "Alice");
+            assert_eq!(data["user"]["age"], 30);
+            assert_eq!(data["active"], true);
+        }
+
+        #[test]
+        fn test_websocket_monitor_active_vs_total_count() {
+            let mut monitor = WebSocketMonitor::new();
+            let id1 = monitor.connect("ws://example1.com");
+            let id2 = monitor.connect("ws://example2.com");
+            let _id3 = monitor.connect("ws://example3.com");
+
+            assert_eq!(monitor.connection_count(), 3);
+            assert_eq!(monitor.active_connection_count(), 3);
+
+            monitor.disconnect(&id1, 1000, "Normal");
+            assert_eq!(monitor.connection_count(), 3);
+            assert_eq!(monitor.active_connection_count(), 2);
+
+            monitor.disconnect(&id2, 1000, "Normal");
+            assert_eq!(monitor.connection_count(), 3);
+            assert_eq!(monitor.active_connection_count(), 1);
+        }
+
+        #[test]
+        fn test_websocket_message_clone() {
+            let msg = WebSocketMessage::text("hello", MessageDirection::Sent, 100)
+                .with_connection("conn_1");
+            let cloned = msg.clone();
+
+            assert_eq!(cloned.data, msg.data);
+            assert_eq!(cloned.timestamp_ms, msg.timestamp_ms);
+            assert_eq!(cloned.connection_id, msg.connection_id);
+        }
+
+        #[test]
+        fn test_websocket_mock_clone() {
+            let mock = WebSocketMock::new("example.com")
+                .on_message("test", MockWebSocketResponse::new().with_text("response"))
+                .once();
+            let cloned = mock.clone();
+
+            assert_eq!(cloned.url_pattern, mock.url_pattern);
+            assert_eq!(cloned.message_pattern, mock.message_pattern);
+            assert_eq!(cloned.once, mock.once);
+        }
+
+        #[test]
+        fn test_mock_websocket_response_clone() {
+            let response = MockWebSocketResponse::new()
+                .with_text("msg")
+                .with_delay(100);
+            let cloned = response.clone();
+
+            assert_eq!(cloned.messages.len(), response.messages.len());
+            assert_eq!(cloned.delay_ms, response.delay_ms);
+        }
+
+        #[test]
+        fn test_websocket_state_serialization() {
+            let state = WebSocketState::Open;
+            let json = serde_json::to_string(&state).unwrap();
+            let deserialized: WebSocketState = serde_json::from_str(&json).unwrap();
+            assert_eq!(state, deserialized);
+        }
+
+        #[test]
+        fn test_message_type_serialization() {
+            let msg_type = MessageType::Binary;
+            let json = serde_json::to_string(&msg_type).unwrap();
+            let deserialized: MessageType = serde_json::from_str(&json).unwrap();
+            assert_eq!(msg_type, deserialized);
+        }
+
+        #[test]
+        fn test_message_direction_serialization() {
+            let direction = MessageDirection::Sent;
+            let json = serde_json::to_string(&direction).unwrap();
+            let deserialized: MessageDirection = serde_json::from_str(&json).unwrap();
+            assert_eq!(direction, deserialized);
+        }
+
+        #[test]
+        fn test_websocket_message_serialization() {
+            let msg = WebSocketMessage::text("hello", MessageDirection::Sent, 1000)
+                .with_connection("conn_1");
+            let json = serde_json::to_string(&msg).unwrap();
+            let deserialized: WebSocketMessage = serde_json::from_str(&json).unwrap();
+
+            assert_eq!(deserialized.data, "hello");
+            assert_eq!(deserialized.timestamp_ms, 1000);
+            assert_eq!(deserialized.connection_id, "conn_1");
+            // Note: raw_data is skipped in serialization
+            assert!(deserialized.raw_data.is_none());
+        }
+    }
 }

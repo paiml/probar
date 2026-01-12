@@ -490,8 +490,13 @@ fn parse_selector_attributes(attrs: &[Attribute]) -> (Vec<String>, Vec<String>) 
             entities.extend(extract_list_items(&tokens, 0));
         }
         if tokens.contains("components") {
-            // Components list comes after entities list
-            let offset = tokens.find(']').map(|i| i + 1).unwrap_or(0);
+            // If entities is also in this token, components list comes after entities list
+            // Otherwise, components starts from beginning
+            let offset = if tokens.contains("entities") {
+                tokens.find(']').map(|i| i + 1).unwrap_or(0)
+            } else {
+                0
+            };
             components.extend(extract_list_items(&tokens, offset));
         }
     }
@@ -705,6 +710,335 @@ mod tests {
         assert_eq!(items, vec!["Y", "Z"]);
     }
 
-    // Note: parse_timeout_attr tests cannot be run outside proc macro context
-    // The function is tested implicitly through integration tests using the #[probar_test] attribute
+    #[test]
+    fn test_parse_timeout_attr_with_timeout() {
+        // parse_timeout_attr works on string representation
+        let result = parse_timeout_attr_from_str("timeout_ms = 5000");
+        assert_eq!(result, Some(5000));
+    }
+
+    #[test]
+    fn test_parse_timeout_attr_no_timeout() {
+        let result = parse_timeout_attr_from_str("category = \"test\"");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_timeout_attr_empty() {
+        let result = parse_timeout_attr_from_str("");
+        assert_eq!(result, None);
+    }
+
+    /// Helper for testing parse_timeout_attr logic without TokenStream
+    fn parse_timeout_attr_from_str(attr_str: &str) -> Option<u64> {
+        if attr_str.contains("timeout_ms") {
+            for part in attr_str.split('=') {
+                if let Ok(n) = part.trim().parse::<u64>() {
+                    return Some(n);
+                }
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn test_extract_fields_unit_struct() {
+        let data = syn::parse_quote! {
+            struct Unit;
+        };
+        let input: DeriveInput = data;
+        let fields = extract_fields(&input.data);
+        assert!(fields.is_empty());
+    }
+
+    #[test]
+    fn test_extract_fields_named_struct() {
+        let data = syn::parse_quote! {
+            struct Named {
+                x: f32,
+                y: f32,
+            }
+        };
+        let input: DeriveInput = data;
+        let fields = extract_fields(&input.data);
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0], ("x".to_string(), false));
+        assert_eq!(fields[1], ("y".to_string(), false));
+    }
+
+    #[test]
+    fn test_extract_fields_tuple_struct() {
+        let data = syn::parse_quote! {
+            struct Tuple(u32, u32, u32);
+        };
+        let input: DeriveInput = data;
+        let fields = extract_fields(&input.data);
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0].0, "field_0");
+        assert_eq!(fields[1].0, "field_1");
+        assert_eq!(fields[2].0, "field_2");
+    }
+
+    #[test]
+    fn test_extract_fields_enum() {
+        let data = syn::parse_quote! {
+            enum TestEnum {
+                A,
+                B,
+            }
+        };
+        let input: DeriveInput = data;
+        let fields = extract_fields(&input.data);
+        assert!(fields.is_empty()); // Enums return empty
+    }
+
+    #[test]
+    fn test_extract_name_from_attr_valid() {
+        let attr: Attribute = syn::parse_quote! {
+            #[probar(name = "custom_name")]
+        };
+        let result = extract_name_from_attr(&attr);
+        assert_eq!(result, Some("custom_name".to_string()));
+    }
+
+    #[test]
+    fn test_extract_name_from_attr_wrong_path() {
+        let attr: Attribute = syn::parse_quote! {
+            #[other(name = "custom_name")]
+        };
+        let result = extract_name_from_attr(&attr);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_name_from_attr_wrong_key() {
+        let attr: Attribute = syn::parse_quote! {
+            #[probar(other = "value")]
+        };
+        let result = extract_name_from_attr(&attr);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_selector_attributes_entities_only() {
+        let attrs: Vec<Attribute> =
+            vec![syn::parse_quote! { #[probar(entities = [Player, Enemy])] }];
+        let (entities, components) = parse_selector_attributes(&attrs);
+        assert_eq!(entities, vec!["Player", "Enemy"]);
+        assert!(components.is_empty());
+    }
+
+    #[test]
+    fn test_parse_selector_attributes_components_only() {
+        let attrs: Vec<Attribute> =
+            vec![syn::parse_quote! { #[probar(components = [Position, Health])] }];
+        let (entities, components) = parse_selector_attributes(&attrs);
+        assert!(entities.is_empty());
+        assert_eq!(components, vec!["Position", "Health"]);
+    }
+
+    #[test]
+    fn test_parse_selector_attributes_empty() {
+        let attrs: Vec<Attribute> = vec![];
+        let (entities, components) = parse_selector_attributes(&attrs);
+        assert!(entities.is_empty());
+        assert!(components.is_empty());
+    }
+
+    #[test]
+    fn test_parse_selector_attributes_non_probar() {
+        let attrs: Vec<Attribute> = vec![
+            syn::parse_quote! { #[derive(Debug)] },
+            syn::parse_quote! { #[allow(unused)] },
+        ];
+        let (entities, components) = parse_selector_attributes(&attrs);
+        assert!(entities.is_empty());
+        assert!(components.is_empty());
+    }
+
+    #[test]
+    fn test_extract_name_attribute_multiple() {
+        let attrs: Vec<Attribute> = vec![
+            syn::parse_quote! { #[derive(Debug)] },
+            syn::parse_quote! { #[probar(name = "found_name")] },
+            syn::parse_quote! { #[allow(unused)] },
+        ];
+        let result = extract_name_attribute(&attrs);
+        assert_eq!(result, Some("found_name".to_string()));
+    }
+
+    #[test]
+    fn test_extract_name_attribute_none() {
+        let attrs: Vec<Attribute> = vec![syn::parse_quote! { #[derive(Debug)] }];
+        let result = extract_name_attribute(&attrs);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_name_from_attr_non_string_value() {
+        // probar(name = 123) - integer instead of string
+        let attr: Attribute = syn::parse_quote! {
+            #[probar(name = 123)]
+        };
+        let result = extract_name_from_attr(&attr);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_fields_with_skip() {
+        let data = syn::parse_quote! {
+            struct WithSkip {
+                x: f32,
+                #[probar(skip)]
+                internal: u32,
+                y: f32,
+            }
+        };
+        let input: DeriveInput = data;
+        let fields = extract_fields(&input.data);
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0], ("x".to_string(), false));
+        assert_eq!(fields[1], ("internal".to_string(), true)); // skip = true
+        assert_eq!(fields[2], ("y".to_string(), false));
+    }
+
+    #[test]
+    fn test_parse_selector_attributes_separate_attrs() {
+        let attrs: Vec<Attribute> = vec![
+            syn::parse_quote! { #[probar(entities = [Player])] },
+            syn::parse_quote! { #[probar(components = [Position])] },
+        ];
+        let (entities, components) = parse_selector_attributes(&attrs);
+        assert_eq!(entities, vec!["Player"]);
+        assert_eq!(components, vec!["Position"]);
+    }
+
+    #[test]
+    fn test_parse_timeout_attr_various_formats() {
+        // Different spacing
+        assert_eq!(parse_timeout_attr_from_str("timeout_ms=1000"), Some(1000));
+        assert_eq!(parse_timeout_attr_from_str("timeout_ms =2000"), Some(2000));
+        assert_eq!(parse_timeout_attr_from_str("timeout_ms= 3000"), Some(3000));
+    }
+
+    #[test]
+    fn test_parse_timeout_attr_with_other_attrs() {
+        let result = parse_timeout_attr_from_str("category = \"test\", timeout_ms = 7500");
+        assert_eq!(result, Some(7500));
+    }
+
+    #[test]
+    fn test_extract_list_items_malformed() {
+        // Missing closing bracket
+        let tokens = "probar(entities = [A, B";
+        let items = extract_list_items(tokens, 0);
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_extract_list_items_reversed_brackets() {
+        // When ] comes before [, the slice would be invalid
+        // This tests with proper order but no content
+        let tokens = "probar(entities = [])";
+        let items = extract_list_items(tokens, 0);
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_to_snake_case_all_uppercase() {
+        assert_eq!(to_snake_case("ABC"), "abc");
+        assert_eq!(to_snake_case("ABCDEF"), "abcdef");
+    }
+
+    #[test]
+    fn test_to_snake_case_single_char_words() {
+        assert_eq!(to_snake_case("AaBbCc"), "aa_bb_cc");
+    }
+
+    #[test]
+    fn test_generate_type_id_long_string() {
+        let long_name = "a".repeat(1000);
+        let id = generate_type_id(&long_name);
+        assert_ne!(id, 0);
+        // Verify it's deterministic
+        assert_eq!(id, generate_type_id(&long_name));
+    }
+
+    #[test]
+    fn test_extract_name_from_attr_list_style() {
+        // probar(skip) style - not name=value
+        let attr: Attribute = syn::parse_quote! {
+            #[probar(skip)]
+        };
+        let result = extract_name_from_attr(&attr);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_fields_empty_named() {
+        let data = syn::parse_quote! {
+            struct Empty {}
+        };
+        let input: DeriveInput = data;
+        let fields = extract_fields(&input.data);
+        assert!(fields.is_empty());
+    }
+
+    #[test]
+    fn test_extract_fields_single_field() {
+        let data = syn::parse_quote! {
+            struct Single {
+                value: i32,
+            }
+        };
+        let input: DeriveInput = data;
+        let fields = extract_fields(&input.data);
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].0, "value");
+    }
+
+    #[test]
+    fn test_extract_fields_tuple_single() {
+        let data = syn::parse_quote! {
+            struct Wrapper(String);
+        };
+        let input: DeriveInput = data;
+        let fields = extract_fields(&input.data);
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].0, "field_0");
+    }
+
+    #[test]
+    fn test_parse_selector_attributes_mixed_attrs() {
+        // Non-probar attrs mixed in
+        let attrs: Vec<Attribute> = vec![
+            syn::parse_quote! { #[derive(Debug)] },
+            syn::parse_quote! { #[probar(entities = [A, B])] },
+            syn::parse_quote! { #[serde(rename_all = "camelCase")] },
+            syn::parse_quote! { #[probar(components = [X, Y, Z])] },
+        ];
+        let (entities, components) = parse_selector_attributes(&attrs);
+        assert_eq!(entities, vec!["A", "B"]);
+        assert_eq!(components, vec!["X", "Y", "Z"]);
+    }
+
+    #[test]
+    fn test_extract_name_attribute_empty_list() {
+        let attrs: Vec<Attribute> = vec![];
+        let result = extract_name_attribute(&attrs);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_generate_type_id_collision_resistance() {
+        // Test that similar names produce different IDs
+        let id_player = generate_type_id("player");
+        let id_player1 = generate_type_id("player1");
+        let id_players = generate_type_id("players");
+        let id_player_caps = generate_type_id("Player");
+
+        assert_ne!(id_player, id_player1);
+        assert_ne!(id_player, id_players);
+        assert_ne!(id_player, id_player_caps); // Case sensitive
+    }
 }

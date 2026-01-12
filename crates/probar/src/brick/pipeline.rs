@@ -817,7 +817,7 @@ mod tests {
     #[test]
     fn test_pipeline_data_clone_and_debug() {
         let data = PipelineData::Text("test".into());
-        let cloned = data.clone();
+        let cloned = data;
         assert!(format!("{:?}", cloned).contains("Text"));
     }
 
@@ -852,7 +852,7 @@ mod tests {
     #[test]
     fn test_pipeline_metadata_clone_and_debug() {
         let meta = PipelineMetadata::new();
-        let cloned = meta.clone();
+        let cloned = meta;
         assert!(format!("{:?}", cloned).contains("PipelineMetadata"));
     }
 
@@ -869,7 +869,7 @@ mod tests {
             error: None,
         };
 
-        let cloned = trace.clone();
+        let cloned = trace;
         assert_eq!(cloned.stage_name, "test");
         assert!(cloned.success);
         assert!(format!("{:?}", cloned).contains("StageTrace"));
@@ -945,7 +945,7 @@ mod tests {
     #[test]
     fn test_validation_result_clone_and_debug() {
         let result = ValidationResult::fail("error");
-        let cloned = result.clone();
+        let cloned = result;
         assert!(format!("{:?}", cloned).contains("ValidationResult"));
     }
 
@@ -979,7 +979,7 @@ mod tests {
             message: "test".to_string(),
         };
 
-        let cloned = msg.clone();
+        let cloned = msg;
         assert_eq!(cloned.message, "test");
         assert!(format!("{:?}", cloned).contains("ValidationMessage"));
     }
@@ -1138,7 +1138,7 @@ mod tests {
             outputs: vec!["output1".to_string()],
         };
 
-        let cloned = entry.clone();
+        let cloned = entry;
         assert_eq!(cloned.stage, "test");
         assert!(format!("{:?}", cloned).contains("AuditEntry"));
     }
@@ -1155,7 +1155,7 @@ mod tests {
             created_at: Instant::now(),
         };
 
-        let cloned = checkpoint.clone();
+        let cloned = checkpoint;
         assert_eq!(cloned.stage_index, 2);
         assert!(format!("{:?}", cloned).contains("Checkpoint"));
     }
@@ -1624,7 +1624,7 @@ mod tests {
     impl BrickStage for CustomIOStage {
         fn execute(&self, mut ctx: PipelineContext) -> PipelineResult<PipelineContext> {
             for output in self.outputs {
-                ctx.set(output.to_string(), PipelineData::Text("output".into()));
+                ctx.set((*output).to_string(), PipelineData::Text("output".into()));
             }
             Ok(ctx)
         }
@@ -1739,38 +1739,38 @@ mod tests {
             stage: "s".to_string(),
             reason: "r".to_string(),
         };
-        let cloned1 = err1.clone();
+        let cloned1 = err1;
         assert!(matches!(cloned1, PipelineError::ValidationFailed { .. }));
 
         let err2 = PipelineError::ExecutionFailed {
             stage: "s".to_string(),
             reason: "r".to_string(),
         };
-        let cloned2 = err2.clone();
+        let cloned2 = err2;
         assert!(matches!(cloned2, PipelineError::ExecutionFailed { .. }));
 
         let err3 = PipelineError::MissingInput {
             stage: "s".to_string(),
             input: "i".to_string(),
         };
-        let cloned3 = err3.clone();
+        let cloned3 = err3;
         assert!(matches!(cloned3, PipelineError::MissingInput { .. }));
 
         let err4 = PipelineError::PrivacyViolation {
             tier: PrivacyTier::Sovereign,
             reason: "r".to_string(),
         };
-        let cloned4 = err4.clone();
+        let cloned4 = err4;
         assert!(matches!(cloned4, PipelineError::PrivacyViolation { .. }));
 
         let err5 = PipelineError::CheckpointFailed {
             reason: "r".to_string(),
         };
-        let cloned5 = err5.clone();
+        let cloned5 = err5;
         assert!(matches!(cloned5, PipelineError::CheckpointFailed { .. }));
 
         let err6 = PipelineError::BrickError("e".to_string());
-        let cloned6 = err6.clone();
+        let cloned6 = err6;
         assert!(matches!(cloned6, PipelineError::BrickError(_)));
     }
 
@@ -1910,25 +1910,25 @@ mod tests {
     #[test]
     fn test_pipeline_data_clone_all_variants() {
         let bytes = PipelineData::Bytes(vec![1, 2, 3]);
-        let _ = bytes.clone();
+        let _ = bytes;
 
         let tensor = PipelineData::FloatTensor {
             data: vec![1.0, 2.0],
             shape: vec![2],
         };
-        let _ = tensor.clone();
+        let _ = tensor;
 
         let text = PipelineData::Text("test".into());
-        let _ = text.clone();
+        let _ = text;
 
         let json = PipelineData::Json(serde_json::json!({"key": "value"}));
-        let _ = json.clone();
+        let _ = json;
 
         let int = PipelineData::Int(-100);
-        let _ = int.clone();
+        let _ = int;
 
         let boolean = PipelineData::Bool(true);
-        let _ = boolean.clone();
+        let _ = boolean;
     }
 
     #[test]
@@ -1982,7 +1982,7 @@ mod tests {
         assert!(debug_str.contains("BrickPipeline"));
         assert!(debug_str.contains("debug-complete"));
         assert!(debug_str.contains("stage_count"));
-        assert!(debug_str.contains("2"));
+        assert!(debug_str.contains('2'));
         assert!(debug_str.contains("Sovereign"));
     }
 
@@ -2939,7 +2939,7 @@ mod tests {
             "null_value": null
         });
 
-        let data = PipelineData::Json(complex_json.clone());
+        let data = PipelineData::Json(complex_json);
 
         if let PipelineData::Json(value) = data {
             assert_eq!(value["array"][0], 1);
@@ -2952,7 +2952,7 @@ mod tests {
     #[test]
     fn test_pipeline_bytes_large() {
         let large_bytes: Vec<u8> = (0..=255).collect();
-        let data = PipelineData::Bytes(large_bytes.clone());
+        let data = PipelineData::Bytes(large_bytes);
 
         if let PipelineData::Bytes(bytes) = data {
             assert_eq!(bytes.len(), 256);
@@ -3059,7 +3059,7 @@ mod tests {
     fn test_validation_level_copy_and_clone() {
         let info = ValidationLevel::Info;
         let copied = info;
-        let cloned = copied.clone();
+        let cloned = copied;
 
         assert_eq!(info, copied);
         assert_eq!(copied, cloned);

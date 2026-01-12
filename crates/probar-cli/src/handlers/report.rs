@@ -56,7 +56,7 @@ pub fn open_in_browser(path: &Path) {
 }
 
 /// Generate HTML test report
-#[must_use] 
+#[must_use]
 pub fn generate_html_report() -> String {
     let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
     format!(
@@ -95,7 +95,7 @@ pub fn generate_html_report() -> String {
 }
 
 /// Generate JSON test report
-#[must_use] 
+#[must_use]
 pub fn generate_json_report() -> String {
     let timestamp = chrono::Utc::now().to_rfc3339();
     format!(
@@ -115,13 +115,13 @@ pub fn generate_json_report() -> String {
 }
 
 /// Generate LCOV coverage report
-#[must_use] 
+#[must_use]
 pub fn generate_lcov_report() -> String {
     "TN:\nSF:src/lib.rs\nDA:1,0\nLF:1\nLH:0\nend_of_record\n".to_string()
 }
 
 /// Generate `JUnit` XML report
-#[must_use] 
+#[must_use]
 pub fn generate_junit_report() -> String {
     let timestamp = chrono::Utc::now().to_rfc3339();
     format!(
@@ -134,7 +134,7 @@ pub fn generate_junit_report() -> String {
 }
 
 /// Generate Cobertura XML report
-#[must_use] 
+#[must_use]
 pub fn generate_cobertura_report() -> String {
     let timestamp = chrono::Utc::now().timestamp();
     format!(

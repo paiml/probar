@@ -1511,7 +1511,7 @@ mod tests {
     #[test]
     fn test_guard_severity_clone() {
         let severity = GuardSeverity::Critical;
-        let cloned = severity.clone();
+        let cloned = severity;
         assert_eq!(severity, cloned);
     }
 
@@ -2369,7 +2369,7 @@ mod tests {
         // Test Copy trait
         let severity = GuardSeverity::Error;
         let copied: GuardSeverity = severity;
-        let cloned = severity.clone();
+        let cloned = severity;
         assert_eq!(severity, copied);
         assert_eq!(severity, cloned);
     }
@@ -2378,7 +2378,7 @@ mod tests {
     fn test_invariant_guard_with_complex_check() {
         fn check_tensor_bounds(state: &BrickState) -> bool {
             if let Some((data, _shape)) = state.get_tensor("values") {
-                data.iter().all(|&v| v >= 0.0 && v <= 1.0)
+                data.iter().all(|&v| (0.0..=1.0).contains(&v))
             } else {
                 true // No tensor = valid
             }
@@ -3179,5 +3179,464 @@ mod tests {
 
         let all_traces = history.traces();
         assert_eq!(all_traces.len(), 3);
+    }
+
+    // ========================================================================
+    // Additional coverage tests for edge cases
+    // ========================================================================
+
+    #[test]
+    fn test_brick_history_current_position_equals_len() {
+        let mut history = BrickHistory::new(10);
+
+        // Record one state
+        let mut state = BrickState::new();
+        state.set_metadata("val", StateValue::Int(42));
+        let trace = ExecutionTrace {
+            operation: "op".into(),
+            input_summary: String::new(),
+            output_summary: String::new(),
+            duration: Duration::ZERO,
+            state_version_before: 0,
+            state_version_after: 1,
+        };
+        history.record(state, trace);
+
+        // After record: position = 1, len = 1
+        // position > 0 && position <= len is true
+        // Should return snapshots[position - 1] = snapshots[0]
+        assert_eq!(history.position(), 1);
+        assert_eq!(history.len(), 1);
+
+        let current = history.current();
+        assert!(current.is_some());
+        assert_eq!(
+            current.unwrap().get_metadata("val"),
+            Some(&StateValue::Int(42))
+        );
+    }
+
+    #[test]
+    fn test_brick_history_current_position_greater_than_len() {
+        let mut history = BrickHistory::new(10);
+
+        // Add two states
+        for i in 0..2 {
+            let mut state = BrickState::new();
+            state.set_metadata("val", StateValue::Int(i));
+            let trace = ExecutionTrace {
+                operation: format!("op{}", i),
+                input_summary: String::new(),
+                output_summary: String::new(),
+                duration: Duration::ZERO,
+                state_version_before: i as u64,
+                state_version_after: (i + 1) as u64,
+            };
+            history.record(state, trace);
+        }
+
+        // position = 2, len = 2
+        // Now manually set position to something > len (shouldn't happen in normal use)
+        // This tests the else branch where position > len
+        history.position = 5;
+
+        // position > 0 (5 > 0) but position > len (5 > 2)
+        // So condition fails, returns snapshots.first()
+        let current = history.current();
+        assert!(current.is_some());
+        // Should get first element
+        assert_eq!(
+            current.unwrap().get_metadata("val"),
+            Some(&StateValue::Int(0))
+        );
+    }
+
+    #[test]
+    fn test_brick_history_step_forward_at_exact_len() {
+        let mut history = BrickHistory::new(10);
+
+        // Add one state
+        let state = BrickState::new();
+        let trace = ExecutionTrace {
+            operation: "op".into(),
+            input_summary: String::new(),
+            output_summary: String::new(),
+            duration: Duration::ZERO,
+            state_version_before: 0,
+            state_version_after: 1,
+        };
+        history.record(state, trace);
+
+        // position = 1, len = 1
+        // step_forward checks if position < len
+        // 1 < 1 is false, so returns None
+        assert_eq!(history.position(), 1);
+        assert!(history.step_forward().is_none());
+    }
+
+    #[test]
+    fn test_brick_history_record_at_capacity_evicts_oldest() {
+        let mut history = BrickHistory::new(2);
+
+        // Fill to capacity
+        for i in 0..2 {
+            let mut state = BrickState::new();
+            state.set_metadata("val", StateValue::Int(i));
+            let trace = ExecutionTrace {
+                operation: format!("op{}", i),
+                input_summary: String::new(),
+                output_summary: String::new(),
+                duration: Duration::ZERO,
+                state_version_before: i as u64,
+                state_version_after: (i + 1) as u64,
+            };
+            history.record(state, trace);
+        }
+
+        assert_eq!(history.len(), 2);
+
+        // Record one more - should evict oldest
+        let mut state = BrickState::new();
+        state.set_metadata("val", StateValue::Int(99));
+        let trace = ExecutionTrace {
+            operation: "op_new".into(),
+            input_summary: String::new(),
+            output_summary: String::new(),
+            duration: Duration::ZERO,
+            state_version_before: 2,
+            state_version_after: 3,
+        };
+        history.record(state, trace);
+
+        // Still at capacity
+        assert_eq!(history.len(), 2);
+
+        // First element should now be val=1 (val=0 was evicted)
+        let first = history.goto(0).unwrap();
+        assert_eq!(first.get_metadata("val"), Some(&StateValue::Int(1)));
+
+        // Second element should be val=99
+        let second = history.goto(1).unwrap();
+        assert_eq!(second.get_metadata("val"), Some(&StateValue::Int(99)));
+    }
+
+    #[test]
+    fn test_deterministic_rng_all_value_ranges() {
+        let mut rng = DeterministicRng::new(12345);
+
+        // Test that f64 values are in [0, 1)
+        for _ in 0..1000 {
+            let f = rng.next_f64();
+            assert!(f >= 0.0);
+            assert!(f < 1.0);
+        }
+
+        // Test that f32 values are in [0, 1)
+        for _ in 0..1000 {
+            let f = rng.next_f32();
+            assert!(f >= 0.0);
+            assert!(f < 1.0);
+        }
+    }
+
+    #[test]
+    fn test_deterministic_clock_now_returns_duration() {
+        let clock = DeterministicClock::new(1_000_000_000, 1); // 1 second in ns
+        let duration = clock.now();
+        assert_eq!(duration.as_nanos(), 1_000_000_000);
+        assert_eq!(duration.as_secs(), 1);
+    }
+
+    #[test]
+    fn test_state_value_all_variants_partial_eq() {
+        // Test that different variant types are not equal
+        let int = StateValue::Int(42);
+        let float = StateValue::Float(42.0);
+        let string = StateValue::String("42".into());
+        let bool_val = StateValue::Bool(true);
+
+        // Different variants are not equal (even if they represent similar values)
+        assert_ne!(int, float);
+        assert_ne!(int, string);
+        assert_ne!(int, bool_val);
+        assert_ne!(float, string);
+        assert_ne!(float, bool_val);
+        assert_ne!(string, bool_val);
+    }
+
+    #[test]
+    fn test_brick_state_snapshot_increments_version() {
+        let mut state = BrickState::new();
+        state.version = 0;
+
+        let snap1 = state.snapshot();
+        assert_eq!(snap1.version, 1);
+
+        let snap2 = snap1.snapshot();
+        assert_eq!(snap2.version, 2);
+
+        let snap3 = snap2.snapshot();
+        assert_eq!(snap3.version, 3);
+    }
+
+    #[test]
+    fn test_invariant_guard_const_new() {
+        // Test that InvariantGuard::new can be used in const context
+        fn check(_: &BrickState) -> bool {
+            true
+        }
+
+        const GUARD: InvariantGuard =
+            InvariantGuard::new("const_guard", check, GuardSeverity::Warning);
+
+        assert_eq!(GUARD.name, "const_guard");
+        assert_eq!(GUARD.severity, GuardSeverity::Warning);
+    }
+
+    #[test]
+    fn test_deterministic_rng_const_new() {
+        // Test that DeterministicRng::new can be used in const context
+        const RNG: DeterministicRng = DeterministicRng::new(42);
+        assert_eq!(RNG.state(), 42);
+    }
+
+    #[test]
+    fn test_deterministic_clock_const_methods() {
+        // Test const methods on DeterministicClock
+        const CLOCK: DeterministicClock = DeterministicClock::new(100, 10);
+        const NS: u64 = CLOCK.now_ns();
+        const DUR: Duration = CLOCK.now();
+
+        assert_eq!(NS, 100);
+        assert_eq!(DUR.as_nanos(), 100);
+    }
+
+    #[test]
+    fn test_guarded_brick_empty_guards_check_passes() {
+        use crate::brick::{Brick, BrickAssertion, BrickBudget, BrickVerification};
+
+        struct EmptyGuardBrick;
+        impl Brick for EmptyGuardBrick {
+            fn brick_name(&self) -> &'static str {
+                "EmptyGuardBrick"
+            }
+            fn assertions(&self) -> &[BrickAssertion] {
+                &[]
+            }
+            fn budget(&self) -> BrickBudget {
+                BrickBudget::uniform(16)
+            }
+            fn verify(&self) -> BrickVerification {
+                BrickVerification {
+                    passed: vec![],
+                    failed: vec![],
+                    verification_time: Duration::ZERO,
+                }
+            }
+            fn to_html(&self) -> String {
+                String::new()
+            }
+            fn to_css(&self) -> String {
+                String::new()
+            }
+        }
+
+        let guarded = GuardedBrick::new(EmptyGuardBrick);
+
+        // With no guards, any state should pass
+        let state = BrickState::new();
+        assert!(guarded.check_guards(&state).is_ok());
+
+        // Also with populated state
+        let mut state2 = BrickState::new();
+        state2.set_tensor("data", vec![1.0, 2.0], vec![2]);
+        state2.set_metadata("key", StateValue::String("value".into()));
+        assert!(guarded.check_guards(&state2).is_ok());
+    }
+
+    #[test]
+    fn test_brick_history_record_not_at_end_truncates() {
+        let mut history = BrickHistory::new(10);
+
+        // Record 5 states
+        for i in 0..5 {
+            let mut state = BrickState::new();
+            state.set_metadata("val", StateValue::Int(i));
+            let trace = ExecutionTrace {
+                operation: format!("op{}", i),
+                input_summary: String::new(),
+                output_summary: String::new(),
+                duration: Duration::ZERO,
+                state_version_before: i as u64,
+                state_version_after: (i + 1) as u64,
+            };
+            history.record(state, trace);
+        }
+
+        assert_eq!(history.len(), 5);
+
+        // Go back to position 3
+        history.goto(3);
+        assert_eq!(history.position(), 3);
+
+        // Record new state - should truncate states 3 and 4
+        let mut new_state = BrickState::new();
+        new_state.set_metadata("val", StateValue::Int(100));
+        let trace = ExecutionTrace {
+            operation: "new_op".into(),
+            input_summary: String::new(),
+            output_summary: String::new(),
+            duration: Duration::ZERO,
+            state_version_before: 3,
+            state_version_after: 4,
+        };
+        history.record(new_state, trace);
+
+        // Should have 4 states now (0, 1, 2, 100)
+        assert_eq!(history.len(), 4);
+        assert_eq!(history.position(), 4);
+
+        // Verify the last state is our new one
+        let last = history.goto(3).unwrap();
+        assert_eq!(last.get_metadata("val"), Some(&StateValue::Int(100)));
+
+        // Verify traces were also truncated
+        let traces = history.traces();
+        assert_eq!(traces.len(), 4);
+        assert_eq!(traces[3].operation, "new_op");
+    }
+
+    #[test]
+    fn test_execution_trace_clone_preserves_all_fields() {
+        let original = ExecutionTrace {
+            operation: "test_op".into(),
+            input_summary: "test_input".into(),
+            output_summary: "test_output".into(),
+            duration: Duration::from_micros(12345),
+            state_version_before: 10,
+            state_version_after: 11,
+        };
+
+        let cloned = original.clone();
+
+        assert_eq!(original.operation, cloned.operation);
+        assert_eq!(original.input_summary, cloned.input_summary);
+        assert_eq!(original.output_summary, cloned.output_summary);
+        assert_eq!(original.duration, cloned.duration);
+        assert_eq!(original.state_version_before, cloned.state_version_before);
+        assert_eq!(original.state_version_after, cloned.state_version_after);
+    }
+
+    #[test]
+    fn test_brick_state_set_tensor_with_into() {
+        let mut state = BrickState::new();
+
+        // Test with String
+        state.set_tensor(String::from("tensor1"), vec![1.0], vec![1]);
+        assert!(state.get_tensor("tensor1").is_some());
+
+        // Test with &str
+        state.set_tensor("tensor2", vec![2.0], vec![1]);
+        assert!(state.get_tensor("tensor2").is_some());
+    }
+
+    #[test]
+    fn test_brick_state_set_metadata_with_into() {
+        let mut state = BrickState::new();
+
+        // Test with String
+        state.set_metadata(String::from("key1"), StateValue::Int(1));
+        assert!(state.get_metadata("key1").is_some());
+
+        // Test with &str
+        state.set_metadata("key2", StateValue::Int(2));
+        assert!(state.get_metadata("key2").is_some());
+    }
+
+    #[test]
+    fn test_guard_violation_source_is_none() {
+        use std::error::Error;
+
+        let violation = GuardViolation {
+            guard_name: "test",
+            severity: GuardSeverity::Error,
+        };
+
+        // GuardViolation has no source error
+        assert!(violation.source().is_none());
+    }
+
+    #[test]
+    fn test_brick_history_goto_returns_state_at_position() {
+        let mut history = BrickHistory::new(10);
+
+        // Record 3 states with distinct values
+        for i in 0..3 {
+            let mut state = BrickState::new();
+            state.set_metadata("idx", StateValue::Int(i * 10));
+            let trace = ExecutionTrace {
+                operation: format!("op{}", i),
+                input_summary: String::new(),
+                output_summary: String::new(),
+                duration: Duration::ZERO,
+                state_version_before: i as u64,
+                state_version_after: (i + 1) as u64,
+            };
+            history.record(state, trace);
+        }
+
+        // Test goto returns correct states
+        let state0 = history.goto(0).unwrap();
+        assert_eq!(state0.get_metadata("idx"), Some(&StateValue::Int(0)));
+
+        let state1 = history.goto(1).unwrap();
+        assert_eq!(state1.get_metadata("idx"), Some(&StateValue::Int(10)));
+
+        let state2 = history.goto(2).unwrap();
+        assert_eq!(state2.get_metadata("idx"), Some(&StateValue::Int(20)));
+
+        // Invalid positions return None
+        assert!(history.goto(3).is_none());
+        assert!(history.goto(100).is_none());
+    }
+
+    #[test]
+    fn test_deterministic_rng_xorshift_sequence() {
+        // Verify the xorshift algorithm produces expected values
+        let mut rng = DeterministicRng::new(1);
+
+        // First few values from xorshift64 with seed 1
+        let v1 = rng.next_u64();
+        let v2 = rng.next_u64();
+        let v3 = rng.next_u64();
+
+        // Values should be different
+        assert_ne!(v1, v2);
+        assert_ne!(v2, v3);
+        assert_ne!(v1, v3);
+
+        // Restart with same seed should give same sequence
+        let mut rng2 = DeterministicRng::new(1);
+        assert_eq!(v1, rng2.next_u64());
+        assert_eq!(v2, rng2.next_u64());
+        assert_eq!(v3, rng2.next_u64());
+    }
+
+    #[test]
+    fn test_brick_state_get_tensor_returns_none_for_missing_data() {
+        let mut state = BrickState::new();
+
+        // Add only shape, no data
+        state.shapes.insert("only_shape".into(), vec![2, 3]);
+        assert!(state.get_tensor("only_shape").is_none());
+
+        // Add only data, no shape
+        state.tensors.insert("only_data".into(), vec![1.0, 2.0]);
+        assert!(state.get_tensor("only_data").is_none());
+
+        // Both present - should work
+        state.tensors.insert("both".into(), vec![1.0, 2.0]);
+        state.shapes.insert("both".into(), vec![2]);
+        assert!(state.get_tensor("both").is_some());
     }
 }

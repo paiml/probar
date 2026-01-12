@@ -658,7 +658,7 @@ mod tests {
                 ptx_analysis::PtxBug {
                     class: PtxBugClass::MissingBarrierSync,
                     line: 3,
-                    instruction: "".to_string(),
+                    instruction: String::new(),
                     message: "err".to_string(),
                 },
             ],

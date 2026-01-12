@@ -3028,4 +3028,673 @@ mod tests {
             assert!(matches!(query, LocatorQuery::IsVisible { .. }));
         }
     }
+
+    // =========================================================================
+    // Additional Coverage Tests: Edge Cases and Failure Paths
+    // =========================================================================
+
+    mod coverage_edge_cases {
+        use super::*;
+
+        // -------------------------------------------------------------------
+        // validate_state failure cases
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_validate_state_disabled_fail() {
+            let locator = Locator::new("button");
+            let assertion = expect(locator).to_be_disabled();
+            let result = assertion.validate_state(false);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("disabled"));
+        }
+
+        #[test]
+        fn test_validate_state_checked_fail() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_be_checked();
+            let result = assertion.validate_state(false);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("checked"));
+        }
+
+        #[test]
+        fn test_validate_state_editable_fail() {
+            let locator = Locator::new("textarea");
+            let assertion = expect(locator).to_be_editable();
+            let result = assertion.validate_state(false);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("editable"));
+        }
+
+        #[test]
+        fn test_validate_state_focused_fail() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_be_focused();
+            let result = assertion.validate_state(false);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("focused"));
+        }
+
+        #[test]
+        fn test_validate_state_empty_fail() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_be_empty();
+            let result = assertion.validate_state(false);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("empty"));
+        }
+
+        #[test]
+        fn test_validate_state_visible_fail() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_be_visible();
+            let result = assertion.validate_state(false);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("visible"));
+        }
+
+        #[test]
+        fn test_validate_state_hidden_fail() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_be_hidden();
+            let result = assertion.validate_state(false);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("hidden"));
+        }
+
+        // -------------------------------------------------------------------
+        // validate for non-state assertions with validate_state
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_validate_state_non_state_assertion() {
+            let locator = Locator::new("span");
+            let assertion = expect(locator).to_have_text("test");
+            // Non-state assertions should return Ok
+            assert!(assertion.validate_state(true).is_ok());
+            assert!(assertion.validate_state(false).is_ok());
+        }
+
+        // -------------------------------------------------------------------
+        // validate_count for non-count assertions
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_validate_count_non_count_assertion() {
+            let locator = Locator::new("span");
+            let assertion = expect(locator).to_have_text("test");
+            // Non-count assertions should return Ok
+            assert!(assertion.validate_count(0).is_ok());
+            assert!(assertion.validate_count(100).is_ok());
+        }
+
+        // -------------------------------------------------------------------
+        // validate contains_text failure
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_validate_contains_text_fail() {
+            let locator = Locator::new("span");
+            let assertion = expect(locator).to_contain_text("needle");
+            let result = assertion.validate("haystack without the word");
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("needle"));
+        }
+
+        // -------------------------------------------------------------------
+        // validate has_id failure
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_validate_has_id_fail() {
+            let locator = Locator::new("div");
+            let assertion = expect(locator).to_have_id("expected-id");
+            let result = assertion.validate("actual-id");
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("expected-id"));
+        }
+
+        // -------------------------------------------------------------------
+        // validate has_attribute failure
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_validate_has_attribute_fail() {
+            let locator = Locator::new("input");
+            let assertion = expect(locator).to_have_attribute("type", "email");
+            let result = assertion.validate("text");
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("email"));
+            assert!(err.to_string().contains("type"));
+        }
+
+        // -------------------------------------------------------------------
+        // Non-CSS selector operations (and, or, first, last, nth)
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_locator_or_non_css() {
+            let locator1 = Locator::from_selector(Selector::Entity("hero".to_string()));
+            let locator2 = Locator::new("div");
+            let combined = locator1.or(locator2);
+            // Should keep the original non-CSS selector
+            assert!(matches!(combined.selector(), Selector::Entity(_)));
+        }
+
+        #[test]
+        fn test_locator_first_non_css() {
+            let locator = Locator::from_selector(Selector::Entity("hero".to_string()));
+            let result = locator.first();
+            // Should keep the original non-CSS selector
+            assert!(matches!(result.selector(), Selector::Entity(_)));
+        }
+
+        #[test]
+        fn test_locator_last_non_css() {
+            let locator = Locator::from_selector(Selector::Entity("hero".to_string()));
+            let result = locator.last();
+            // Should keep the original non-CSS selector
+            assert!(matches!(result.selector(), Selector::Entity(_)));
+        }
+
+        #[test]
+        fn test_locator_nth_non_css() {
+            let locator = Locator::from_selector(Selector::Entity("hero".to_string()));
+            let result = locator.nth(5);
+            // Should keep the original non-CSS selector
+            assert!(matches!(result.selector(), Selector::Entity(_)));
+        }
+
+        // -------------------------------------------------------------------
+        // Role selector with name - count query
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_role_with_name_count_query() {
+            let selector = Selector::role_with_name("button", "Submit");
+            let query = selector.to_count_query();
+            assert!(query.contains("role"));
+            assert!(query.contains("Submit"));
+            assert!(query.contains(".length"));
+        }
+
+        // -------------------------------------------------------------------
+        // Filter options without has_text
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_filter_without_has_text() {
+            let child = Locator::new(".child");
+            let locator = Locator::new("div").filter(FilterOptions::new().has(child));
+            // Without has_text, selector should remain unchanged
+            assert!(matches!(locator.selector(), Selector::Css(_)));
+        }
+
+        // -------------------------------------------------------------------
+        // ClickOptions Default trait
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_click_options_default_trait() {
+            let options: ClickOptions = Default::default();
+            assert_eq!(options.button, MouseButton::Left);
+            assert_eq!(options.click_count, 0); // Default is 0, new() sets it to 1
+        }
+
+        // -------------------------------------------------------------------
+        // FilterOptions Default trait
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_filter_options_default_trait() {
+            let options: FilterOptions = Default::default();
+            assert!(options.has.is_none());
+            assert!(options.has_text.is_none());
+            assert!(options.has_not.is_none());
+            assert!(options.has_not_text.is_none());
+        }
+
+        // -------------------------------------------------------------------
+        // Point serialization (covered by derive)
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_point_clone() {
+            let p1 = Point::new(1.0, 2.0);
+            let p2 = p1;
+            assert!((p2.x - 1.0).abs() < f32::EPSILON);
+            assert!((p2.y - 2.0).abs() < f32::EPSILON);
+        }
+
+        #[test]
+        fn test_point_partial_eq() {
+            let p1 = Point::new(1.0, 2.0);
+            let p2 = Point::new(1.0, 2.0);
+            let p3 = Point::new(3.0, 4.0);
+            assert_eq!(p1, p2);
+            assert_ne!(p1, p3);
+        }
+
+        // -------------------------------------------------------------------
+        // BoundingBox serialization (covered by derive)
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_bounding_box_clone() {
+            let b1 = BoundingBox::new(0.0, 0.0, 100.0, 100.0);
+            let b2 = b1;
+            assert!((b2.width - 100.0).abs() < f32::EPSILON);
+        }
+
+        #[test]
+        fn test_bounding_box_partial_eq() {
+            let b1 = BoundingBox::new(0.0, 0.0, 100.0, 100.0);
+            let b2 = BoundingBox::new(0.0, 0.0, 100.0, 100.0);
+            let b3 = BoundingBox::new(1.0, 1.0, 100.0, 100.0);
+            assert_eq!(b1, b2);
+            assert_ne!(b1, b3);
+        }
+
+        // -------------------------------------------------------------------
+        // Selector equality
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_selector_equality() {
+            let s1 = Selector::css("button");
+            let s2 = Selector::css("button");
+            let s3 = Selector::css("div");
+            assert_eq!(s1, s2);
+            assert_ne!(s1, s3);
+        }
+
+        #[test]
+        fn test_selector_equality_css_with_text() {
+            let s1 = Selector::CssWithText {
+                css: "button".to_string(),
+                text: "Click".to_string(),
+            };
+            let s2 = Selector::CssWithText {
+                css: "button".to_string(),
+                text: "Click".to_string(),
+            };
+            assert_eq!(s1, s2);
+        }
+
+        #[test]
+        fn test_selector_equality_role() {
+            let s1 = Selector::Role {
+                role: "button".to_string(),
+                name: Some("Submit".to_string()),
+            };
+            let s2 = Selector::Role {
+                role: "button".to_string(),
+                name: Some("Submit".to_string()),
+            };
+            assert_eq!(s1, s2);
+        }
+
+        // -------------------------------------------------------------------
+        // DragBuilder chaining
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_drag_builder_full_chain() {
+            let locator = Locator::new("div");
+            let action = locator
+                .drag_to(&Point::new(100.0, 200.0))
+                .steps(15)
+                .duration(Duration::from_millis(750))
+                .build();
+
+            match action {
+                LocatorAction::Drag {
+                    target,
+                    steps,
+                    duration,
+                    ..
+                } => {
+                    assert!((target.x - 100.0).abs() < f32::EPSILON);
+                    assert!((target.y - 200.0).abs() < f32::EPSILON);
+                    assert_eq!(steps, 15);
+                    assert_eq!(duration, Duration::from_millis(750));
+                }
+                _ => panic!("Expected Drag action"),
+            }
+        }
+
+        // -------------------------------------------------------------------
+        // LocatorOptions fields
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_locator_options_poll_interval() {
+            let opts = LocatorOptions::default();
+            assert_eq!(
+                opts.poll_interval,
+                Duration::from_millis(DEFAULT_POLL_INTERVAL_MS)
+            );
+        }
+
+        // -------------------------------------------------------------------
+        // KeyModifier variants
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_key_modifier_variants() {
+            let modifiers = vec![
+                KeyModifier::Alt,
+                KeyModifier::Control,
+                KeyModifier::Meta,
+                KeyModifier::Shift,
+            ];
+            assert_eq!(modifiers.len(), 4);
+
+            // Test equality
+            assert_eq!(KeyModifier::Alt, KeyModifier::Alt);
+            assert_ne!(KeyModifier::Alt, KeyModifier::Control);
+        }
+
+        // -------------------------------------------------------------------
+        // MouseButton variants
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_mouse_button_variants() {
+            let buttons = vec![MouseButton::Left, MouseButton::Right, MouseButton::Middle];
+            assert_eq!(buttons.len(), 3);
+
+            assert_eq!(MouseButton::Left, MouseButton::Left);
+            assert_ne!(MouseButton::Left, MouseButton::Right);
+        }
+
+        // -------------------------------------------------------------------
+        // LocatorAction locator accessor for Drag variant
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_locator_action_drag_locator_accessor() {
+            let locator = Locator::new("div.draggable");
+            let action = locator.drag_to(&Point::new(0.0, 0.0)).build();
+            let accessed = action.locator();
+            assert!(matches!(accessed.selector(), Selector::Css(_)));
+        }
+
+        // -------------------------------------------------------------------
+        // LocatorAction locator accessor for Fill variant
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_locator_action_fill_locator_accessor() {
+            let locator = Locator::new("input");
+            let action = locator.fill("test").unwrap();
+            let accessed = action.locator();
+            assert!(matches!(accessed.selector(), Selector::Css(_)));
+        }
+
+        // -------------------------------------------------------------------
+        // validate for browser-context assertions
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_validate_browser_context_assertions() {
+            let locator = Locator::new("div");
+
+            // IsVisible - returns Ok for browser context
+            let assertion = expect(locator.clone()).to_be_visible();
+            assert!(assertion.validate("any").is_ok());
+
+            // IsHidden
+            let assertion = expect(locator.clone()).to_be_hidden();
+            assert!(assertion.validate("any").is_ok());
+
+            // HasCount
+            let assertion = expect(locator.clone()).to_have_count(5);
+            assert!(assertion.validate("any").is_ok());
+
+            // IsEnabled
+            let assertion = expect(locator.clone()).to_be_enabled();
+            assert!(assertion.validate("any").is_ok());
+
+            // IsDisabled
+            let assertion = expect(locator.clone()).to_be_disabled();
+            assert!(assertion.validate("any").is_ok());
+
+            // IsChecked
+            let assertion = expect(locator.clone()).to_be_checked();
+            assert!(assertion.validate("any").is_ok());
+
+            // IsEditable
+            let assertion = expect(locator.clone()).to_be_editable();
+            assert!(assertion.validate("any").is_ok());
+
+            // IsFocused
+            let assertion = expect(locator.clone()).to_be_focused();
+            assert!(assertion.validate("any").is_ok());
+
+            // IsEmpty
+            let assertion = expect(locator.clone()).to_be_empty();
+            assert!(assertion.validate("any").is_ok());
+
+            // HasCss
+            let assertion = expect(locator).to_have_css("color", "red");
+            assert!(assertion.validate("any").is_ok());
+        }
+
+        // -------------------------------------------------------------------
+        // Debug implementations (covered by derive)
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_debug_implementations() {
+            let point = Point::new(1.0, 2.0);
+            let debug_str = format!("{:?}", point);
+            assert!(debug_str.contains("Point"));
+
+            let bbox = BoundingBox::new(0.0, 0.0, 100.0, 100.0);
+            let debug_str = format!("{:?}", bbox);
+            assert!(debug_str.contains("BoundingBox"));
+
+            let selector = Selector::css("div");
+            let debug_str = format!("{:?}", selector);
+            assert!(debug_str.contains("Css"));
+
+            let locator = Locator::new("button");
+            let debug_str = format!("{:?}", locator);
+            assert!(debug_str.contains("Locator"));
+
+            let options = LocatorOptions::default();
+            let debug_str = format!("{:?}", options);
+            assert!(debug_str.contains("LocatorOptions"));
+
+            let filter = FilterOptions::new();
+            let debug_str = format!("{:?}", filter);
+            assert!(debug_str.contains("FilterOptions"));
+
+            let click_opts = ClickOptions::new();
+            let debug_str = format!("{:?}", click_opts);
+            assert!(debug_str.contains("ClickOptions"));
+
+            let drag_op = DragOperation::to(Point::new(0.0, 0.0));
+            let debug_str = format!("{:?}", drag_op);
+            assert!(debug_str.contains("DragOperation"));
+
+            let drag_builder = Locator::new("div").drag_to(&Point::new(0.0, 0.0));
+            let debug_str = format!("{:?}", drag_builder);
+            assert!(debug_str.contains("DragBuilder"));
+
+            let action = Locator::new("button").click().unwrap();
+            let debug_str = format!("{:?}", action);
+            assert!(debug_str.contains("Click"));
+
+            let query = Locator::new("span").text_content().unwrap();
+            let debug_str = format!("{:?}", query);
+            assert!(debug_str.contains("TextContent"));
+
+            let exp = Expect::new(Locator::new("div"));
+            let debug_str = format!("{:?}", exp);
+            assert!(debug_str.contains("Expect"));
+
+            let assertion = expect(Locator::new("div")).to_have_text("test");
+            let debug_str = format!("{:?}", assertion);
+            assert!(debug_str.contains("HasText"));
+        }
+
+        // -------------------------------------------------------------------
+        // Clone implementations
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_clone_implementations() {
+            let locator = Locator::new("button");
+            let cloned = locator;
+            assert!(matches!(cloned.selector(), Selector::Css(_)));
+
+            let options = LocatorOptions::default();
+            let cloned = options;
+            assert!(cloned.strict);
+
+            let filter = FilterOptions::new().has_text("test");
+            let cloned = filter;
+            assert!(cloned.has_text.is_some());
+
+            let click_opts = ClickOptions::new().button(MouseButton::Right);
+            let cloned = click_opts;
+            assert_eq!(cloned.button, MouseButton::Right);
+
+            let drag_op = DragOperation::to(Point::new(1.0, 2.0)).steps(5);
+            let cloned = drag_op;
+            assert_eq!(cloned.steps, 5);
+
+            let drag_builder = Locator::new("div").drag_to(&Point::new(3.0, 4.0)).steps(7);
+            let cloned = drag_builder;
+            let action = cloned.build();
+            assert!(matches!(action, LocatorAction::Drag { steps: 7, .. }));
+
+            let action = Locator::new("button").hover().unwrap();
+            let cloned = action;
+            assert!(matches!(cloned, LocatorAction::Hover { .. }));
+
+            let query = Locator::new("span").count().unwrap();
+            let cloned = query;
+            assert!(matches!(cloned, LocatorQuery::Count { .. }));
+
+            let exp = Expect::new(Locator::new("div"));
+            let cloned = exp;
+            let _ = cloned.to_be_visible();
+
+            let assertion = expect(Locator::new("div")).to_have_count(3);
+            let cloned = assertion;
+            assert!(matches!(cloned, ExpectAssertion::HasCount { .. }));
+        }
+
+        // -------------------------------------------------------------------
+        // Selector to_query edge cases
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_selector_to_query_special_chars() {
+            // Test CSS selector with special characters
+            let selector = Selector::css(r#"div[data-value="test's value"]"#);
+            let query = selector.to_query();
+            assert!(query.contains("querySelector"));
+
+            // Test XPath with special characters
+            let selector =
+                Selector::XPath(r#"//button[contains(text(), "Click here")]"#.to_string());
+            let query = selector.to_query();
+            assert!(query.contains("evaluate"));
+
+            // Test TestId with special characters
+            let selector = Selector::test_id("my-test-id_123");
+            let query = selector.to_query();
+            assert!(query.contains("data-testid"));
+        }
+
+        // -------------------------------------------------------------------
+        // BoundingBox contains edge cases
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_bounding_box_contains_all_edges() {
+            let bbox = BoundingBox::new(10.0, 20.0, 100.0, 50.0);
+
+            // Test all four corners
+            assert!(bbox.contains(&Point::new(10.0, 20.0))); // top-left
+            assert!(bbox.contains(&Point::new(110.0, 20.0))); // top-right
+            assert!(bbox.contains(&Point::new(10.0, 70.0))); // bottom-left
+            assert!(bbox.contains(&Point::new(110.0, 70.0))); // bottom-right
+
+            // Test just outside each edge
+            assert!(!bbox.contains(&Point::new(9.9, 45.0))); // left
+            assert!(!bbox.contains(&Point::new(110.1, 45.0))); // right
+            assert!(!bbox.contains(&Point::new(55.0, 19.9))); // top
+            assert!(!bbox.contains(&Point::new(55.0, 70.1))); // bottom
+        }
+
+        // -------------------------------------------------------------------
+        // BoundingBox center with offset
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_bounding_box_center_with_offset() {
+            let bbox = BoundingBox::new(10.0, 20.0, 100.0, 50.0);
+            let center = bbox.center();
+            assert!((center.x - 60.0).abs() < f32::EPSILON); // 10 + 100/2
+            assert!((center.y - 45.0).abs() < f32::EPSILON); // 20 + 50/2
+        }
+
+        // -------------------------------------------------------------------
+        // Locator chaining
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_locator_chaining_all_options() {
+            let locator = Locator::new("button")
+                .with_text("Click")
+                .with_timeout(Duration::from_secs(10))
+                .with_strict(false)
+                .with_visible(false);
+
+            assert!(!locator.options().strict);
+            assert!(!locator.options().visible);
+            assert_eq!(locator.options().timeout, Duration::from_secs(10));
+            assert!(matches!(locator.selector(), Selector::CssWithText { .. }));
+        }
+
+        // -------------------------------------------------------------------
+        // ClickOptions chaining
+        // -------------------------------------------------------------------
+
+        #[test]
+        fn test_click_options_full_chain() {
+            let options = ClickOptions::new()
+                .button(MouseButton::Middle)
+                .click_count(3)
+                .position(Point::new(5.0, 10.0))
+                .modifier(KeyModifier::Shift)
+                .modifier(KeyModifier::Alt)
+                .modifier(KeyModifier::Control)
+                .modifier(KeyModifier::Meta);
+
+            assert_eq!(options.button, MouseButton::Middle);
+            assert_eq!(options.click_count, 3);
+            assert!(options.position.is_some());
+            let pos = options.position.unwrap();
+            assert!((pos.x - 5.0).abs() < f32::EPSILON);
+            assert!((pos.y - 10.0).abs() < f32::EPSILON);
+            assert_eq!(options.modifiers.len(), 4);
+        }
+    }
 }

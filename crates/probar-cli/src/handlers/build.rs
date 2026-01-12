@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 /// Find all HTML files in a directory recursively
-#[must_use] 
+#[must_use]
 pub fn find_html_files(dir: &Path) -> Vec<PathBuf> {
     let mut html_files = Vec::new();
     scan_files_recursive(dir, "html", &mut html_files);
@@ -31,7 +31,7 @@ pub fn scan_files_recursive(dir: &Path, extension: &str, files: &mut Vec<PathBuf
 }
 
 /// Check if an HTML file references WASM
-#[must_use] 
+#[must_use]
 pub fn html_references_wasm(html_path: &Path) -> bool {
     std::fs::read_to_string(html_path)
         .map(|content| {
@@ -44,7 +44,7 @@ pub fn html_references_wasm(html_path: &Path) -> bool {
 }
 
 /// Find which HTML files reference WASM
-#[must_use] 
+#[must_use]
 pub fn find_wasm_pages(html_files: &[PathBuf]) -> HashSet<PathBuf> {
     html_files
         .iter()
@@ -54,12 +54,15 @@ pub fn find_wasm_pages(html_files: &[PathBuf]) -> HashSet<PathBuf> {
 }
 
 /// Report validation results
-#[must_use] 
+#[must_use]
 pub fn format_validation_result(errors: &[String]) -> String {
     if errors.is_empty() {
         "RESULT: PASS (App works!)\n\nCould not prove the app is broken. All validation checks passed.".to_string()
     } else {
-        let mut result = format!("RESULT: FAIL (Grade: F)\n\nFound {} issue(s) that prove the app is broken:\n\n", errors.len());
+        let mut result = format!(
+            "RESULT: FAIL (Grade: F)\n\nFound {} issue(s) that prove the app is broken:\n\n",
+            errors.len()
+        );
         for (i, error) in errors.iter().enumerate() {
             result.push_str(&format!("  {}. {}\n", i + 1, error));
         }
@@ -68,7 +71,7 @@ pub fn format_validation_result(errors: &[String]) -> String {
 }
 
 /// Select a free port for dev server
-#[must_use] 
+#[must_use]
 pub fn find_free_port(start: u16) -> u16 {
     // Simple approach: try ports starting from start
     for port in start..start + 100 {
@@ -108,7 +111,11 @@ mod tests {
         let temp = TempDir::new().unwrap();
         std::fs::create_dir_all(temp.path().join("pages")).unwrap();
         std::fs::write(temp.path().join("index.html"), "<html></html>").unwrap();
-        std::fs::write(temp.path().join("pages").join("about.html"), "<html></html>").unwrap();
+        std::fs::write(
+            temp.path().join("pages").join("about.html"),
+            "<html></html>",
+        )
+        .unwrap();
 
         let files = find_html_files(temp.path());
         assert_eq!(files.len(), 2);
@@ -119,7 +126,11 @@ mod tests {
         let temp = TempDir::new().unwrap();
         std::fs::create_dir_all(temp.path().join("node_modules")).unwrap();
         std::fs::write(temp.path().join("index.html"), "<html></html>").unwrap();
-        std::fs::write(temp.path().join("node_modules").join("lib.html"), "<html></html>").unwrap();
+        std::fs::write(
+            temp.path().join("node_modules").join("lib.html"),
+            "<html></html>",
+        )
+        .unwrap();
 
         let files = find_html_files(temp.path());
         assert_eq!(files.len(), 1);
@@ -130,7 +141,11 @@ mod tests {
         let temp = TempDir::new().unwrap();
         std::fs::create_dir_all(temp.path().join(".hidden")).unwrap();
         std::fs::write(temp.path().join("index.html"), "<html></html>").unwrap();
-        std::fs::write(temp.path().join(".hidden").join("secret.html"), "<html></html>").unwrap();
+        std::fs::write(
+            temp.path().join(".hidden").join("secret.html"),
+            "<html></html>",
+        )
+        .unwrap();
 
         let files = find_html_files(temp.path());
         assert_eq!(files.len(), 1);
@@ -158,7 +173,11 @@ mod tests {
     fn test_html_references_wasm_bindgen() {
         let temp = TempDir::new().unwrap();
         let html_path = temp.path().join("index.html");
-        std::fs::write(&html_path, r"<script>import init from './pkg/wasm_bindgen.js'</script>").unwrap();
+        std::fs::write(
+            &html_path,
+            r"<script>import init from './pkg/wasm_bindgen.js'</script>",
+        )
+        .unwrap();
 
         assert!(html_references_wasm(&html_path));
     }

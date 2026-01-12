@@ -1174,6 +1174,7 @@ mod tests {
         }
 
         // Fixture that fails on setup but with high priority
+        #[allow(dead_code)] // Reserved for future tests
         #[derive(Debug)]
         struct HighPriorityFailingSetupFixture {
             priority: i32,
@@ -1256,7 +1257,7 @@ mod tests {
             let debug = format!("{:?}", fixture);
             assert!(debug.contains("SimpleFixture"));
             assert!(debug.contains("debug_test"));
-            assert!(debug.contains("5"));
+            assert!(debug.contains('5'));
         }
 
         #[test]
@@ -1509,7 +1510,7 @@ mod tests {
                 "low",
                 -10,
                 setup_order.clone(),
-                teardown_order.clone(),
+                teardown_order,
             ));
 
             // Use SimpleFixture for high priority (different type)
@@ -1542,7 +1543,7 @@ mod tests {
             manager.register(PriorityFixture::new(
                 "high",
                 100,
-                setup_order.clone(),
+                setup_order,
                 teardown_order.clone(),
             ));
 

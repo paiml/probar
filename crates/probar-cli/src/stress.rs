@@ -858,4 +858,175 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unknown stress mode"));
     }
+
+    // Additional coverage tests
+
+    #[test]
+    fn test_stress_config_render() {
+        let config = StressConfig::render(45);
+        assert_eq!(config.mode, StressMode::Render);
+        assert_eq!(config.duration_secs, 45);
+        assert_eq!(config.concurrency, 1);
+    }
+
+    #[test]
+    fn test_stress_config_trace() {
+        let config = StressConfig::trace(20);
+        assert_eq!(config.mode, StressMode::Trace);
+        assert_eq!(config.duration_secs, 20);
+        assert_eq!(config.concurrency, 1);
+    }
+
+    #[test]
+    fn test_stress_config_full() {
+        let config = StressConfig::full(120, 16);
+        assert_eq!(config.mode, StressMode::Full);
+        assert_eq!(config.duration_secs, 120);
+        assert_eq!(config.concurrency, 16);
+    }
+
+    #[test]
+    fn test_stress_config_default() {
+        let config = StressConfig::default();
+        assert_eq!(config.mode, StressMode::Atomics);
+        assert_eq!(config.duration_secs, 30);
+        assert_eq!(config.concurrency, 4);
+        assert_eq!(config.target_ops_per_sec, 0);
+        assert_eq!(config.warmup_secs, 5);
+    }
+
+    #[test]
+    fn test_memory_stats_growth_zero_initial() {
+        let stats = MemoryStats {
+            initial_bytes: 0,
+            final_bytes: 1000,
+            peak_bytes: 1000,
+            stable: true,
+        };
+        assert_eq!(stats.growth_percent(), 0.0);
+    }
+
+    #[test]
+    fn test_stress_error_kind_display_all() {
+        assert_eq!(StressErrorKind::LockTimeout.to_string(), "Lock Timeout");
+        assert_eq!(StressErrorKind::QueueOverflow.to_string(), "Queue Overflow");
+        assert_eq!(StressErrorKind::FrameDrop.to_string(), "Frame Drop");
+        assert_eq!(StressErrorKind::OutOfMemory.to_string(), "Out of Memory");
+        assert_eq!(StressErrorKind::WorkerCrash.to_string(), "Worker Crash");
+        assert_eq!(StressErrorKind::Other.to_string(), "Other");
+    }
+
+    #[test]
+    fn test_render_stress_report_with_memory_growth() {
+        let mut result = StressResult::new(StressMode::Atomics);
+        result.duration = Duration::from_secs(30);
+        result.total_ops = 300_000;
+        result.ops_per_sec = 10_000.0;
+        result.memory = MemoryStats {
+            initial_bytes: 1000,
+            final_bytes: 1500,
+            peak_bytes: 1600,
+            stable: false,
+        };
+        result = result.fail("> 10k ops/sec", "10000 ops/sec");
+
+        let report = render_stress_report(&result);
+        assert!(report.contains("No (potential leak)"));
+        assert!(report.contains("Growth:"));
+        assert!(report.contains("50.0%"));
+    }
+
+    #[test]
+    fn test_render_stress_report_with_errors() {
+        let mut result = StressResult::new(StressMode::Render);
+        result.duration = Duration::from_secs(30);
+        result.errors.push(StressError {
+            kind: StressErrorKind::FrameDrop,
+            message: "10 frames dropped".to_string(),
+            time_offset: Duration::from_secs(15),
+        });
+        result.errors.push(StressError {
+            kind: StressErrorKind::LockTimeout,
+            message: "Lock timed out".to_string(),
+            time_offset: Duration::from_secs(20),
+        });
+
+        let report = render_stress_report(&result);
+        assert!(report.contains("Errors (2)"));
+        assert!(report.contains("Frame Drop"));
+        assert!(report.contains("Lock Timeout"));
+    }
+
+    #[test]
+    fn test_latency_stats_default() {
+        let stats = LatencyStats::default();
+        assert_eq!(stats.min_us, 0);
+        assert_eq!(stats.max_us, 0);
+        assert_eq!(stats.mean_us, 0);
+        assert_eq!(stats.p50_us, 0);
+        assert_eq!(stats.p95_us, 0);
+        assert_eq!(stats.p99_us, 0);
+    }
+
+    #[test]
+    fn test_stress_error_serialization() {
+        let error = StressError {
+            kind: StressErrorKind::OutOfMemory,
+            message: "Allocation failed".to_string(),
+            time_offset: Duration::from_millis(500),
+        };
+
+        let json = serde_json::to_string(&error).unwrap();
+        assert!(json.contains("OutOfMemory"));
+        assert!(json.contains("Allocation failed"));
+
+        let parsed: StressError = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.kind, StressErrorKind::OutOfMemory);
+    }
+
+    #[test]
+    fn test_stress_mode_default() {
+        let mode = StressMode::default();
+        assert_eq!(mode, StressMode::Atomics);
+    }
+
+    #[test]
+    fn test_memory_stats_default() {
+        let stats = MemoryStats::default();
+        assert_eq!(stats.initial_bytes, 0);
+        assert_eq!(stats.final_bytes, 0);
+        assert_eq!(stats.peak_bytes, 0);
+        assert!(!stats.stable);
+    }
+
+    #[test]
+    fn test_stress_result_new() {
+        let result = StressResult::new(StressMode::WorkerMsg);
+        assert_eq!(result.mode, StressMode::WorkerMsg);
+        assert!(!result.passed);
+        assert!(result.pass_criteria.is_empty());
+        assert!(result.actual_value.is_empty());
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_render_stress_json_error_handling() {
+        let result = StressResult::new(StressMode::Atomics);
+        let json = render_stress_json(&result);
+        assert!(!json.is_empty());
+        assert!(json.starts_with('{'));
+    }
+
+    #[test]
+    fn test_stress_config_serde() {
+        let config = StressConfig::atomics(60, 8);
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("Atomics"));
+        assert!(json.contains("60"));
+        assert!(json.contains('8'));
+
+        let parsed: StressConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.mode, StressMode::Atomics);
+        assert_eq!(parsed.duration_secs, 60);
+    }
 }

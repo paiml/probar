@@ -893,11 +893,11 @@ mod tests {
         // ClientConnected
         let event4 = HotReloadEvent::ClientConnected { id: 1 };
         let json4 = serde_json::to_string(&event4).unwrap();
-        assert!(json4.contains("1"));
+        assert!(json4.contains('1'));
 
         // ClientDisconnected
         let event5 = HotReloadEvent::ClientDisconnected { id: 2 };
         let json5 = serde_json::to_string(&event5).unwrap();
-        assert!(json5.contains("2"));
+        assert!(json5.contains('2'));
     }
 }

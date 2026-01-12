@@ -163,7 +163,11 @@ impl MockTty {
     }
 
     /// Check if the output contains a specific byte sequence.
+    /// Returns false for empty needle (consistent with windows(0) behavior).
     pub fn output_contains(&self, needle: &[u8]) -> bool {
+        if needle.is_empty() {
+            return false;
+        }
         self.output
             .windows(needle.len())
             .any(|window| window == needle)
@@ -609,5 +613,296 @@ mod tests {
         let commands = tty.parsed_commands();
         assert!(commands.contains(&AnsiCommand::HideCursor));
         assert!(commands.contains(&AnsiCommand::ShowCursor));
+    }
+
+    #[test]
+    fn test_cursor_position_f_variant() {
+        // Test 'f' final byte (same as 'H' for cursor position)
+        let mut tty = MockTty::new(80, 24);
+        tty.write_all(b"\x1b[5;10f").unwrap();
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0], AnsiCommand::CursorMove { row: 5, col: 10 });
+    }
+
+    #[test]
+    fn test_cursor_position_defaults() {
+        // Test cursor position with no params (defaults to 1,1)
+        let mut tty = MockTty::new(80, 24);
+        tty.write_all(b"\x1b[H").unwrap();
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0], AnsiCommand::CursorMove { row: 1, col: 1 });
+    }
+
+    #[test]
+    fn test_cursor_position_row_only() {
+        // Test cursor position with only row (col defaults to 1)
+        let mut tty = MockTty::new(80, 24);
+        tty.write_all(b"\x1b[15H").unwrap();
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0], AnsiCommand::CursorMove { row: 15, col: 1 });
+    }
+
+    #[test]
+    fn test_clear_screen_modes() {
+        let mut tty = MockTty::new(80, 24);
+        // ToEnd (default/0)
+        tty.write_all(b"\x1b[J").unwrap();
+        tty.write_all(b"\x1b[0J").unwrap();
+        // ToBeginning
+        tty.write_all(b"\x1b[1J").unwrap();
+        // All (both 2 and 3)
+        tty.write_all(b"\x1b[2J").unwrap();
+        tty.write_all(b"\x1b[3J").unwrap();
+        // Unknown param falls back to ToEnd
+        tty.write_all(b"\x1b[9J").unwrap();
+
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 6);
+        assert_eq!(commands[0], AnsiCommand::ClearScreen(ClearMode::ToEnd));
+        assert_eq!(commands[1], AnsiCommand::ClearScreen(ClearMode::ToEnd));
+        assert_eq!(
+            commands[2],
+            AnsiCommand::ClearScreen(ClearMode::ToBeginning)
+        );
+        assert_eq!(commands[3], AnsiCommand::ClearScreen(ClearMode::All));
+        assert_eq!(commands[4], AnsiCommand::ClearScreen(ClearMode::All));
+        assert_eq!(commands[5], AnsiCommand::ClearScreen(ClearMode::ToEnd));
+    }
+
+    #[test]
+    fn test_clear_line_modes() {
+        let mut tty = MockTty::new(80, 24);
+        // ToEnd (default/0)
+        tty.write_all(b"\x1b[K").unwrap();
+        tty.write_all(b"\x1b[0K").unwrap();
+        // ToBeginning
+        tty.write_all(b"\x1b[1K").unwrap();
+        // All
+        tty.write_all(b"\x1b[2K").unwrap();
+        // Unknown param falls back to ToEnd
+        tty.write_all(b"\x1b[9K").unwrap();
+
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 5);
+        assert_eq!(commands[0], AnsiCommand::ClearLine(ClearMode::ToEnd));
+        assert_eq!(commands[1], AnsiCommand::ClearLine(ClearMode::ToEnd));
+        assert_eq!(commands[2], AnsiCommand::ClearLine(ClearMode::ToBeginning));
+        assert_eq!(commands[3], AnsiCommand::ClearLine(ClearMode::All));
+        assert_eq!(commands[4], AnsiCommand::ClearLine(ClearMode::ToEnd));
+    }
+
+    #[test]
+    fn test_sgr_empty_params() {
+        let mut tty = MockTty::new(80, 24);
+        tty.write_all(b"\x1b[m").unwrap(); // Reset all attributes
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0], AnsiCommand::SetAttribute(vec![]));
+    }
+
+    #[test]
+    fn test_unknown_h_mode() {
+        let mut tty = MockTty::new(80, 24);
+        tty.write_all(b"\x1b[?9999h").unwrap();
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 1);
+        match &commands[0] {
+            AnsiCommand::Unknown(bytes) => {
+                assert_eq!(bytes, b"\x1b[?9999h");
+            }
+            _ => panic!("Expected Unknown command"),
+        }
+    }
+
+    #[test]
+    fn test_unknown_l_mode() {
+        let mut tty = MockTty::new(80, 24);
+        tty.write_all(b"\x1b[?9999l").unwrap();
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 1);
+        match &commands[0] {
+            AnsiCommand::Unknown(bytes) => {
+                assert_eq!(bytes, b"\x1b[?9999l");
+            }
+            _ => panic!("Expected Unknown command"),
+        }
+    }
+
+    #[test]
+    fn test_unknown_final_byte() {
+        let mut tty = MockTty::new(80, 24);
+        // Use 'Z' which is not a recognized command
+        tty.write_all(b"\x1b[5Z").unwrap();
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 1);
+        match &commands[0] {
+            AnsiCommand::Unknown(bytes) => {
+                assert_eq!(bytes, b"\x1b[5Z");
+            }
+            _ => panic!("Expected Unknown command"),
+        }
+    }
+
+    #[test]
+    fn test_mouse_enable_via_parsing() {
+        let mut tty = MockTty::new(80, 24);
+        tty.enable_mouse_capture();
+        let commands = tty.parsed_commands();
+        // Should contain EnableMouse (the first sequence ?1000h triggers it)
+        assert!(commands
+            .iter()
+            .any(|c| matches!(c, AnsiCommand::EnableMouse)));
+    }
+
+    #[test]
+    fn test_mouse_disable_via_parsing() {
+        let mut tty = MockTty::new(80, 24);
+        tty.disable_mouse_capture();
+        let commands = tty.parsed_commands();
+        // Should contain DisableMouse (the sequence ?1006l triggers it)
+        assert!(commands
+            .iter()
+            .any(|c| matches!(c, AnsiCommand::DisableMouse)));
+    }
+
+    #[test]
+    fn test_mouse_1002_enable() {
+        let mut tty = MockTty::new(80, 24);
+        tty.write_all(b"\x1b[?1002h").unwrap();
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0], AnsiCommand::EnableMouse);
+    }
+
+    #[test]
+    fn test_mouse_1000_disable() {
+        let mut tty = MockTty::new(80, 24);
+        tty.write_all(b"\x1b[?1000l").unwrap();
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0], AnsiCommand::DisableMouse);
+    }
+
+    #[test]
+    fn test_incomplete_escape_sequence() {
+        let mut tty = MockTty::new(80, 24);
+        // Escape sequence without final byte (ends at buffer end)
+        tty.write_all(b"text\x1b[123").unwrap();
+        let commands = tty.parsed_commands();
+        // Should have Text("text") and Unknown for the incomplete sequence
+        assert_eq!(commands.len(), 2);
+        assert_eq!(commands[0], AnsiCommand::Text("text".to_string()));
+        match &commands[1] {
+            AnsiCommand::Unknown(_) => {}
+            _ => panic!("Expected Unknown for incomplete sequence"),
+        }
+    }
+
+    #[test]
+    fn test_write_flush() {
+        let mut tty = MockTty::new(80, 24);
+        tty.write_all(b"test").unwrap();
+        // flush should always succeed for MockTty
+        assert!(tty.flush().is_ok());
+    }
+
+    #[test]
+    fn test_output_contains_empty_needle() {
+        let mut tty = MockTty::new(80, 24);
+        tty.write_all(b"Hello").unwrap();
+        // Empty needle should return false (windows(0) returns empty iterator)
+        assert!(!tty.output_contains(b""));
+    }
+
+    #[test]
+    fn test_intermediate_bytes_in_sequence() {
+        // Test that intermediate bytes (0x20-0x2F) are handled
+        let mut tty = MockTty::new(80, 24);
+        // CSI with intermediate byte (space) before final byte
+        tty.write_all(b"\x1b[0 q").unwrap(); // DECSCUSR - set cursor style
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 1);
+        // Should be Unknown since 'q' with space is not recognized
+        match &commands[0] {
+            AnsiCommand::Unknown(_) => {}
+            _ => panic!("Expected Unknown command for DECSCUSR"),
+        }
+    }
+
+    #[test]
+    fn test_multiple_escape_sequences() {
+        let mut tty = MockTty::new(80, 24);
+        tty.write_all(b"\x1b[2J\x1b[1;1H\x1b[?25l").unwrap();
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 3);
+        assert_eq!(commands[0], AnsiCommand::ClearScreen(ClearMode::All));
+        assert_eq!(commands[1], AnsiCommand::CursorMove { row: 1, col: 1 });
+        assert_eq!(commands[2], AnsiCommand::HideCursor);
+    }
+
+    #[test]
+    fn test_text_only_output() {
+        let mut tty = MockTty::new(80, 24);
+        tty.write_all(b"Just plain text").unwrap();
+        let commands = tty.parsed_commands();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(
+            commands[0],
+            AnsiCommand::Text("Just plain text".to_string())
+        );
+    }
+
+    #[test]
+    fn test_escape_at_end() {
+        let mut tty = MockTty::new(80, 24);
+        // Just ESC without [ (not a CSI sequence)
+        tty.write_all(b"text\x1b").unwrap();
+        let commands = tty.parsed_commands();
+        // Should just be the text, ESC at end won't start a CSI
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0], AnsiCommand::Text("text\x1b".to_string()));
+    }
+
+    #[test]
+    fn test_debug_impl() {
+        let tty = MockTty::new(80, 24);
+        let debug_str = format!("{:?}", tty);
+        assert!(debug_str.contains("MockTty"));
+        assert!(debug_str.contains("size"));
+    }
+
+    #[test]
+    fn test_ansi_command_debug_and_clone() {
+        let cmd = AnsiCommand::CursorMove { row: 5, col: 10 };
+        let cloned = cmd.clone();
+        assert_eq!(cmd, cloned);
+        let debug_str = format!("{:?}", cmd);
+        assert!(debug_str.contains("CursorMove"));
+    }
+
+    #[test]
+    fn test_clear_mode_debug_and_clone() {
+        let mode = ClearMode::All;
+        let cloned = mode;
+        assert_eq!(mode, cloned);
+        let debug_str = format!("{:?}", mode);
+        assert!(debug_str.contains("All"));
+    }
+
+    #[test]
+    fn test_empty_output_parsing() {
+        let tty = MockTty::new(80, 24);
+        let commands = tty.parsed_commands();
+        assert!(commands.is_empty());
+    }
+
+    #[test]
+    fn test_read_event_error_kind() {
+        let mut tty = MockTty::new(80, 24);
+        let err = tty.read_event().unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
     }
 }

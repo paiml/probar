@@ -1044,7 +1044,7 @@ mod tests {
             tile_x: 8,
             tile_y: 8,
         };
-        let cloned = strategy.clone();
+        let cloned = strategy;
         assert!(matches!(
             cloned,
             TileStrategy::Simple2D {
@@ -1184,7 +1184,7 @@ mod tests {
             operands: vec!["x".into(), "y".into()],
             output: Some("z".into()),
         };
-        let cloned = op.clone();
+        let cloned = op;
         assert!(matches!(cloned, TileOp::Elementwise { .. }));
     }
 

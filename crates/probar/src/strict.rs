@@ -1318,7 +1318,7 @@ mod tests {
         let display = format!("{}", msg);
         assert!(display.contains("[log]"));
         assert!(display.contains("Simple message"));
-        assert!(!display.contains(":")); // No source location
+        assert!(!display.contains(':')); // No source location
     }
 
     #[test]
@@ -1347,7 +1347,7 @@ mod tests {
         let err = ConsoleValidationError::TooManyWarnings { count: 15, max: 5 };
         let display = format!("{}", err);
         assert!(display.contains("15"));
-        assert!(display.contains("5"));
+        assert!(display.contains('5'));
         assert!(display.contains("Too many console warnings"));
     }
 

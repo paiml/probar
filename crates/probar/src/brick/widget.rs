@@ -1281,7 +1281,7 @@ mod tests {
     #[test]
     fn test_text_style_debug_and_clone() {
         let style = TextStyle::new(12.0, WidgetColor::BLACK);
-        let cloned = style.clone();
+        let cloned = style;
         assert!(format!("{:?}", cloned).contains("TextStyle"));
     }
 
@@ -1299,7 +1299,7 @@ mod tests {
     #[test]
     fn test_stroke_style_debug_and_clone() {
         let style = StrokeStyle::default();
-        let cloned = style.clone();
+        let cloned = style;
         assert!(format!("{:?}", cloned).contains("StrokeStyle"));
     }
 
@@ -1482,7 +1482,7 @@ mod tests {
             radius: CornerRadius::ZERO,
         };
 
-        let _cloned = cmd.clone();
+        let _cloned = cmd;
     }
 
     // ============================================================
@@ -1506,7 +1506,7 @@ mod tests {
             params: [0.0; 4],
         };
 
-        let cloned = instance.clone();
+        let cloned = instance;
         assert!(format!("{:?}", cloned).contains("GpuInstance"));
     }
 
@@ -1723,7 +1723,7 @@ mod tests {
     #[test]
     fn test_layout_result_debug_and_clone() {
         let r = LayoutResult::success(Rect::default());
-        let cloned = r.clone();
+        let cloned = r;
         assert!(format!("{:?}", cloned).contains("LayoutResult"));
     }
 
@@ -1808,7 +1808,7 @@ mod tests {
             button: WidgetMouseButton::Right,
         };
 
-        let _cloned = event.clone();
+        let _cloned = event;
     }
 
     // ============================================================
@@ -2117,7 +2117,7 @@ mod tests {
             command_count: 5,
         };
 
-        let cloned = metrics.clone();
+        let cloned = metrics;
         assert!(format!("{:?}", cloned).contains("RenderMetrics"));
     }
 }

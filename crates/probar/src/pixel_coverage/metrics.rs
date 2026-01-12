@@ -829,6 +829,43 @@ mod tests {
         assert!(result.is_acceptable);
     }
 
+    #[test]
+    fn h0_ssim_04_mismatched_lengths() {
+        let img1 = test_image_white(100);
+        let img2 = test_image_white(50);
+        let ssim = SsimMetric::default();
+        let result = ssim.compare(&img1, &img2, 10, 10);
+        assert_eq!(result.score, 0.0);
+        assert!(!result.is_perfect);
+        assert!(!result.is_acceptable);
+        assert_eq!(result.channel_scores, [0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn h0_ssim_05_new_constructor() {
+        let ssim = SsimMetric::new(7);
+        assert_eq!(ssim.window_size, 7);
+        assert_eq!(ssim.perfect_threshold, 0.99);
+        assert_eq!(ssim.accept_threshold, 0.95);
+    }
+
+    #[test]
+    fn h0_ssim_06_with_thresholds() {
+        let ssim = SsimMetric::default().with_thresholds(0.98, 0.90);
+        assert_eq!(ssim.perfect_threshold, 0.98);
+        assert_eq!(ssim.accept_threshold, 0.90);
+    }
+
+    #[test]
+    fn h0_ssim_07_zero_denominator_branch() {
+        // Test the case where denominator could be zero (identical zero images)
+        let zeros = vec![Rgb::new(0, 0, 0); 64];
+        let ssim = SsimMetric::default();
+        let result = ssim.compare(&zeros, &zeros, 8, 8);
+        // Both images are identical black - should have perfect SSIM
+        assert!(result.score >= 0.99);
+    }
+
     // =========================================================================
     // PSNR Tests (H0-PSNR-XX)
     // =========================================================================
@@ -861,6 +898,64 @@ mod tests {
         assert_eq!(result.quality, PsnrQuality::Poor);
     }
 
+    #[test]
+    fn h0_psnr_04_mismatched_lengths() {
+        let img1 = test_image_gray(100);
+        let img2 = test_image_gray(50);
+        let psnr = PsnrMetric::default();
+        let result = psnr.compare(&img1, &img2);
+        assert_eq!(result.psnr_db, 0.0);
+        assert_eq!(result.mse, f32::MAX);
+        assert_eq!(result.quality, PsnrQuality::Poor);
+    }
+
+    #[test]
+    fn h0_psnr_05_empty_images() {
+        let empty: Vec<Rgb> = vec![];
+        let psnr = PsnrMetric::default();
+        let result = psnr.compare(&empty, &empty);
+        assert_eq!(result.psnr_db, 0.0);
+        assert_eq!(result.mse, f32::MAX);
+        assert_eq!(result.quality, PsnrQuality::Poor);
+    }
+
+    #[test]
+    fn h0_psnr_06_good_quality() {
+        // Create images with a difference that results in PSNR between 35-40 dB
+        // PSNR = 10 * log10(255^2 / MSE), MSE = diff^2 for grayscale
+        // For PSNR ~37: MSE = 65025 / 10^3.7 ≈ 13, diff ≈ 3.6
+        let gray1: Vec<Rgb> = vec![Rgb::new(128, 128, 128); 100];
+        let gray2: Vec<Rgb> = vec![Rgb::new(132, 132, 132); 100]; // diff of 4 per channel
+        let psnr = PsnrMetric::default();
+        let result = psnr.compare(&gray1, &gray2);
+        // Should be "Good" quality (35 <= PSNR < 40)
+        assert!(result.psnr_db >= 35.0 && result.psnr_db < 40.0);
+        assert_eq!(result.quality, PsnrQuality::Good);
+    }
+
+    #[test]
+    fn h0_psnr_07_acceptable_quality() {
+        // Create images with a difference that results in PSNR between 30-35 dB
+        // For PSNR ~32: MSE = 65025 / 10^3.2 ≈ 41, diff ≈ 6.4
+        let gray1: Vec<Rgb> = vec![Rgb::new(128, 128, 128); 100];
+        let gray2: Vec<Rgb> = vec![Rgb::new(135, 135, 135); 100]; // diff of 7 produces ~31 dB
+        let psnr = PsnrMetric::default();
+        let result = psnr.compare(&gray1, &gray2);
+        assert!(result.psnr_db >= 30.0 && result.psnr_db < 35.0);
+        assert_eq!(result.quality, PsnrQuality::Acceptable);
+    }
+
+    #[test]
+    fn h0_psnr_08_excellent_quality() {
+        // Create images with a very small difference (PSNR >= 40 dB)
+        let gray1: Vec<Rgb> = vec![Rgb::new(128, 128, 128); 100];
+        let gray2: Vec<Rgb> = vec![Rgb::new(129, 129, 129); 100]; // tiny diff
+        let psnr = PsnrMetric::default();
+        let result = psnr.compare(&gray1, &gray2);
+        assert!(result.psnr_db >= 40.0);
+        assert_eq!(result.quality, PsnrQuality::Excellent);
+    }
+
     // =========================================================================
     // Lab Conversion Tests (H0-LAB-XX)
     // =========================================================================
@@ -883,6 +978,53 @@ mod tests {
         assert!(lab.l > 40.0 && lab.l < 60.0); // L should be ~53
         assert!(lab.a.abs() < 2.0); // a should be ~0
         assert!(lab.b.abs() < 2.0); // b should be ~0
+    }
+
+    #[test]
+    fn h0_lab_04_new_constructor() {
+        let lab = Lab::new(50.0, 25.0, -30.0);
+        assert_eq!(lab.l, 50.0);
+        assert_eq!(lab.a, 25.0);
+        assert_eq!(lab.b, -30.0);
+    }
+
+    #[test]
+    fn h0_lab_05_srgb_linear_threshold() {
+        // Test the srgb_to_linear branch for values <= 0.04045
+        // RGB values <= 10 (10/255 ≈ 0.039) should use the linear branch
+        let lab = Lab::from_rgb(&Rgb::new(5, 5, 5));
+        assert!(lab.l < 5.0); // Very dark
+    }
+
+    #[test]
+    fn h0_lab_06_srgb_gamma_branch() {
+        // Test the srgb_to_linear branch for values > 0.04045
+        // RGB values > 10 should use the gamma branch
+        let lab = Lab::from_rgb(&Rgb::new(200, 100, 50));
+        assert!(lab.l > 40.0); // Should be reasonably bright
+    }
+
+    #[test]
+    fn h0_lab_07_f_xyz_linear_branch() {
+        // Test f_xyz for very dark colors (t <= delta^3)
+        let lab = Lab::from_rgb(&Rgb::new(1, 1, 1));
+        assert!(lab.l < 2.0);
+    }
+
+    #[test]
+    fn h0_lab_08_colored_pixels() {
+        // Test various colored pixels for a and b values
+        let red = Lab::from_rgb(&Rgb::new(255, 0, 0));
+        assert!(red.a > 0.0); // Red has positive a
+
+        let green = Lab::from_rgb(&Rgb::new(0, 255, 0));
+        assert!(green.a < 0.0); // Green has negative a
+
+        let blue = Lab::from_rgb(&Rgb::new(0, 0, 255));
+        assert!(blue.b < 0.0); // Blue has negative b
+
+        let yellow = Lab::from_rgb(&Rgb::new(255, 255, 0));
+        assert!(yellow.b > 0.0); // Yellow has positive b
     }
 
     // =========================================================================
@@ -913,6 +1055,147 @@ mod tests {
         let metric = CieDe2000Metric::default();
         let result = metric.compare(&gray1, &gray2);
         assert!(result.mean_delta_e < 10.0);
+    }
+
+    #[test]
+    fn h0_de_04_mismatched_lengths() {
+        let img1 = test_image_gray(100);
+        let img2 = test_image_gray(50);
+        let metric = CieDe2000Metric::default();
+        let result = metric.compare(&img1, &img2);
+        assert_eq!(result.mean_delta_e, f32::MAX);
+        assert_eq!(result.max_delta_e, f32::MAX);
+        assert_eq!(result.percent_imperceptible, 0.0);
+        assert_eq!(result.percent_acceptable, 0.0);
+        assert_eq!(result.classification, DeltaEClassification::Unacceptable);
+    }
+
+    #[test]
+    fn h0_de_05_empty_images() {
+        let empty: Vec<Rgb> = vec![];
+        let metric = CieDe2000Metric::default();
+        let result = metric.compare(&empty, &empty);
+        assert_eq!(result.mean_delta_e, f32::MAX);
+        assert_eq!(result.classification, DeltaEClassification::Unacceptable);
+    }
+
+    #[test]
+    fn h0_de_06_is_imperceptible() {
+        let metric = CieDe2000Metric::default();
+        assert!(metric.is_imperceptible(0.5));
+        assert!(!metric.is_imperceptible(1.5));
+    }
+
+    #[test]
+    fn h0_de_07_classification_imperceptible() {
+        let img = test_image_gray(100);
+        let metric = CieDe2000Metric::default();
+        let result = metric.compare(&img, &img);
+        assert_eq!(result.classification, DeltaEClassification::Imperceptible);
+    }
+
+    #[test]
+    fn h0_de_08_classification_just_noticeable() {
+        // Create images with small but noticeable difference (mean ΔE between 0.8 and 1.8)
+        // Grayscale differences need larger RGB changes to reach the JustNoticeable threshold
+        let gray1: Vec<Rgb> = vec![Rgb::new(128, 128, 128); 100];
+        let gray2: Vec<Rgb> = vec![Rgb::new(132, 132, 132); 100]; // diff of 4 produces ΔE ~1.0-1.5
+        let metric = CieDe2000Metric::default();
+        let result = metric.compare(&gray1, &gray2);
+        assert_eq!(result.classification, DeltaEClassification::JustNoticeable);
+    }
+
+    #[test]
+    fn h0_de_09_classification_acceptable() {
+        // Create images with acceptable difference (mean ΔE between 1.8 and 2.8)
+        let gray1: Vec<Rgb> = vec![Rgb::new(128, 128, 128); 100];
+        let gray2: Vec<Rgb> = vec![Rgb::new(134, 134, 134); 100];
+        let metric = CieDe2000Metric::default();
+        let result = metric.compare(&gray1, &gray2);
+        assert_eq!(result.classification, DeltaEClassification::Acceptable);
+    }
+
+    #[test]
+    fn h0_de_10_classification_noticeable() {
+        // Create images with noticeable difference (mean ΔE between 2.8 and 3.7)
+        let gray1: Vec<Rgb> = vec![Rgb::new(128, 128, 128); 100];
+        let gray2: Vec<Rgb> = vec![Rgb::new(138, 138, 138); 100];
+        let metric = CieDe2000Metric::default();
+        let result = metric.compare(&gray1, &gray2);
+        assert_eq!(result.classification, DeltaEClassification::Noticeable);
+    }
+
+    #[test]
+    fn h0_de_11_classification_unacceptable() {
+        // Create images with large difference (mean ΔE >= 3.7)
+        let gray1: Vec<Rgb> = vec![Rgb::new(128, 128, 128); 100];
+        let gray2: Vec<Rgb> = vec![Rgb::new(145, 145, 145); 100];
+        let metric = CieDe2000Metric::default();
+        let result = metric.compare(&gray1, &gray2);
+        assert_eq!(result.classification, DeltaEClassification::Unacceptable);
+    }
+
+    #[test]
+    fn h0_de_12_hue_angle_branches() {
+        // Test various hue angle calculation branches in delta_e
+        let metric = CieDe2000Metric::default();
+
+        // Test with achromatic colors (a=0, b=0) - should hit h_prime = 0 branch
+        let lab1 = Lab::new(50.0, 0.0, 0.0);
+        let lab2 = Lab::new(60.0, 0.0, 0.0);
+        let de = metric.delta_e(&lab1, &lab2);
+        assert!(de > 0.0);
+
+        // Test with chromatic colors - different hue branches
+        let lab3 = Lab::new(50.0, 30.0, 40.0);
+        let lab4 = Lab::new(50.0, -30.0, -40.0);
+        let de2 = metric.delta_e(&lab3, &lab4);
+        assert!(de2 > 0.0);
+    }
+
+    #[test]
+    fn h0_de_13_delta_h_prime_branches() {
+        let metric = CieDe2000Metric::default();
+
+        // Test case where |dh| > 180 (dh > 180)
+        let lab1 = Lab::new(50.0, 50.0, 5.0); // ~hue 6°
+        let lab2 = Lab::new(50.0, -50.0, -5.0); // ~hue 186°
+        let de = metric.delta_e(&lab1, &lab2);
+        assert!(de > 0.0);
+
+        // Test case where dh < -180
+        let lab3 = Lab::new(50.0, -50.0, 5.0); // ~hue 174°
+        let lab4 = Lab::new(50.0, 50.0, -5.0); // ~hue 354°
+        let de2 = metric.delta_e(&lab3, &lab4);
+        assert!(de2 > 0.0);
+    }
+
+    #[test]
+    fn h0_de_14_h_prime_avg_branches() {
+        let metric = CieDe2000Metric::default();
+
+        // Test h_prime_avg calculation with diff > 180 and sum < 360
+        let lab1 = Lab::new(50.0, 40.0, 10.0); // low hue
+        let lab2 = Lab::new(50.0, 10.0, -40.0); // high hue
+        let de = metric.delta_e(&lab1, &lab2);
+        assert!(de > 0.0);
+
+        // Test with sum >= 360
+        let lab3 = Lab::new(50.0, -10.0, 40.0);
+        let lab4 = Lab::new(50.0, -40.0, -10.0);
+        let de2 = metric.delta_e(&lab3, &lab4);
+        assert!(de2 > 0.0);
+    }
+
+    #[test]
+    fn h0_de_15_percent_calculations() {
+        let gray1: Vec<Rgb> = vec![Rgb::new(128, 128, 128); 100];
+        let gray2: Vec<Rgb> = vec![Rgb::new(129, 129, 129); 100];
+        let metric = CieDe2000Metric::default();
+        let result = metric.compare(&gray1, &gray2);
+        // With very small differences, most pixels should be imperceptible/acceptable
+        assert!(result.percent_imperceptible > 0.0);
+        assert!(result.percent_acceptable > 0.0);
     }
 
     // =========================================================================
@@ -967,6 +1250,72 @@ mod tests {
         let _ = hash; // hash computed successfully
     }
 
+    #[test]
+    fn h0_phash_06_phash_algorithm() {
+        // Test the PHash (DCT-based) algorithm
+        let img = test_image_gray(1024); // 32x32 minimum for PHash
+        let hasher = PerceptualHash::new(PhashAlgorithm::PHash);
+        let hash = hasher.compute(&img, 32, 32);
+        // Verify it produces consistent results
+        let hash2 = hasher.compute(&img, 32, 32);
+        assert_eq!(hash, hash2);
+    }
+
+    #[test]
+    fn h0_phash_07_dhash_gradient() {
+        // Test DHash with a gradient image
+        let gradient: Vec<Rgb> = (0..72)
+            .map(|i| {
+                let v = (i * 3) as u8;
+                Rgb::new(v, v, v)
+            })
+            .collect();
+        let hasher = PerceptualHash::new(PhashAlgorithm::DHash);
+        let hash = hasher.compute(&gradient, 9, 8);
+        // Gradient should produce a non-trivial hash
+        assert_ne!(hash, 0);
+    }
+
+    #[test]
+    fn h0_phash_08_resize_out_of_bounds() {
+        // Test resize_grayscale with a very small image
+        let small_img = vec![Rgb::new(128, 128, 128); 4]; // 2x2
+        let hasher = PerceptualHash::default();
+        // Compute on a 2x2 image but expecting 9x8 resize for dhash
+        // This should handle the case where src_idx >= image.len()
+        let hash = hasher.compute(&small_img, 2, 2);
+        let _ = hash; // Should not panic
+    }
+
+    #[test]
+    fn h0_phash_09_average_hash_varied() {
+        // Test average hash with varied pixel values
+        let varied: Vec<Rgb> = (0..64)
+            .map(|i| {
+                let v = if i % 2 == 0 { 50 } else { 200 };
+                Rgb::new(v, v, v)
+            })
+            .collect();
+        let hasher = PerceptualHash::new(PhashAlgorithm::AHash);
+        let hash = hasher.compute(&varied, 8, 8);
+        // Should produce a pattern based on above/below mean
+        assert_ne!(hash, 0);
+        assert_ne!(hash, u64::MAX);
+    }
+
+    #[test]
+    fn h0_phash_10_default_values() {
+        let hasher = PerceptualHash::default();
+        assert_eq!(hasher.algorithm, PhashAlgorithm::DHash);
+        assert_eq!(hasher.hash_bits, 64);
+    }
+
+    #[test]
+    fn h0_phash_11_algorithm_default() {
+        let algo = PhashAlgorithm::default();
+        assert_eq!(algo, PhashAlgorithm::DHash);
+    }
+
     // =========================================================================
     // Verification Suite Tests (H0-SUITE-XX)
     // =========================================================================
@@ -988,6 +1337,36 @@ mod tests {
         let suite = PixelVerificationSuite::default();
         let result = suite.verify(&white, &black, 10, 10);
         assert!(!result.passes);
+    }
+
+    #[test]
+    fn h0_suite_03_similar_but_acceptable() {
+        let gray1: Vec<Rgb> = vec![Rgb::new(128, 128, 128); 100];
+        let gray2: Vec<Rgb> = vec![Rgb::new(130, 130, 130); 100];
+        let suite = PixelVerificationSuite::default();
+        let result = suite.verify(&gray1, &gray2, 10, 10);
+        // Should pass because SSIM is acceptable, Delta E is small, and PHash distance is low
+        assert!(result.passes);
+        assert!(result.ssim.is_acceptable);
+        assert!(result.phash_distance <= 10);
+    }
+
+    #[test]
+    fn h0_suite_04_phash_distance_check() {
+        let suite = PixelVerificationSuite::default();
+        let img = test_image_gray(100);
+        let result = suite.verify(&img, &img, 10, 10);
+        assert_eq!(result.phash_distance, 0);
+    }
+
+    #[test]
+    fn h0_suite_05_default_metrics() {
+        let suite = PixelVerificationSuite::default();
+        // Verify all metrics are properly initialized with defaults
+        assert_eq!(suite.ssim.window_size, 11);
+        assert_eq!(suite.psnr.max_value, 255.0);
+        assert_eq!(suite.delta_e.jnd_threshold, 1.0);
+        assert_eq!(suite.phash.algorithm, PhashAlgorithm::DHash);
     }
 }
 

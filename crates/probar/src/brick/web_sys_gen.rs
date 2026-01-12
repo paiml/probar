@@ -609,7 +609,7 @@ mod tests {
     #[test]
     fn test_web_sys_error_clone() {
         let err = WebSysError::FetchFailed;
-        let cloned = err.clone();
+        let cloned = err;
         assert!(matches!(cloned, WebSysError::FetchFailed));
     }
 
@@ -664,7 +664,7 @@ mod tests {
     #[test]
     fn test_event_detail_clone() {
         let detail = EventDetail::Number(42.0);
-        let cloned = detail.clone();
+        let cloned = detail;
         assert!(matches!(cloned, EventDetail::Number(n) if (n - 42.0).abs() < f64::EPSILON));
     }
 
@@ -705,7 +705,7 @@ mod tests {
 
     #[test]
     fn test_fetch_client_default() {
-        let client = FetchClient::default();
+        let client = FetchClient;
         let debug_str = format!("{:?}", client);
         assert!(debug_str.contains("FetchClient"));
     }
@@ -713,7 +713,7 @@ mod tests {
     #[test]
     fn test_fetch_client_clone() {
         let client = FetchClient::new();
-        let cloned = client.clone();
+        let cloned = client;
         let _ = format!("{:?}", cloned);
     }
 
@@ -742,7 +742,7 @@ mod tests {
     #[test]
     fn test_custom_event_dispatcher_clone() {
         let dispatcher = CustomEventDispatcher::new("clone-test");
-        let cloned = dispatcher.clone();
+        let cloned = dispatcher;
         assert!(cloned.dispatch().is_ok());
     }
 
@@ -757,7 +757,7 @@ mod tests {
     fn test_performance_timing_clone_copy() {
         let timing1 = PerformanceTiming;
         let timing2 = timing1; // Copy
-        let timing3 = timing1.clone(); // Clone
+        let timing3 = timing1; // Clone
         let _ = format!("{:?}", timing2);
         let _ = format!("{:?}", timing3);
     }
@@ -772,7 +772,7 @@ mod tests {
     #[test]
     fn test_blob_url_clone() {
         let blob1 = BlobUrl;
-        let blob2 = blob1.clone();
+        let blob2 = blob1;
         let _ = format!("{:?}", blob2);
     }
 

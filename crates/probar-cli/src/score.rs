@@ -1518,4 +1518,192 @@ mod tests {
         assert_eq!(format_percentage(0, 100), "0%");
         assert_eq!(format_percentage(0, 0), "0%");
     }
+
+    #[test]
+    fn test_category_status_max_zero() {
+        assert_eq!(CategoryStatus::from_ratio(0, 0), CategoryStatus::Missing);
+    }
+
+    #[test]
+    fn test_grade_all_variants() {
+        assert_eq!(Grade::from_score(100, 100), Grade::A);
+        assert_eq!(Grade::from_score(90, 100), Grade::A);
+        assert_eq!(Grade::from_score(89, 100), Grade::B);
+        assert_eq!(Grade::from_score(80, 100), Grade::B);
+        assert_eq!(Grade::from_score(79, 100), Grade::C);
+        assert_eq!(Grade::from_score(70, 100), Grade::C);
+        assert_eq!(Grade::from_score(69, 100), Grade::D);
+        assert_eq!(Grade::from_score(60, 100), Grade::D);
+        assert_eq!(Grade::from_score(59, 100), Grade::F);
+        assert_eq!(Grade::from_score(0, 100), Grade::F);
+    }
+
+    #[test]
+    fn test_grade_as_str_all() {
+        assert_eq!(Grade::A.as_str(), "A");
+        assert_eq!(Grade::B.as_str(), "B");
+        assert_eq!(Grade::C.as_str(), "C");
+        assert_eq!(Grade::D.as_str(), "D");
+        assert_eq!(Grade::F.as_str(), "F");
+    }
+
+    #[test]
+    fn test_criterion_result_creation() {
+        let result = CriterionResult {
+            name: "Test Criterion".to_string(),
+            points_earned: 5,
+            points_possible: 10,
+            evidence: Some("Found 5 items".to_string()),
+            suggestion: Some("Add more items".to_string()),
+        };
+        assert_eq!(result.name, "Test Criterion");
+        assert_eq!(result.points_earned, 5);
+    }
+
+    #[test]
+    fn test_recommendation_creation() {
+        let rec = Recommendation {
+            priority: 1,
+            action: "Add more tests".to_string(),
+            potential_points: 10,
+            effort: Effort::Low,
+        };
+        assert_eq!(rec.priority, 1);
+        assert_eq!(rec.potential_points, 10);
+        assert_eq!(rec.effort.as_str(), "Low (<1h)");
+    }
+
+    #[test]
+    fn test_category_score_creation() {
+        let cat = CategoryScore {
+            name: "Test Category".to_string(),
+            score: 8,
+            max: 10,
+            status: CategoryStatus::Complete,
+            criteria: vec![],
+        };
+        assert_eq!(cat.name, "Test Category");
+        assert_eq!(cat.status, CategoryStatus::Complete);
+    }
+
+    #[test]
+    fn test_project_score_with_recommendations() {
+        let score = ProjectScore {
+            total: 60,
+            max: 100,
+            grade: Grade::D,
+            categories: vec![],
+            recommendations: vec![
+                Recommendation {
+                    priority: 1,
+                    action: "First action".to_string(),
+                    potential_points: 15,
+                    effort: Effort::Medium,
+                },
+                Recommendation {
+                    priority: 2,
+                    action: "Second action".to_string(),
+                    potential_points: 10,
+                    effort: Effort::High,
+                },
+            ],
+            summary: "Needs improvement".to_string(),
+        };
+
+        let output = render_score_text(&score, true);
+        assert!(output.contains("60/100"));
+    }
+
+    #[test]
+    fn test_score_calculator_with_performance() {
+        let temp = TempDir::new().unwrap();
+        let benches_dir = temp.path().join("benches");
+        std::fs::create_dir(&benches_dir).unwrap();
+        std::fs::write(benches_dir.join("benchmark.rs"), "fn main() {}").unwrap();
+
+        let calc = ScoreCalculator::new(temp.path());
+        let score = calc.calculate();
+
+        let perf_category = score
+            .categories
+            .iter()
+            .find(|c| c.name == "Performance Benchmarks");
+        assert!(perf_category.is_some());
+    }
+
+    #[test]
+    fn test_score_calculator_with_accessibility() {
+        let temp = TempDir::new().unwrap();
+        let a11y_dir = temp.path().join("a11y");
+        std::fs::create_dir(&a11y_dir).unwrap();
+        std::fs::write(a11y_dir.join("config.yaml"), "rules: []").unwrap();
+
+        let calc = ScoreCalculator::new(temp.path());
+        let score = calc.calculate();
+
+        let a11y_category = score.categories.iter().find(|c| c.name == "Accessibility");
+        assert!(a11y_category.is_some());
+    }
+
+    #[test]
+    fn test_score_calculator_with_docs() {
+        let temp = TempDir::new().unwrap();
+        std::fs::write(
+            temp.path().join("README.md"),
+            "# Test\n\n## Testing\n\nWe use tests",
+        )
+        .unwrap();
+
+        let calc = ScoreCalculator::new(temp.path());
+        let score = calc.calculate();
+
+        let docs_category = score.categories.iter().find(|c| c.name == "Documentation");
+        assert!(docs_category.is_some());
+    }
+
+    #[test]
+    fn test_score_calculator_with_replay_session() {
+        let temp = TempDir::new().unwrap();
+        std::fs::write(temp.path().join("session.replay"), "{}").unwrap();
+
+        let calc = ScoreCalculator::new(temp.path());
+        let score = calc.calculate();
+
+        let replay_category = score
+            .categories
+            .iter()
+            .find(|c| c.name == "Deterministic Replay");
+        assert!(replay_category.is_some());
+    }
+
+    #[test]
+    fn test_render_score_text_with_categories() {
+        let score = ProjectScore {
+            total: 75,
+            max: 100,
+            grade: Grade::C,
+            categories: vec![
+                CategoryScore {
+                    name: "Test A".to_string(),
+                    score: 40,
+                    max: 50,
+                    status: CategoryStatus::Complete,
+                    criteria: vec![],
+                },
+                CategoryScore {
+                    name: "Test B".to_string(),
+                    score: 35,
+                    max: 50,
+                    status: CategoryStatus::Partial,
+                    criteria: vec![],
+                },
+            ],
+            recommendations: vec![],
+            summary: "Good progress".to_string(),
+        };
+
+        let output = render_score_text(&score, true);
+        assert!(output.contains("Test A"));
+        assert!(output.contains("Test B"));
+    }
 }

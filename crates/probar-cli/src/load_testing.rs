@@ -1158,4 +1158,135 @@ mod tests {
         assert_eq!(config.duration_secs, 0);
         assert_eq!(config.scenario, Some(PathBuf::from("scenario.yaml")));
     }
+
+    #[test]
+    fn test_load_test_assertion_body_contains() {
+        let assertion = LoadTestAssertion::body_contains("success");
+        assert_eq!(assertion.description(), "body contains 'success'");
+    }
+
+    #[test]
+    fn test_load_test_assertion_latency_percentile() {
+        let assertion = LoadTestAssertion::latency_percentile(99, 500);
+        assert_eq!(assertion.description(), "latency_p99 < 500ms");
+    }
+
+    #[test]
+    fn test_load_test_result_error_rate_zero() {
+        let result = LoadTestResult::new("Zero Requests");
+        assert_eq!(result.error_rate(), 0.0);
+    }
+
+    #[test]
+    fn test_load_test_result_all_assertions_passed_empty() {
+        let result = LoadTestResult::new("No Assertions");
+        assert!(result.all_assertions_passed());
+    }
+
+    #[test]
+    fn test_endpoint_stats_new() {
+        let stats = EndpointStats::new("api/v1");
+        assert_eq!(stats.name, "api/v1");
+        assert_eq!(stats.count, 0);
+    }
+
+    #[test]
+    fn test_endpoint_stats_from_empty_samples() {
+        let stats = EndpointStats::from_samples("empty", &[], 0);
+        assert_eq!(stats.count, 0);
+    }
+
+    #[test]
+    fn test_percentile_empty() {
+        let empty: Vec<u64> = vec![];
+        assert_eq!(percentile(&empty, 50), 0);
+    }
+
+    #[test]
+    fn test_http_method_all_variants() {
+        assert_eq!(HttpMethod::Get.to_string(), "GET");
+        assert_eq!(HttpMethod::Post.to_string(), "POST");
+        assert_eq!(HttpMethod::Put.to_string(), "PUT");
+        assert_eq!(HttpMethod::Delete.to_string(), "DELETE");
+        assert_eq!(HttpMethod::Patch.to_string(), "PATCH");
+        assert_eq!(HttpMethod::Head.to_string(), "HEAD");
+        assert_eq!(HttpMethod::Options.to_string(), "OPTIONS");
+    }
+
+    #[test]
+    fn test_error_kind_all_variants() {
+        assert_eq!(LoadTestErrorKind::Connection.to_string(), "Connection");
+        assert_eq!(LoadTestErrorKind::Timeout.to_string(), "Timeout");
+        assert_eq!(LoadTestErrorKind::HttpError.to_string(), "HTTP Error");
+        assert_eq!(LoadTestErrorKind::DnsError.to_string(), "DNS Error");
+        assert_eq!(LoadTestErrorKind::TlsError.to_string(), "TLS Error");
+        assert_eq!(LoadTestErrorKind::Other.to_string(), "Other");
+    }
+
+    #[test]
+    fn test_load_test_request_post() {
+        let request = LoadTestRequest::post(
+            "create_user",
+            "/users",
+            Some(r#"{"name": "test"}"#.to_string()),
+        );
+        assert_eq!(request.method, HttpMethod::Post);
+        assert!(request.body.is_some());
+    }
+
+    #[test]
+    fn test_load_test_request_post_no_body() {
+        let request = LoadTestRequest::post("create_empty", "/items", None);
+        assert_eq!(request.method, HttpMethod::Post);
+        assert!(request.body.is_none());
+    }
+
+    #[test]
+    fn test_latency_histogram_empty_percentile() {
+        let hist = LatencyHistogram::new(10);
+        assert_eq!(hist.percentile(50), 0);
+    }
+
+    #[test]
+    fn test_latency_histogram_empty_stats() {
+        let hist = LatencyHistogram::new(10);
+        assert_eq!(hist.count(), 0);
+        assert_eq!(hist.min(), 0); // min() returns 0 for empty histogram
+        assert_eq!(hist.max(), 0);
+    }
+
+    #[test]
+    fn test_latency_histogram_overflow() {
+        let mut hist = LatencyHistogram::new(10); // 10 buckets
+        hist.record(10000); // Way beyond 10 buckets
+        assert_eq!(hist.count(), 1);
+    }
+
+    #[test]
+    fn test_assertion_result_passed() {
+        let result = AssertionResult::passed("endpoint", "status == 200", "200");
+        assert!(result.passed);
+        assert_eq!(result.endpoint, "endpoint");
+    }
+
+    #[test]
+    fn test_assertion_result_failed() {
+        let result = AssertionResult::failed("endpoint", "latency_p95 < 100ms", "100ms", "150ms");
+        assert!(!result.passed);
+        assert!(!result.expected.is_empty());
+        assert!(!result.actual.is_empty());
+    }
+
+    #[test]
+    fn test_resource_usage_default() {
+        let usage = ResourceUsage::default();
+        assert_eq!(usage.avg_cpu_percent, 0.0);
+        assert_eq!(usage.peak_cpu_percent, 0.0);
+    }
+
+    #[test]
+    fn test_load_test_output_format_default() {
+        let format = LoadTestOutputFormat::default();
+        assert!(matches!(format, LoadTestOutputFormat::Text));
+    }
 }

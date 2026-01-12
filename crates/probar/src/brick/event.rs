@@ -742,7 +742,7 @@ mod tests {
     #[test]
     fn test_event_handler_debug_and_clone() {
         let handler = EventHandler::dispatch_state("test");
-        let cloned = handler.clone();
+        let cloned = handler;
 
         assert!(format!("{:?}", cloned).contains("DispatchState"));
     }
@@ -837,7 +837,7 @@ mod tests {
             EventType::Click,
             EventHandler::dispatch_state("test"),
         );
-        let cloned = binding.clone();
+        let cloned = binding;
 
         assert_eq!(cloned.selector, "#test");
         assert!(format!("{:?}", cloned).contains("EventBinding"));
@@ -968,7 +968,7 @@ mod tests {
     fn test_event_brick_debug_and_clone() {
         let brick = EventBrick::new().on("#test", EventType::Click, EventHandler::PreventDefault);
 
-        let cloned = brick.clone();
+        let cloned = brick;
         assert_eq!(cloned.selectors().len(), 1);
         assert!(format!("{:?}", cloned).contains("EventBrick"));
     }

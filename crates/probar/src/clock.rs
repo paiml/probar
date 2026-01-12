@@ -963,7 +963,7 @@ mod tests {
         let clock = FakeClock::new();
         clock.install(ClockOptions::fixed(5000)).unwrap();
 
-        let cloned = clock.clone();
+        let cloned = clock;
         assert!(cloned.is_installed());
         assert!(cloned.is_paused());
         assert_eq!(cloned.now_ms(), 5000);

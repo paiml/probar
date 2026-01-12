@@ -637,4 +637,88 @@ mod tests {
         let debug_str = format!("{rule:?}");
         assert!(debug_str.contains("StaticFile"));
     }
+
+    #[test]
+    fn test_all_log_methods_enabled() {
+        // Test all log methods when tracer IS enabled (exercises the printing code)
+        let tracer = DebugTracer::enabled();
+        let path = PathBuf::from("/test/path");
+        let searched: Vec<PathBuf> = vec![PathBuf::from("/search1")];
+        let suggestions: Vec<String> = vec!["Try checking the path".to_string()];
+
+        // These should all execute without panicking
+        tracer.log(DebugCategory::Server, "Server message");
+        tracer.log(DebugCategory::Request, "Request message");
+        tracer.log(DebugCategory::Resolve, "Resolve message");
+        tracer.log(DebugCategory::Response, "Response message");
+        tracer.log(DebugCategory::Error, "Error message");
+        tracer.log(DebugCategory::WebSocket, "WebSocket message");
+        tracer.log(DebugCategory::Watcher, "Watcher message");
+
+        tracer.log_multi(DebugCategory::Server, &["line1", "line2", "line3"]);
+        tracer.log_server_start(3000, &path, true, false);
+        tracer.log_server_start(3001, &path, false, true);
+        tracer.log_request("POST", "/api/test", Some("192.168.1.1"), None);
+        tracer.log_request("GET", "/", None, Some("curl/7.0"));
+        tracer.log_resolve("/index.html", &path, ResolutionRule::StaticFile);
+        tracer.log_resolve("/", &path, ResolutionRule::Fallback);
+        tracer.log_resolve("/missing", &path, ResolutionRule::NotFound);
+        tracer.log_response(404, "text/plain", 0, 1);
+        tracer.log_response(500, "application/json", 100, 5);
+        tracer.log_not_found("/missing.css", &searched, &suggestions);
+        tracer.log_not_found("/missing.js", &[], &[]);
+        tracer.log_mime_check(&path, "application/wasm", false);
+        tracer.log_ws_connect("10.0.0.1");
+        tracer.log_ws_disconnect("10.0.0.1");
+        tracer.log_file_change("/src/main.rs", "created");
+        tracer.log_file_change("/src/lib.rs", "deleted");
+    }
+
+    #[test]
+    fn test_tracer_with_all_verbosity_levels() {
+        let tracer_minimal = DebugTracer::enabled().with_verbosity(DebugVerbosity::Minimal);
+        let tracer_normal = DebugTracer::enabled().with_verbosity(DebugVerbosity::Normal);
+        let tracer_verbose = DebugTracer::enabled().with_verbosity(DebugVerbosity::Verbose);
+        let tracer_trace = DebugTracer::enabled().with_verbosity(DebugVerbosity::Trace);
+
+        // All should be enabled
+        assert!(tracer_minimal.is_enabled());
+        assert!(tracer_normal.is_enabled());
+        assert!(tracer_verbose.is_enabled());
+        assert!(tracer_trace.is_enabled());
+    }
+
+    #[test]
+    fn test_debug_category_copy_semantics() {
+        let cat = DebugCategory::Error;
+        let copied = cat;
+        assert_eq!(cat.as_str(), copied.as_str());
+        assert_eq!(cat.color(), copied.color());
+    }
+
+    #[test]
+    fn test_resolution_rule_copy_semantics() {
+        let rule = ResolutionRule::Fallback;
+        let copied = rule;
+        assert_eq!(rule.as_str(), copied.as_str());
+    }
+
+    #[test]
+    fn test_debug_verbosity_eq_all_pairs() {
+        let variants = [
+            DebugVerbosity::Minimal,
+            DebugVerbosity::Normal,
+            DebugVerbosity::Verbose,
+            DebugVerbosity::Trace,
+        ];
+        for (i, a) in variants.iter().enumerate() {
+            for (j, b) in variants.iter().enumerate() {
+                if i == j {
+                    assert_eq!(a, b);
+                } else {
+                    assert_ne!(a, b);
+                }
+            }
+        }
+    }
 }

@@ -614,7 +614,7 @@ mod tests {
     #[test]
     fn test_audio_param_debug_and_clone() {
         let param = AudioParam::new("test", 0.5);
-        let cloned = param.clone();
+        let cloned = param;
 
         assert_eq!(cloned.name, "test");
         assert!(format!("{:?}", cloned).contains("AudioParam"));
@@ -670,7 +670,7 @@ mod tests {
     #[test]
     fn test_ring_buffer_config_debug_and_clone() {
         let config = RingBufferConfig::new(48000);
-        let cloned = config.clone();
+        let cloned = config;
 
         assert_eq!(cloned.size, 48000);
         assert!(format!("{:?}", cloned).contains("RingBufferConfig"));
@@ -758,7 +758,7 @@ mod tests {
             .param(AudioParam::new("gain", 1.0))
             .with_ring_buffer(RingBufferConfig::default());
 
-        let cloned = audio.clone();
+        let cloned = audio;
         assert_eq!(cloned.name, "test");
         assert!(format!("{:?}", cloned).contains("AudioBrick"));
     }

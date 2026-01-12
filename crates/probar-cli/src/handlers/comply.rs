@@ -21,7 +21,7 @@ pub struct ComplianceResult {
 
 impl ComplianceResult {
     /// Create a passing result
-    #[must_use] 
+    #[must_use]
     pub fn pass(id: &str) -> Self {
         Self {
             id: id.to_string(),
@@ -31,7 +31,7 @@ impl ComplianceResult {
     }
 
     /// Create a failing result
-    #[must_use] 
+    #[must_use]
     pub fn fail(id: &str, reason: &str) -> Self {
         Self {
             id: id.to_string(),
@@ -41,7 +41,7 @@ impl ComplianceResult {
     }
 
     /// Add a detail to the result
-    #[must_use] 
+    #[must_use]
     pub fn with_detail(mut self, detail: &str) -> Self {
         self.details.push(detail.to_string());
         self
@@ -173,9 +173,8 @@ pub fn run_compliance_checks(config: &CliConfig, args: &ComplyArgs) -> CliResult
 
     if let Some(ref report_path) = args.report {
         let report = generate_comply_report(&results, &args.format);
-        std::fs::write(report_path, &report).map_err(|e| {
-            CliError::report_generation(format!("Failed to write report: {e}"))
-        })?;
+        std::fs::write(report_path, &report)
+            .map_err(|e| CliError::report_generation(format!("Failed to write report: {e}")))?;
         if config.verbosity != Verbosity::Quiet {
             eprintln!("Report written to: {}", report_path.display());
         }
@@ -199,7 +198,7 @@ pub fn run_compliance_checks(config: &CliConfig, args: &ComplyArgs) -> CliResult
 }
 
 /// Generate a compliance report in the specified format
-#[must_use] 
+#[must_use]
 pub fn generate_comply_report(results: &[ComplianceResult], format: &ComplyOutputFormat) -> String {
     match format {
         ComplyOutputFormat::Json => {
@@ -286,7 +285,7 @@ pub fn generate_comply_report(results: &[ComplianceResult], format: &ComplyOutpu
 // =============================================================================
 
 /// C001: Verify code actually executes (not just mocked HTML)
-#[must_use] 
+#[must_use]
 pub fn check_c001_code_execution(path: &Path) -> ComplianceResult {
     let wasm_exists = find_wasm_files(path).is_some();
     let test_files = find_test_files(path);
@@ -302,13 +301,13 @@ pub fn check_c001_code_execution(path: &Path) -> ComplianceResult {
 }
 
 /// C002: Console errors should fail tests
-#[must_use] 
+#[must_use]
 pub fn check_c002_console_errors() -> ComplianceResult {
     ComplianceResult::pass("C002").with_detail("Console capture enabled (verify in test config)")
 }
 
 /// C003: Custom elements are tested
-#[must_use] 
+#[must_use]
 pub fn check_c003_custom_elements(path: &Path) -> ComplianceResult {
     let html_files = find_html_files_in_dir(path);
     let has_custom_elements = html_files.iter().any(|f| {
@@ -326,19 +325,19 @@ pub fn check_c003_custom_elements(path: &Path) -> ComplianceResult {
 }
 
 /// C004: Both threading and non-threading modes tested
-#[must_use] 
+#[must_use]
 pub fn check_c004_threading_modes() -> ComplianceResult {
     ComplianceResult::pass("C004").with_detail("Threading mode validation requires runtime check")
 }
 
 /// C005: Low memory scenario tested
-#[must_use] 
+#[must_use]
 pub fn check_c005_low_memory() -> ComplianceResult {
     ComplianceResult::pass("C005").with_detail("Low memory simulation available via WasmStrictMode")
 }
 
 /// C006: COOP/COEP headers present for `SharedArrayBuffer`
-#[must_use] 
+#[must_use]
 pub fn check_c006_headers(path: &Path) -> ComplianceResult {
     let has_server_config = path.join(".htaccess").exists()
         || path.join("vercel.json").exists()
@@ -364,20 +363,20 @@ pub fn check_c006_headers(path: &Path) -> ComplianceResult {
 }
 
 /// C007: Replay hash matches for deterministic tests
-#[must_use] 
+#[must_use]
 pub fn check_c007_replay_hash() -> ComplianceResult {
     ComplianceResult::pass("C007")
         .with_detail("Replay hash validation available via SimulationRecording")
 }
 
 /// C008: Proper cache handling
-#[must_use] 
+#[must_use]
 pub fn check_c008_cache() -> ComplianceResult {
     ComplianceResult::pass("C008").with_detail("Cache handling verified at runtime")
 }
 
 /// C009: WASM binary under size limit
-#[must_use] 
+#[must_use]
 pub fn check_c009_wasm_size(path: &Path, max_size: usize) -> ComplianceResult {
     if let Some(wasm_files) = find_wasm_files(path) {
         for wasm_path in wasm_files {
@@ -400,7 +399,7 @@ pub fn check_c009_wasm_size(path: &Path, max_size: usize) -> ComplianceResult {
 }
 
 /// C010: No panic paths in WASM
-#[must_use] 
+#[must_use]
 pub fn check_c010_panic_paths(path: &Path) -> ComplianceResult {
     let cargo_toml = path.join("Cargo.toml");
     if cargo_toml.exists() {
@@ -418,7 +417,7 @@ pub fn check_c010_panic_paths(path: &Path) -> ComplianceResult {
 // =============================================================================
 
 /// Check probar.toml for `cross_origin_isolated` setting
-#[must_use] 
+#[must_use]
 pub fn check_probar_cross_origin_config(path: &Path) -> bool {
     let config_paths = [
         path.join("probar.toml"),
@@ -440,7 +439,7 @@ pub fn check_probar_cross_origin_config(path: &Path) -> bool {
 }
 
 /// Check Makefile for probador serve --cross-origin-isolated
-#[must_use] 
+#[must_use]
 pub fn check_makefile_cross_origin(path: &Path) -> bool {
     let makefile_paths = [
         path.join("Makefile"),
@@ -591,7 +590,10 @@ mod tests {
         .unwrap();
         let result = check_c003_custom_elements(temp.path());
         assert!(result.passed);
-        assert!(result.details.iter().any(|d| d.contains("Custom elements detected")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.contains("Custom elements detected")));
     }
 
     #[test]
@@ -687,7 +689,10 @@ panic = "abort"
         .unwrap();
         let result = check_c010_panic_paths(temp.path());
         assert!(result.passed);
-        assert!(result.details.iter().any(|d| d.contains("panic = \"abort\"")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.contains("panic = \"abort\"")));
     }
 
     #[test]

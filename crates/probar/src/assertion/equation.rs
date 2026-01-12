@@ -1138,7 +1138,7 @@ mod tests {
             let result = EquationResult::new("fail_test", 10.0, 5.0, 0.001);
             assert!(!result.passed);
             assert!(result.message.contains("FAILED"));
-            assert!(result.message.contains(">"));
+            assert!(result.message.contains('>'));
         }
 
         #[test]
@@ -1397,7 +1397,7 @@ mod tests {
         fn test_variable_clone() {
             // Test Clone for Variable
             let var1 = Variable::with_unit("velocity", 10.0, "m/s");
-            let var2 = var1.clone();
+            let var2 = var1;
             assert_eq!(var2.name, "velocity");
             assert!((var2.value - 10.0).abs() < f64::EPSILON);
             assert_eq!(var2.unit, Some("m/s".to_string()));
@@ -1416,7 +1416,7 @@ mod tests {
         fn test_equation_result_clone() {
             // Test Clone for EquationResult
             let result1 = EquationResult::new("clone_test", 10.0, 10.0, 0.001);
-            let result2 = result1.clone();
+            let result2 = result1;
             assert_eq!(result2.name, "clone_test");
             assert!(result2.passed);
         }

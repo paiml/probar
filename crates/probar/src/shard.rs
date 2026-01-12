@@ -638,4 +638,332 @@ mod tests {
         assert!(config.should_run_index(0));
         assert!(config.should_run_index(100));
     }
+
+    // =========================================================================
+    // Additional coverage tests for edge cases
+    // =========================================================================
+
+    #[test]
+    fn h0_shard_31_parse_invalid_total_number() {
+        // Test parsing with invalid second number (total)
+        let err = ShardConfig::parse("1/abc").unwrap_err();
+        assert!(matches!(err, ShardParseError::InvalidNumber(_)));
+        if let ShardParseError::InvalidNumber(s) = &err {
+            assert_eq!(s, "abc");
+        }
+    }
+
+    #[test]
+    fn h0_shard_32_parse_too_many_slashes() {
+        let err = ShardConfig::parse("1/2/3").unwrap_err();
+        assert!(matches!(err, ShardParseError::InvalidFormat(_)));
+    }
+
+    #[test]
+    fn h0_shard_33_parse_single_number() {
+        let err = ShardConfig::parse("5").unwrap_err();
+        assert!(matches!(err, ShardParseError::InvalidFormat(_)));
+    }
+
+    #[test]
+    fn h0_shard_34_error_display_invalid_format() {
+        let err = ShardParseError::InvalidFormat("bad".to_string());
+        let msg = format!("{err}");
+        assert!(msg.contains("Invalid shard format"));
+        assert!(msg.contains("bad"));
+        assert!(msg.contains("N/M"));
+    }
+
+    #[test]
+    fn h0_shard_35_error_display_invalid_number() {
+        let err = ShardParseError::InvalidNumber("xyz".to_string());
+        let msg = format!("{err}");
+        assert!(msg.contains("Invalid number"));
+        assert!(msg.contains("xyz"));
+    }
+
+    #[test]
+    fn h0_shard_36_error_display_zero_total() {
+        let err = ShardParseError::ZeroTotal;
+        let msg = format!("{err}");
+        assert!(msg.contains("Total shards cannot be zero"));
+    }
+
+    #[test]
+    fn h0_shard_37_error_display_zero_current() {
+        let err = ShardParseError::ZeroCurrent;
+        let msg = format!("{err}");
+        assert!(msg.contains("must be 1-based"));
+    }
+
+    #[test]
+    fn h0_shard_38_error_display_current_exceeds_total() {
+        let err = ShardParseError::CurrentExceedsTotal {
+            current: 10,
+            total: 5,
+        };
+        let msg = format!("{err}");
+        assert!(msg.contains("10"));
+        assert!(msg.contains('5'));
+        assert!(msg.contains("exceeds"));
+    }
+
+    #[test]
+    fn h0_shard_39_error_is_std_error() {
+        let err: Box<dyn std::error::Error> =
+            Box::new(ShardParseError::InvalidFormat("test".to_string()));
+        // Verify it implements std::error::Error
+        assert!(!err.to_string().is_empty());
+    }
+
+    #[test]
+    fn h0_shard_40_validate_coverage_with_zero_tests() {
+        // Edge case: zero tests should be valid (trivially covered)
+        assert!(ShardConfig::validate_coverage(0, 4));
+    }
+
+    #[test]
+    fn h0_shard_41_validate_coverage_single_shard() {
+        assert!(ShardConfig::validate_coverage(100, 1));
+    }
+
+    #[test]
+    fn h0_shard_42_report_merge_with_failed_tests() {
+        let mut r1 = ShardReport::default();
+        r1.tests_run = 5;
+        r1.tests_passed = 4;
+        r1.tests_failed = 1;
+        r1.failed_tests = vec!["test_a".to_string(), "test_b".to_string()];
+        r1.duration_ms = 100;
+
+        let mut r2 = ShardReport::default();
+        r2.tests_run = 5;
+        r2.tests_passed = 3;
+        r2.tests_failed = 2;
+        r2.failed_tests = vec!["test_c".to_string()];
+        r2.duration_ms = 200;
+
+        let merged = ShardReport::merge(&[r1, r2]);
+        assert_eq!(merged.tests_run, 10);
+        assert_eq!(merged.tests_passed, 7);
+        assert_eq!(merged.tests_failed, 3);
+        assert_eq!(merged.failed_tests.len(), 3);
+        assert!(merged.failed_tests.contains(&"test_a".to_string()));
+        assert!(merged.failed_tests.contains(&"test_b".to_string()));
+        assert!(merged.failed_tests.contains(&"test_c".to_string()));
+        assert_eq!(merged.duration_ms, 200); // max of 100 and 200
+    }
+
+    #[test]
+    fn h0_shard_43_report_merge_empty() {
+        let merged = ShardReport::merge(&[]);
+        assert_eq!(merged.tests_run, 0);
+        assert_eq!(merged.tests_passed, 0);
+        assert_eq!(merged.tests_failed, 0);
+        assert!(merged.is_success()); // No failures = success
+    }
+
+    #[test]
+    fn h0_shard_44_report_with_skipped_tests() {
+        let mut report = ShardReport::default();
+        report.tests_run = 10;
+        report.tests_passed = 8;
+        report.tests_failed = 0;
+        report.tests_skipped = 2;
+
+        assert!(report.is_success());
+        assert_eq!(report.tests_skipped, 2);
+    }
+
+    #[test]
+    fn h0_shard_45_report_merge_skipped() {
+        let mut r1 = ShardReport::default();
+        r1.tests_skipped = 3;
+
+        let mut r2 = ShardReport::default();
+        r2.tests_skipped = 2;
+
+        let merged = ShardReport::merge(&[r1, r2]);
+        assert_eq!(merged.tests_skipped, 5);
+    }
+
+    #[test]
+    fn h0_shard_46_estimated_count_more_shards_than_tests() {
+        // 3 tests across 10 shards
+        let config1 = ShardConfig::new(1, 10);
+        let config2 = ShardConfig::new(4, 10);
+        let config10 = ShardConfig::new(10, 10);
+
+        // Shards 1-3 get 1 test each, shards 4-10 get 0
+        assert_eq!(config1.estimated_count(3), 1);
+        assert_eq!(config2.estimated_count(3), 0);
+        assert_eq!(config10.estimated_count(3), 0);
+    }
+
+    #[test]
+    fn h0_shard_47_filter_tests_empty_list() {
+        let config = ShardConfig::new(1, 2);
+        let tests: Vec<&str> = vec![];
+        let filtered = config.filter_tests(&tests);
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn h0_shard_48_filter_by_index_empty() {
+        let config = ShardConfig::new(1, 2);
+        let items: Vec<i32> = vec![];
+        let filtered = config.filter_by_index(&items);
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn h0_shard_49_runner_add_tests_from_strings() {
+        let config = ShardConfig::new(1, 2);
+        let mut runner = ShardedRunner::new(config);
+
+        // Test with owned Strings
+        runner.add_tests(vec!["test_1".to_string(), "test_2".to_string()]);
+        assert_eq!(runner.total_tests(), 2);
+    }
+
+    #[test]
+    fn h0_shard_50_runner_multiple_add_calls() {
+        let config = ShardConfig::new(1, 2);
+        let mut runner = ShardedRunner::new(config);
+
+        runner.add_tests(vec!["test_a", "test_b"]);
+        runner.add_tests(vec!["test_c"]);
+
+        assert_eq!(runner.total_tests(), 3);
+    }
+
+    #[test]
+    fn h0_shard_51_config_clone_and_eq() {
+        let config1 = ShardConfig::new(2, 4);
+        let config2 = config1;
+        assert_eq!(config1, config2);
+
+        let config3 = ShardConfig::new(3, 4);
+        assert_ne!(config1, config3);
+    }
+
+    #[test]
+    fn h0_shard_52_hash_test_name_consistency() {
+        // Verify same name always produces same hash distribution
+        let config = ShardConfig::new(1, 100);
+
+        let mut results = Vec::new();
+        for _ in 0..10 {
+            results.push(config.should_run_name("consistent_test_name"));
+        }
+
+        // All results should be identical
+        assert!(results.iter().all(|&r| r == results[0]));
+    }
+
+    #[test]
+    fn h0_shard_53_different_names_different_distribution() {
+        // Different names should (eventually) go to different shards
+        let tests = vec![
+            "test_alpha",
+            "test_beta",
+            "test_gamma",
+            "test_delta",
+            "test_epsilon",
+            "test_zeta",
+            "test_eta",
+            "test_theta",
+        ];
+
+        // With 4 shards, different tests should distribute
+        let mut shard_counts = [0usize; 4];
+        for test in &tests {
+            for shard in 1..=4 {
+                let config = ShardConfig::new(shard, 4);
+                if config.should_run_name(test) {
+                    shard_counts[shard as usize - 1] += 1;
+                    break;
+                }
+            }
+        }
+
+        // Each test goes to exactly one shard
+        let total: usize = shard_counts.iter().sum();
+        assert_eq!(total, tests.len());
+    }
+
+    #[test]
+    fn h0_shard_54_report_json_contains_all_fields() {
+        let config = ShardConfig::new(1, 2);
+        let mut report = ShardReport::new(config);
+        report.tests_run = 10;
+        report.tests_passed = 8;
+        report.tests_failed = 2;
+        report.tests_skipped = 0;
+        report.duration_ms = 1234;
+        report.failed_tests = vec!["fail_1".to_string(), "fail_2".to_string()];
+
+        let json = report.to_json();
+        assert!(json.contains("\"tests_run\": 10"));
+        assert!(json.contains("\"tests_passed\": 8"));
+        assert!(json.contains("\"tests_failed\": 2"));
+        assert!(json.contains("\"tests_skipped\": 0"));
+        assert!(json.contains("\"duration_ms\": 1234"));
+        assert!(json.contains("fail_1"));
+        assert!(json.contains("fail_2"));
+    }
+
+    #[test]
+    fn h0_shard_55_validate_coverage_large_test_count() {
+        // Verify coverage validation with larger numbers
+        assert!(ShardConfig::validate_coverage(1000, 16));
+        assert!(ShardConfig::validate_coverage(999, 16));
+    }
+
+    #[test]
+    fn h0_shard_56_shard_config_debug() {
+        let config = ShardConfig::new(3, 7);
+        let debug = format!("{config:?}");
+        assert!(debug.contains("ShardConfig"));
+        assert!(debug.contains("current: 3"));
+        assert!(debug.contains("total: 7"));
+    }
+
+    #[test]
+    fn h0_shard_57_shard_parse_error_clone() {
+        let err1 = ShardParseError::InvalidFormat("test".to_string());
+        let err2 = err1.clone();
+        assert_eq!(err1, err2);
+    }
+
+    #[test]
+    fn h0_shard_58_sharded_runner_debug() {
+        let config = ShardConfig::new(1, 2);
+        let runner = ShardedRunner::new(config);
+        let debug = format!("{runner:?}");
+        assert!(debug.contains("ShardedRunner"));
+    }
+
+    #[test]
+    fn h0_shard_59_sharded_runner_clone() {
+        let config = ShardConfig::new(1, 2);
+        let mut runner = ShardedRunner::new(config);
+        runner.add_tests(vec!["test_a", "test_b"]);
+
+        let cloned = runner.clone();
+        assert_eq!(runner.total_tests(), cloned.total_tests());
+        assert_eq!(runner.config(), cloned.config());
+    }
+
+    #[test]
+    fn h0_shard_60_shard_report_clone() {
+        let config = ShardConfig::new(1, 2);
+        let mut report = ShardReport::new(config);
+        report.tests_run = 5;
+        report.failed_tests = vec!["fail".to_string()];
+
+        let cloned = report.clone();
+        assert_eq!(report.tests_run, cloned.tests_run);
+        assert_eq!(report.failed_tests, cloned.failed_tests);
+    }
 }

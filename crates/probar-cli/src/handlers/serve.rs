@@ -5,10 +5,7 @@ use crate::TreeArgs;
 use std::path::Path;
 
 /// Validate module imports before serving
-pub fn validate_imports(
-    directory: &Path,
-    exclude: &[String],
-) -> CliResult<()> {
+pub fn validate_imports(directory: &Path, exclude: &[String]) -> CliResult<()> {
     use crate::dev_server::ModuleValidator;
 
     let mut validator = ModuleValidator::new(directory);
@@ -40,7 +37,7 @@ pub fn open_browser(url: &str) {
 }
 
 /// Build tree config from CLI args
-#[must_use] 
+#[must_use]
 pub fn build_tree_config(args: &TreeArgs) -> crate::TreeConfig {
     crate::TreeConfig::default()
         .with_depth(args.depth)
@@ -50,7 +47,7 @@ pub fn build_tree_config(args: &TreeArgs) -> crate::TreeConfig {
 }
 
 /// Format a server URL from port
-#[must_use] 
+#[must_use]
 pub fn format_server_url(port: u16) -> String {
     format!("http://localhost:{port}")
 }

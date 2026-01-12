@@ -1562,7 +1562,7 @@ mod tests {
         result.inline_scripts_detected.push(InlineScriptViolation {
             file: PathBuf::from("x.html"),
             line: 1,
-            preview: "".into(),
+            preview: String::new(),
             is_wasm_generated: false,
         });
         assert!(!result.is_valid());
@@ -1578,7 +1578,7 @@ mod tests {
             file: PathBuf::from("code.js"),
             line: 1,
             pattern: "eval(".into(),
-            context: "".into(),
+            context: String::new(),
         });
         assert!(!result.is_valid());
     }

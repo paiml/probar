@@ -1919,7 +1919,7 @@ mod tests {
             2
         ];
         let heatmap = RichTerminalHeatmap::new(cells);
-        let heatmap2 = heatmap.clone();
+        let heatmap2 = heatmap;
         let debug_str = format!("{:?}", heatmap2);
         assert!(debug_str.contains("RichTerminalHeatmap"));
     }

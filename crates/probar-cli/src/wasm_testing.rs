@@ -857,4 +857,285 @@ mod tests {
         let result = Recording::load(&PathBuf::from("/nonexistent/path.json"));
         assert!(result.is_err());
     }
+
+    // Additional tests for full coverage
+
+    #[test]
+    fn test_recorded_event_all_variants() {
+        // TextInput
+        let text_input = RecordedEvent::TextInput {
+            text: "hello".to_string(),
+            selector: Some("#input".to_string()),
+            timestamp_ms: 100,
+        };
+        assert!(matches!(text_input, RecordedEvent::TextInput { .. }));
+
+        // NetworkComplete
+        let network = RecordedEvent::NetworkComplete {
+            url: "https://api.example.com".to_string(),
+            status: 200,
+            duration_ms: 50,
+            timestamp_ms: 200,
+        };
+        assert!(matches!(network, RecordedEvent::NetworkComplete { .. }));
+
+        // WasmLoaded
+        let wasm = RecordedEvent::WasmLoaded {
+            url: "/game.wasm".to_string(),
+            size: 1024000,
+            timestamp_ms: 300,
+        };
+        assert!(matches!(wasm, RecordedEvent::WasmLoaded { .. }));
+
+        // StateChange
+        let state_change = RecordedEvent::StateChange {
+            from: "menu".to_string(),
+            to: "game".to_string(),
+            event: "start_clicked".to_string(),
+            timestamp_ms: 400,
+        };
+        assert!(matches!(state_change, RecordedEvent::StateChange { .. }));
+
+        // Assertion
+        let assertion = RecordedEvent::Assertion {
+            name: "score_check".to_string(),
+            passed: true,
+            actual: "100".to_string(),
+            expected: "100".to_string(),
+            timestamp_ms: 500,
+        };
+        assert!(matches!(assertion, RecordedEvent::Assertion { .. }));
+    }
+
+    #[test]
+    fn test_browser_ios_safari() {
+        assert_eq!(Browser::IosSafari.name(), "iOS Safari");
+        assert_eq!(Browser::IosSafari.engine(), "WebKit");
+    }
+
+    #[test]
+    fn test_browser_chrome_android() {
+        assert_eq!(Browser::ChromeAndroid.name(), "Chrome Android");
+        assert_eq!(Browser::ChromeAndroid.engine(), "Chromium");
+    }
+
+    #[test]
+    fn test_browser_desktop_browsers() {
+        let browsers = Browser::desktop_browsers();
+        assert_eq!(browsers.len(), 3);
+        assert!(browsers.contains(&Browser::Chrome));
+        assert!(browsers.contains(&Browser::Firefox));
+        assert!(browsers.contains(&Browser::Safari));
+    }
+
+    #[test]
+    fn test_browser_mobile_browsers() {
+        let browsers = Browser::mobile_browsers();
+        assert_eq!(browsers.len(), 2);
+        assert!(browsers.contains(&Browser::IosSafari));
+        assert!(browsers.contains(&Browser::ChromeAndroid));
+    }
+
+    #[test]
+    fn test_browser_test_result() {
+        let result = BrowserTestResult {
+            browser: Browser::Chrome,
+            viewport: Viewport::default(),
+            passed: true,
+            duration_ms: 1500,
+            error: None,
+            screenshots: vec!["screenshot1.png".to_string()],
+        };
+        assert!(result.passed);
+        assert!(result.error.is_none());
+        assert_eq!(result.screenshots.len(), 1);
+    }
+
+    #[test]
+    fn test_browser_test_result_failed() {
+        let result = BrowserTestResult {
+            browser: Browser::Firefox,
+            viewport: Viewport {
+                width: 1280,
+                height: 720,
+                device_pixel_ratio: 1.0,
+            },
+            passed: false,
+            duration_ms: 500,
+            error: Some("Element not found".to_string()),
+            screenshots: vec![],
+        };
+        assert!(!result.passed);
+        assert!(result.error.is_some());
+    }
+
+    #[test]
+    fn test_memory_profile_growth_zero_initial() {
+        let profile = MemoryProfile::new("test", 0);
+        assert_eq!(profile.growth_percentage(), 0.0);
+    }
+
+    #[test]
+    fn test_memory_profile_no_growth() {
+        let mut profile = MemoryProfile::new("test", 1000);
+        profile.snapshot(800, 100, Some("shrink".to_string()));
+
+        assert_eq!(profile.current_heap, 800);
+        assert_eq!(profile.peak_heap, 1000);
+        assert!(profile.growth_events.is_empty());
+    }
+
+    #[test]
+    fn test_compare_performance_zero_baseline() {
+        let mut baseline = PerformanceBaseline::new("old");
+        baseline.add_metric("count", 0.0, "n");
+
+        let current = vec![PerformanceMetric {
+            name: "count".to_string(),
+            value: 10.0,
+            unit: "n".to_string(),
+        }];
+
+        let results = compare_performance(&baseline, &current, 10.0);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].change_percent, 0.0);
+    }
+
+    #[test]
+    fn test_compare_performance_no_match() {
+        let mut baseline = PerformanceBaseline::new("old");
+        baseline.add_metric("latency", 100.0, "ms");
+
+        let current = vec![PerformanceMetric {
+            name: "throughput".to_string(),
+            value: 500.0,
+            unit: "req/s".to_string(),
+        }];
+
+        let results = compare_performance(&baseline, &current, 10.0);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_render_performance_report_negative_change() {
+        let mut baseline = PerformanceBaseline::new("abc12345");
+        baseline.add_metric("latency", 100.0, "ms");
+
+        let comparisons = vec![PerformanceComparison {
+            name: "latency".to_string(),
+            baseline: 100.0,
+            current: 90.0,
+            change_percent: -10.0,
+            status: ComparisonStatus::Ok,
+        }];
+
+        let output = render_performance_report(&baseline, &comparisons);
+        assert!(output.contains("-10.0%"));
+    }
+
+    #[test]
+    fn test_render_performance_report_warnings_and_failures() {
+        let baseline = PerformanceBaseline::new("abc12345");
+
+        let comparisons = vec![
+            PerformanceComparison {
+                name: "metric1".to_string(),
+                baseline: 100.0,
+                current: 109.0,
+                change_percent: 9.0,
+                status: ComparisonStatus::Warn,
+            },
+            PerformanceComparison {
+                name: "metric2".to_string(),
+                baseline: 100.0,
+                current: 120.0,
+                change_percent: 20.0,
+                status: ComparisonStatus::Fail,
+            },
+        ];
+
+        let output = render_performance_report(&baseline, &comparisons);
+        assert!(output.contains("1 warnings"));
+        assert!(output.contains("1 failures"));
+    }
+
+    #[test]
+    fn test_recording_metadata() {
+        let mut recording = Recording::new("test", "http://localhost");
+        recording.metadata = RecordingMetadata {
+            commit: Some("abc123".to_string()),
+            test_name: Some("login_test".to_string()),
+            description: Some("Tests the login flow".to_string()),
+        };
+
+        assert_eq!(recording.metadata.commit, Some("abc123".to_string()));
+        assert_eq!(recording.metadata.test_name, Some("login_test".to_string()));
+    }
+
+    #[test]
+    fn test_recording_serde() {
+        let mut recording = Recording::new("serde_test", "http://localhost");
+        recording.add_event(RecordedEvent::Click {
+            x: 10,
+            y: 20,
+            selector: None,
+            timestamp_ms: 0,
+        });
+
+        let json = serde_json::to_string(&recording).unwrap();
+        let parsed: Recording = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.name, "serde_test");
+        assert_eq!(parsed.event_count(), 1);
+    }
+
+    #[test]
+    fn test_performance_baseline_save_load() {
+        let mut baseline = PerformanceBaseline::new("commit123");
+        baseline.add_metric("rtf", 1.5, "x");
+        baseline.add_metric("fps", 60.0, "fps");
+
+        let temp_dir = std::env::temp_dir();
+        let path = temp_dir.join("test_baseline.json");
+
+        baseline.save(&path).expect("Failed to save");
+
+        let loaded = PerformanceBaseline::load(&path).expect("Failed to load");
+        assert_eq!(loaded.commit, "commit123");
+        assert_eq!(loaded.metrics.len(), 2);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_performance_baseline_load_nonexistent() {
+        let result = PerformanceBaseline::load(&PathBuf::from("/nonexistent/baseline.json"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_key_modifiers_all_true() {
+        let mods = KeyModifiers {
+            ctrl: true,
+            alt: true,
+            shift: true,
+            meta: true,
+        };
+        assert!(mods.ctrl);
+        assert!(mods.alt);
+        assert!(mods.shift);
+        assert!(mods.meta);
+    }
+
+    #[test]
+    fn test_browser_eq() {
+        assert_eq!(Browser::Chrome, Browser::Chrome);
+        assert_ne!(Browser::Chrome, Browser::Firefox);
+    }
+
+    #[test]
+    fn test_comparison_status_eq() {
+        assert_eq!(ComparisonStatus::Ok, ComparisonStatus::Ok);
+        assert_ne!(ComparisonStatus::Ok, ComparisonStatus::Fail);
+    }
 }

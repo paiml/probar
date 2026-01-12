@@ -1080,7 +1080,7 @@ mod tests {
             url: "test.js".to_string(),
             functions: vec![
                 FunctionCoverage {
-                    function_name: "".to_string(), // Anonymous
+                    function_name: String::new(), // Anonymous
                     ranges: vec![CoverageRange {
                         start_offset: 0,
                         end_offset: 50,
