@@ -8,6 +8,8 @@
 //!
 //! Run with: cargo run --example visual_regression_demo -p jugar-probar
 
+#![allow(clippy::expect_used)]
+
 use image::{ImageEncoder, Rgba, RgbaImage};
 use jugar_probar::{
     perceptual_diff, MaskRegion, ScreenshotComparison, VisualRegressionConfig,

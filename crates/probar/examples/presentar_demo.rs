@@ -91,8 +91,10 @@ theme:
 
     // 4. Validation errors demo
     println!("4. Validation Error Examples:");
-    let mut bad_config = PresentarConfig::default();
-    bad_config.refresh_ms = 5; // Too low
+    let bad_config = PresentarConfig {
+        refresh_ms: 5, // Too low
+        ..PresentarConfig::default()
+    };
     let result = validate_presentar_config(&bad_config);
     if result.is_err() {
         for err in &result.errors {

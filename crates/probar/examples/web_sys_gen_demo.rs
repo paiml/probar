@@ -10,6 +10,8 @@ use jugar_probar::brick::web_sys_gen::{
     GENERATION_METADATA,
 };
 
+#[allow(clippy::items_after_statements)]
+#[allow(clippy::needless_collect)]
 fn main() {
     println!("=== web_sys_gen Demo ===\n");
 
@@ -78,7 +80,7 @@ fn main() {
             println!(
                 "   Dispatch with detail result: {} (native fallback)\n",
                 dispatched
-            )
+            );
         }
         Err(e) => println!("   Dispatch with detail error: {}\n", e),
     }

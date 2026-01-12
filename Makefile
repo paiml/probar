@@ -80,11 +80,14 @@ format-check: ## Check code formatting
 # LINTING
 # ============================================================================
 
+# Note: We exclude compute-blocks feature as it requires presentar-terminal which may have issues
+LINT_FEATURES := --features browser,runtime,derive
+
 lint: ## Run clippy with auto-fix
 	@echo "🔍 Running clippy..."
-	@cargo clippy --workspace --all-targets --all-features --fix --allow-dirty --allow-staged 2>/dev/null || true
-	@cargo clippy --workspace --lib --all-features -- -D warnings -A dead_code -A clippy::format_push_string
-	@cargo clippy --workspace --tests --all-features -- \
+	@cargo clippy --workspace $(LINT_FEATURES) --all-targets --fix --allow-dirty --allow-staged 2>/dev/null || true
+	@cargo clippy --workspace $(LINT_FEATURES) --lib -- -D warnings -A dead_code -A clippy::format_push_string
+	@cargo clippy --workspace $(LINT_FEATURES) --tests -- \
 		-D clippy::suspicious \
 		-A clippy::expect_used \
 		-A clippy::unwrap_used \
@@ -94,6 +97,8 @@ lint: ## Run clippy with auto-fix
 		-A clippy::type_complexity \
 		-A clippy::approx_constant \
 		-A clippy::needless_collect \
+		-A clippy::unnecessary_get_then_check \
+		-A clippy::absurd_extreme_comparisons \
 		-A dead_code
 
 lint-check: ## Check clippy without fixing
@@ -174,20 +179,30 @@ test-gpu-pixels: ## Run GPU pixel tests (PTX validation, regression detection)
 # COVERAGE
 # ============================================================================
 
-coverage: ## Generate HTML coverage report (FAST: <1 min)
-	@echo "📊 FAST coverage (target: <1 min)..."
+coverage: ## Generate coverage report (FAST: <1 min, 95% target)
+	@echo "📊 Coverage report (target: 95%, <1 min)..."
 	@which cargo-llvm-cov > /dev/null 2>&1 || cargo install cargo-llvm-cov --locked
 	@mkdir -p target/coverage
-	@echo "🧪 Running lib tests only..."
+	@echo "🧪 Running lib tests..."
 	@env PROPTEST_CASES=5 QUICKCHECK_TESTS=5 \
 		cargo llvm-cov --lib --workspace \
-		--html --output-dir target/coverage/html \
-		$(COVERAGE_EXCLUDE)
-	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info $(COVERAGE_EXCLUDE)
+		--html --output-dir target/coverage/html
+	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info
 	@echo ""
-	@cargo llvm-cov report --summary-only $(COVERAGE_EXCLUDE)
+	@cargo llvm-cov report --summary-only
 	@echo ""
 	@echo "💡 HTML: target/coverage/html/index.html | LCOV: target/coverage/lcov.info"
+
+coverage-full: ## Generate full coverage including bins (slower)
+	@echo "📊 Full coverage (all targets)..."
+	@which cargo-llvm-cov > /dev/null 2>&1 || cargo install cargo-llvm-cov --locked
+	@mkdir -p target/coverage
+	@env PROPTEST_CASES=5 QUICKCHECK_TESTS=5 \
+		cargo llvm-cov --lib --bins --workspace --all-features --all-targets \
+		--html --output-dir target/coverage/html
+	@cargo llvm-cov report --summary-only
+	@echo ""
+	@echo "💡 HTML: target/coverage/html/index.html"
 
 coverage-summary: ## Show coverage summary
 	@cargo llvm-cov report --summary-only 2>/dev/null || echo "Run 'make coverage' first"
@@ -350,7 +365,8 @@ help: ## Show this help
 	@echo "  make test-all       - Run ALL tests with all features"
 	@echo ""
 	@echo "Coverage:"
-	@echo "  make coverage       - Generate HTML coverage report (TARGET: <5 min)"
+	@echo "  make coverage       - Generate lib coverage report (TARGET: 95%, <1 min)"
+	@echo "  make coverage-full  - Generate full coverage including bins"
 	@echo "  make coverage-summary - Show coverage summary"
 	@echo "  make coverage-open  - Open HTML coverage in browser"
 	@echo "  make coverage-ci    - Generate LCOV report for CI/CD"

@@ -5,6 +5,8 @@
 //!
 //! Run with: cargo run --example brick_demo -p jugar-probar
 
+#![allow(clippy::expect_used)]
+
 use jugar_probar::brick::{Brick, BrickAssertion, BrickBudget, BrickVerification};
 use jugar_probar::brick_house::BrickHouseBuilder;
 use std::sync::Arc;
