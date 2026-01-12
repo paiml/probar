@@ -1,9 +1,8 @@
-//! Linting Module for WASM State Synchronization
+//! Linting Module for WASM State Synchronization and Panic Paths
 //!
-//! Implements static analysis for detecting state sync anti-patterns per
-//! `PROBAR-SPEC-WASM-001`.
+//! Implements static analysis for detecting anti-patterns per PROBAR specs.
 //!
-//! ## Detection Rules
+//! ## State Sync Rules (PROBAR-SPEC-WASM-001)
 //!
 //! | Rule ID | Description |
 //! |---------|-------------|
@@ -15,6 +14,18 @@
 //! | WASM-SS-006 | Type alias for Rc (including turbofish `Alias::<T>::new()`) |
 //! | WASM-SS-007 | Function returning Rc captured in closure |
 //! | WASM-SS-008 | Method chain returning Rc (`.to_rc()`, etc.) |
+//!
+//! ## Panic Path Rules (PROBAR-WASM-006)
+//!
+//! | Rule ID | Description | Severity |
+//! |---------|-------------|----------|
+//! | WASM-PANIC-001 | `unwrap()` call | Error |
+//! | WASM-PANIC-002 | `expect()` call | Error |
+//! | WASM-PANIC-003 | `panic!()` macro | Error |
+//! | WASM-PANIC-004 | `unreachable!()` macro | Warning |
+//! | WASM-PANIC-005 | `todo!()` macro | Error |
+//! | WASM-PANIC-006 | `unimplemented!()` macro | Error |
+//! | WASM-PANIC-007 | Index access without bounds check | Warning |
 //!
 //! ## AST vs Text-Based Analysis
 //!
@@ -29,7 +40,9 @@
 //! - Unusual whitespace/formatting
 
 pub mod ast_visitor;
+pub mod panic_paths;
 pub mod state_sync;
 
 pub use ast_visitor::{lint_source_ast, AstStateSyncVisitor};
+pub use panic_paths::{lint_panic_paths, PanicPathSummary, PanicPathVisitor};
 pub use state_sync::{LintError, LintResult, LintSeverity, StateSyncLinter, StateSyncReport};

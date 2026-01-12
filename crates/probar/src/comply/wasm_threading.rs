@@ -12,6 +12,7 @@
 //! | WASM-COMPLY-003 | Property tests on actual code | Warning |
 //! | WASM-COMPLY-004 | Regression tests for known bugs | Yes |
 //! | WASM-COMPLY-005 | No JS files in target/ (post-build) | Yes |
+//! | WASM-COMPLY-006 | No panic paths (unwrap/expect/panic!) | Yes |
 //!
 //! ## Tarantula Integration
 //!
@@ -19,7 +20,7 @@
 //! to generate a Tarantula Hotspot Report showing suspicious lines.
 
 use crate::comply::tarantula::TarantulaEngine;
-use crate::lint::StateSyncLinter;
+use crate::lint::{lint_panic_paths, PanicPathSummary, StateSyncLinter};
 use std::path::Path;
 
 /// Status of a compliance check
@@ -247,6 +248,9 @@ impl WasmThreadingCompliance {
         // WASM-COMPLY-005: Post-build JS file check
         self.check_target_js_files(project_path, &mut result);
 
+        // WASM-COMPLY-006: Panic path detection
+        self.check_panic_paths(project_path, &mut result);
+
         result
     }
 
@@ -426,6 +430,85 @@ impl WasmThreadingCompliance {
                     found_count
                 ),
                 3 - found_count,
+            ));
+        }
+    }
+
+    /// Check for panic paths in source code (WASM-COMPLY-006)
+    ///
+    /// Detects unwrap(), expect(), panic!(), todo!(), etc. that can
+    /// terminate WASM execution unrecoverably.
+    fn check_panic_paths(&self, project_path: &Path, result: &mut ComplianceResult) {
+        let src_path = project_path.join("src");
+        let lint_path = if src_path.exists() {
+            src_path
+        } else {
+            project_path.to_path_buf()
+        };
+
+        let mut total_errors = 0;
+        let mut total_warnings = 0;
+        let mut files_checked = 0;
+
+        // Use iterative approach with a stack to traverse directories
+        let mut dirs_to_visit = vec![lint_path];
+
+        while let Some(dir) = dirs_to_visit.pop() {
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                        // Skip hidden dirs, target, and test directories
+                        if !name.starts_with('.') && name != "target" {
+                            dirs_to_visit.push(path);
+                        }
+                    } else if path.extension().map(|e| e == "rs").unwrap_or(false) {
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            if let Ok(report) =
+                                lint_panic_paths(&content, path.to_str().unwrap_or("unknown"))
+                            {
+                                let summary = PanicPathSummary::from_report(&report);
+                                total_errors += summary.error_count();
+                                total_warnings +=
+                                    summary.total().saturating_sub(summary.error_count());
+                                files_checked += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if files_checked == 0 {
+            result.add_check(ComplianceCheck::skip(
+                "WASM-COMPLY-006",
+                "Panic path detection",
+                "No Rust source files found",
+            ));
+        } else if total_errors > 0 {
+            result.add_check(ComplianceCheck::fail(
+                "WASM-COMPLY-006",
+                "Panic path detection",
+                &format!(
+                    "{} panic paths found ({} errors, {} warnings) - use `?` or `ok_or()` instead",
+                    total_errors + total_warnings,
+                    total_errors,
+                    total_warnings
+                ),
+                total_errors,
+            ));
+        } else if total_warnings > 0 {
+            result.add_check(ComplianceCheck::warn(
+                "WASM-COMPLY-006",
+                "Panic path detection",
+                &format!("{} potential panic paths (warnings only)", total_warnings),
+                total_warnings,
+            ));
+        } else {
+            result.add_check(ComplianceCheck::pass(
+                "WASM-COMPLY-006",
+                "Panic path detection",
             ));
         }
     }
@@ -1183,7 +1266,7 @@ fn test_007() {}
 
         // Create a binary file
         let wasm_file = target_dir.join("app.wasm");
-        fs::write(&wasm_file, &[0u8, 1, 2, 3, 97, 115, 109]).unwrap();
+        fs::write(&wasm_file, [0u8, 1, 2, 3, 97, 115, 109]).unwrap();
 
         let suspicious = find_suspicious_files_in_target(&target_dir);
         // WASM file should not be flagged
@@ -1214,7 +1297,7 @@ fn test_007() {}
 
         // Create a binary file with non-ASCII characters
         let binary_file = temp_dir.path().join("binary.dat");
-        fs::write(&binary_file, &[0u8, 255, 128, 64, 32]).unwrap();
+        fs::write(&binary_file, [0u8, 255, 128, 64, 32]).unwrap();
 
         let result = check_file_for_js_content(&binary_file);
         assert!(result.is_none());
@@ -1346,5 +1429,232 @@ fn test_007() {}
         assert_eq!(result.checks[0].status, ComplianceStatus::Fail);
         // Should show "..." for more than 5 files
         assert!(result.checks[0].details.as_ref().unwrap().contains("..."));
+    }
+
+    // =========================================================================
+    // Panic path compliance check tests (WASM-COMPLY-006)
+    // =========================================================================
+
+    #[test]
+    fn test_check_panic_paths_clean_code() {
+        let temp_dir = TempDir::new().unwrap();
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&src_dir).unwrap();
+
+        // Clean code without panic paths
+        let lib_file = src_dir.join("lib.rs");
+        fs::write(
+            &lib_file,
+            r#"
+fn example() -> Option<i32> {
+    let x = Some(5);
+    let y = x?;
+    Some(y + 1)
+}
+
+fn example2() -> Result<i32, &'static str> {
+    let x: Option<i32> = Some(5);
+    let y = x.ok_or("missing")?;
+    Ok(y + 1)
+}
+"#,
+        )
+        .unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_panic_paths(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].id, "WASM-COMPLY-006");
+        assert_eq!(result.checks[0].status, ComplianceStatus::Pass);
+    }
+
+    #[test]
+    fn test_check_panic_paths_with_unwrap() {
+        let temp_dir = TempDir::new().unwrap();
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&src_dir).unwrap();
+
+        // Code with unwrap() panic path
+        let lib_file = src_dir.join("lib.rs");
+        fs::write(
+            &lib_file,
+            r#"
+fn bad_code() {
+    let x = Some(5);
+    let y = x.unwrap();  // PANIC PATH!
+}
+"#,
+        )
+        .unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_panic_paths(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].id, "WASM-COMPLY-006");
+        assert_eq!(result.checks[0].status, ComplianceStatus::Fail);
+        assert!(result.checks[0]
+            .details
+            .as_ref()
+            .unwrap()
+            .contains("panic paths"));
+    }
+
+    #[test]
+    fn test_check_panic_paths_with_expect() {
+        let temp_dir = TempDir::new().unwrap();
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&src_dir).unwrap();
+
+        // Code with expect() panic path
+        let lib_file = src_dir.join("lib.rs");
+        fs::write(
+            &lib_file,
+            r#"
+fn bad_code() {
+    let x = Some(5);
+    let y = x.expect("should exist");  // PANIC PATH!
+}
+"#,
+        )
+        .unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_panic_paths(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Fail);
+    }
+
+    #[test]
+    fn test_check_panic_paths_with_panic_macro() {
+        let temp_dir = TempDir::new().unwrap();
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&src_dir).unwrap();
+
+        // Code with panic!() macro
+        let lib_file = src_dir.join("lib.rs");
+        fs::write(
+            &lib_file,
+            r#"
+fn bad_code() {
+    panic!("something went wrong");
+}
+"#,
+        )
+        .unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_panic_paths(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Fail);
+    }
+
+    #[test]
+    fn test_check_panic_paths_warnings_only() {
+        let temp_dir = TempDir::new().unwrap();
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&src_dir).unwrap();
+
+        // Code with only warnings (unreachable, index)
+        let lib_file = src_dir.join("lib.rs");
+        fs::write(
+            &lib_file,
+            r#"
+fn code_with_warnings(x: bool) {
+    if x {
+        return;
+    }
+    unreachable!();  // Warning only
+}
+"#,
+        )
+        .unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_panic_paths(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].id, "WASM-COMPLY-006");
+        // unreachable! is a warning, not error
+        assert_eq!(result.checks[0].status, ComplianceStatus::Warn);
+        assert!(result.checks[0]
+            .details
+            .as_ref()
+            .unwrap()
+            .contains("warnings only"));
+    }
+
+    #[test]
+    fn test_check_panic_paths_no_source_files() {
+        let temp_dir = TempDir::new().unwrap();
+        // No src directory, no .rs files
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_panic_paths(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].id, "WASM-COMPLY-006");
+        assert_eq!(result.checks[0].status, ComplianceStatus::Skip);
+    }
+
+    #[test]
+    fn test_check_panic_paths_nested_directories() {
+        let temp_dir = TempDir::new().unwrap();
+        let src_dir = temp_dir.path().join("src");
+        let nested_dir = src_dir.join("module").join("submodule");
+        fs::create_dir_all(&nested_dir).unwrap();
+
+        // Clean code in nested directory
+        let nested_file = nested_dir.join("mod.rs");
+        fs::write(
+            &nested_file,
+            r#"
+fn clean_code() -> Option<i32> {
+    Some(42)
+}
+"#,
+        )
+        .unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_panic_paths(temp_dir.path(), &mut result);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Pass);
+    }
+
+    #[test]
+    fn test_check_panic_paths_skips_hidden_dirs() {
+        let temp_dir = TempDir::new().unwrap();
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir(&src_dir).unwrap();
+
+        // Create hidden directory with panic paths (should be skipped)
+        let hidden_dir = src_dir.join(".hidden");
+        fs::create_dir(&hidden_dir).unwrap();
+        let hidden_file = hidden_dir.join("bad.rs");
+        fs::write(&hidden_file, "fn bad() { panic!(); }").unwrap();
+
+        // Clean file in src
+        let lib_file = src_dir.join("lib.rs");
+        fs::write(&lib_file, "fn clean() -> Option<i32> { Some(1) }").unwrap();
+
+        let checker = WasmThreadingCompliance::new();
+        let mut result = ComplianceResult::new();
+        checker.check_panic_paths(temp_dir.path(), &mut result);
+
+        // Should pass because hidden dir is skipped
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].status, ComplianceStatus::Pass);
     }
 }

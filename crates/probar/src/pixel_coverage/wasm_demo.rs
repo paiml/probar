@@ -1234,4 +1234,646 @@ mod tests {
         let config = WasmDemoConfig::default().with_fill_probability(-0.5);
         assert_eq!(config.fill_probability, 0.0);
     }
+
+    // =========================================================================
+    // Section 11: Additional Configuration Tests (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_config_06_hd_720p() {
+        let config = WasmDemoConfig::hd_720p();
+        assert_eq!(config.width, 1280);
+        assert_eq!(config.height, 720);
+        // Should inherit defaults for other fields
+        assert!((config.fill_probability - 0.01).abs() < f32::EPSILON);
+        assert_eq!(config.palette, DemoPalette::Viridis);
+    }
+
+    #[test]
+    fn h0_config_07_test_small() {
+        let config = WasmDemoConfig::test_small();
+        assert_eq!(config.width, 100);
+        assert_eq!(config.height, 100);
+        assert!((config.fill_probability - 0.1).abs() < f32::EPSILON);
+        assert_eq!(config.seed, 42);
+    }
+
+    #[test]
+    fn h0_config_08_with_seed() {
+        let config = WasmDemoConfig::default().with_seed(12345);
+        assert_eq!(config.seed, 12345);
+        // Should preserve other defaults
+        assert_eq!(config.width, 1920);
+        assert_eq!(config.height, 1080);
+    }
+
+    #[test]
+    fn h0_config_09_validation_zero_height() {
+        let config = WasmDemoConfig {
+            height: 0,
+            ..Default::default()
+        };
+        let err = config.validate().unwrap_err();
+        assert!(matches!(
+            err,
+            ConfigError::InvalidDimensions {
+                width: 1920,
+                height: 0
+            }
+        ));
+    }
+
+    #[test]
+    fn h0_config_10_validation_invalid_target_coverage_low() {
+        let config = WasmDemoConfig {
+            target_coverage: -0.5,
+            ..Default::default()
+        };
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidTargetCoverage(_))
+        ));
+    }
+
+    #[test]
+    fn h0_config_11_validation_invalid_target_coverage_high() {
+        let config = WasmDemoConfig {
+            target_coverage: 1.5,
+            ..Default::default()
+        };
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidTargetCoverage(_))
+        ));
+    }
+
+    // =========================================================================
+    // Section 12: ConfigError Display Tests (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_error_03_probability_display() {
+        let err = ConfigError::InvalidProbability(1.5);
+        let msg = format!("{}", err);
+        assert!(msg.contains("Invalid probability"));
+        assert!(msg.contains("1.5"));
+        assert!(msg.contains("0.0..=1.0"));
+    }
+
+    #[test]
+    fn h0_error_04_target_coverage_display() {
+        let err = ConfigError::InvalidTargetCoverage(-0.5);
+        let msg = format!("{}", err);
+        assert!(msg.contains("Invalid target coverage"));
+        assert!(msg.contains("-0.5"));
+    }
+
+    #[test]
+    fn h0_error_05_config_error_is_error_trait() {
+        let err: Box<dyn std::error::Error> = Box::new(ConfigError::InvalidProbability(1.5));
+        // Verify it implements std::error::Error
+        let _ = err.source(); // Should return None (default impl)
+        let _ = format!("{}", err);
+    }
+
+    #[test]
+    fn h0_error_06_config_error_clone_eq() {
+        let err1 = ConfigError::InvalidProbability(1.5);
+        let err2 = err1.clone();
+        assert_eq!(err1, err2);
+
+        let err3 = ConfigError::InvalidDimensions {
+            width: 0,
+            height: 100,
+        };
+        let err4 = err3.clone();
+        assert_eq!(err3, err4);
+    }
+
+    // =========================================================================
+    // Section 13: DemoPalette Tests (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_palette_02_all_variants() {
+        let palettes = [
+            DemoPalette::Viridis,
+            DemoPalette::Magma,
+            DemoPalette::Heat,
+            DemoPalette::Grayscale,
+        ];
+
+        for palette in &palettes {
+            // Test Debug
+            let debug = format!("{:?}", palette);
+            assert!(!debug.is_empty());
+
+            // Test Clone
+            let cloned = *palette;
+            assert_eq!(*palette, cloned);
+        }
+    }
+
+    #[test]
+    fn h0_palette_03_equality() {
+        assert_eq!(DemoPalette::Magma, DemoPalette::Magma);
+        assert_ne!(DemoPalette::Magma, DemoPalette::Heat);
+        assert_ne!(DemoPalette::Viridis, DemoPalette::Grayscale);
+    }
+
+    // =========================================================================
+    // Section 14: GapSeverity Tests (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_gap_04_severity_info() {
+        // Gaps < 25 pixels should be Info
+        let mut buffer = GpuPixelBuffer::new(10, 10, 42);
+        // Fill most pixels, leaving a small gap of ~10 pixels
+        for (idx, pixel) in buffer.pixels.iter_mut().enumerate() {
+            if idx >= 10 {
+                *pixel = 1.0;
+            }
+        }
+
+        let gaps = buffer.find_gaps();
+        assert!(!gaps.is_empty());
+        let small_gap = &gaps[0];
+        assert!(small_gap.size < 25);
+        assert_eq!(small_gap.severity, GapSeverity::Info);
+    }
+
+    #[test]
+    fn h0_gap_05_severity_warning() {
+        // Gaps 25-100 pixels should be Warning
+        let mut buffer = GpuPixelBuffer::new(20, 20, 42);
+        // Fill all but 50 pixels (5x10 region)
+        for y in 0..20 {
+            for x in 0..20 {
+                let idx = y * 20 + x;
+                if x >= 10 || y >= 5 {
+                    buffer.pixels[idx] = 1.0;
+                }
+            }
+        }
+
+        let gaps = buffer.find_gaps();
+        assert!(!gaps.is_empty());
+        let medium_gap = &gaps[0];
+        assert!(medium_gap.size >= 25 && medium_gap.size <= 100);
+        assert_eq!(medium_gap.severity, GapSeverity::Warning);
+    }
+
+    #[test]
+    fn h0_gap_06_severity_critical() {
+        // Gaps > 100 pixels should be Critical
+        let buffer = GpuPixelBuffer::new(20, 20, 42);
+        // All 400 pixels are uncovered
+        let gaps = buffer.find_gaps();
+        assert_eq!(gaps.len(), 1);
+        assert!(gaps[0].size > 100);
+        assert_eq!(gaps[0].severity, GapSeverity::Critical);
+    }
+
+    #[test]
+    fn h0_gap_07_severity_variants() {
+        // Test all severity variants for Debug, Clone, Eq
+        let severities = [
+            GapSeverity::Info,
+            GapSeverity::Warning,
+            GapSeverity::Critical,
+        ];
+
+        for sev in &severities {
+            let debug = format!("{:?}", sev);
+            assert!(!debug.is_empty());
+
+            let cloned = *sev;
+            assert_eq!(*sev, cloned);
+        }
+    }
+
+    // =========================================================================
+    // Section 15: DemoGapRegion Tests (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_gap_08_region_fields() {
+        let region = DemoGapRegion {
+            x: 10,
+            y: 20,
+            width: 30,
+            height: 40,
+            size: 150,
+            severity: GapSeverity::Critical,
+        };
+
+        assert_eq!(region.x, 10);
+        assert_eq!(region.y, 20);
+        assert_eq!(region.width, 30);
+        assert_eq!(region.height, 40);
+        assert_eq!(region.size, 150);
+        assert_eq!(region.severity, GapSeverity::Critical);
+
+        // Test Debug and Clone
+        let debug = format!("{:?}", region);
+        assert!(debug.contains("DemoGapRegion"));
+
+        let cloned = region.clone();
+        assert_eq!(cloned.size, region.size);
+    }
+
+    // =========================================================================
+    // Section 16: GpuPixelBuffer Additional Tests (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_buffer_08_gpu_device_name() {
+        // GPU device name returns None when gpu feature is disabled
+        let name = GpuPixelBuffer::gpu_device_name();
+        // Just verify it doesn't panic - result depends on feature flags
+        let _ = format!("{:?}", name);
+    }
+
+    #[test]
+    fn h0_buffer_09_is_using_gpu() {
+        let buffer = GpuPixelBuffer::new(100, 100, 42);
+        let using_gpu = buffer.is_using_gpu();
+        // Without gpu feature, should be false
+        #[cfg(not(feature = "gpu"))]
+        assert!(!using_gpu);
+        // Just verify it returns a valid bool
+        let _ = format!("{}", using_gpu);
+    }
+
+    #[test]
+    fn h0_buffer_10_gpu_available() {
+        let available = GpuPixelBuffer::gpu_available();
+        // Without gpu feature, should be false
+        #[cfg(not(feature = "gpu"))]
+        assert!(!available);
+        let _ = format!("{}", available);
+    }
+
+    #[test]
+    fn h0_buffer_11_custom_dimensions() {
+        let buffer = GpuPixelBuffer::new(123, 456, 789);
+        assert_eq!(buffer.width, 123);
+        assert_eq!(buffer.height, 456);
+        assert_eq!(buffer.seed, 789);
+        assert_eq!(buffer.frame, 0);
+        assert_eq!(buffer.total_pixels(), 123 * 456);
+    }
+
+    // =========================================================================
+    // Section 17: CoverageStats Additional Tests (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_stats_07_max_gap_size_no_gaps() {
+        let mut buffer = GpuPixelBuffer::new(10, 10, 42);
+        // Fill all pixels
+        for pixel in &mut buffer.pixels {
+            *pixel = 1.0;
+        }
+
+        let stats = buffer.coverage_stats();
+        assert_eq!(stats.max_gap_size(), 0);
+        assert!(stats.gaps.is_empty());
+    }
+
+    #[test]
+    fn h0_stats_08_meets_threshold_boundary() {
+        let mut buffer = GpuPixelBuffer::new(100, 100, 42);
+        // Fill exactly 80% of pixels
+        for i in 0..8000 {
+            buffer.pixels[i] = 1.0;
+        }
+
+        let stats = buffer.coverage_stats();
+        assert!(stats.meets_threshold(0.80));
+        assert!(!stats.meets_threshold(0.81));
+    }
+
+    #[test]
+    fn h0_stats_09_coverage_stats_debug_clone() {
+        let buffer = GpuPixelBuffer::new(10, 10, 42);
+        let stats = buffer.coverage_stats();
+
+        let debug = format!("{:?}", stats);
+        assert!(debug.contains("CoverageStats"));
+
+        let cloned = stats.clone();
+        assert_eq!(cloned.covered, stats.covered);
+        assert_eq!(cloned.total, stats.total);
+    }
+
+    // =========================================================================
+    // Section 18: WasmPixelDemo Additional Tests (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_demo_lifecycle_05_hd_1080p() {
+        let demo = WasmPixelDemo::hd_1080p();
+        assert_eq!(demo.buffer.width, 1920);
+        assert_eq!(demo.buffer.height, 1080);
+        assert!(!demo.is_complete());
+    }
+
+    #[test]
+    fn h0_demo_lifecycle_06_elapsed() {
+        let demo = WasmPixelDemo::new(WasmDemoConfig::test_small());
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let elapsed = demo.elapsed();
+        assert!(elapsed.as_millis() >= 10);
+    }
+
+    #[test]
+    fn h0_demo_lifecycle_07_stats() {
+        let mut demo = WasmPixelDemo::new(WasmDemoConfig::test_small());
+        demo.tick();
+
+        let stats = demo.stats();
+        assert!(stats.total > 0);
+        // After one tick, coverage is tracked (may be 0 or more)
+        assert!(stats.covered <= stats.total);
+    }
+
+    #[test]
+    fn h0_demo_lifecycle_08_tick_when_complete() {
+        let config = WasmDemoConfig {
+            width: 10,
+            height: 10,
+            fill_probability: 1.0, // Fill everything
+            target_coverage: 0.01, // Very low target
+            ..Default::default()
+        };
+        let mut demo = WasmPixelDemo::new(config);
+
+        demo.tick(); // This should complete
+        assert!(demo.is_complete());
+
+        let frame_before = demo.frame_count();
+        demo.tick(); // Should return early
+        let frame_after = demo.frame_count();
+
+        // Frame count should NOT increase when complete
+        assert_eq!(frame_before, frame_after);
+    }
+
+    #[test]
+    fn h0_demo_lifecycle_09_debug() {
+        let demo = WasmPixelDemo::new(WasmDemoConfig::test_small());
+        let debug = format!("{:?}", demo);
+        assert!(debug.contains("WasmPixelDemo"));
+    }
+
+    // =========================================================================
+    // Section 19: Wilson CI Additional Tests (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_wilson_01_confidence_90() {
+        let ci = wilson_confidence_interval(50, 100, 0.90);
+        assert!(ci.level == 0.90 || (ci.level - 0.90).abs() < 0.01);
+        // 90% CI should be narrower than 95% CI
+        let ci_95 = wilson_confidence_interval(50, 100, 0.95);
+        assert!((ci.upper - ci.lower) < (ci_95.upper - ci_95.lower));
+    }
+
+    #[test]
+    fn h0_wilson_02_confidence_99() {
+        let ci = wilson_confidence_interval(50, 100, 0.99);
+        assert!(ci.level == 0.99 || (ci.level - 0.99).abs() < 0.01);
+        // 99% CI should be wider than 95% CI
+        let ci_95 = wilson_confidence_interval(50, 100, 0.95);
+        assert!((ci.upper - ci.lower) > (ci_95.upper - ci_95.lower));
+    }
+
+    #[test]
+    fn h0_wilson_03_confidence_other() {
+        // Non-standard confidence level defaults to 1.96 z-score
+        let ci = wilson_confidence_interval(50, 100, 0.85);
+        // Should still produce valid bounds
+        assert!(ci.lower >= 0.0);
+        assert!(ci.upper <= 1.0);
+        assert!(ci.lower <= ci.upper);
+    }
+
+    // =========================================================================
+    // Section 20: Flood Fill Edge Cases (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_flood_01_single_pixel_gap() {
+        let mut buffer = GpuPixelBuffer::new(5, 5, 42);
+        // Fill all but center pixel
+        for (idx, pixel) in buffer.pixels.iter_mut().enumerate() {
+            if idx != 12 {
+                // Center of 5x5
+                *pixel = 1.0;
+            }
+        }
+
+        let gaps = buffer.find_gaps();
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].size, 1);
+        assert_eq!(gaps[0].severity, GapSeverity::Info);
+    }
+
+    #[test]
+    fn h0_flood_02_corner_gaps() {
+        let mut buffer = GpuPixelBuffer::new(10, 10, 42);
+        // Fill center, leave corners empty
+        for y in 0..10 {
+            for x in 0..10 {
+                let idx = y * 10 + x;
+                if (2..8).contains(&x) && (2..8).contains(&y) {
+                    buffer.pixels[idx] = 1.0;
+                }
+            }
+        }
+
+        let gaps = buffer.find_gaps();
+        // Should have one connected gap around the border
+        assert!(!gaps.is_empty());
+    }
+
+    #[test]
+    fn h0_flood_03_multiple_isolated_gaps() {
+        let mut buffer = GpuPixelBuffer::new(10, 10, 42);
+        // Fill everything
+        for pixel in &mut buffer.pixels {
+            *pixel = 1.0;
+        }
+        // Create 4 isolated single-pixel gaps
+        buffer.pixels[0] = 0.0; // Top-left
+        buffer.pixels[9] = 0.0; // Top-right
+        buffer.pixels[90] = 0.0; // Bottom-left
+        buffer.pixels[99] = 0.0; // Bottom-right
+
+        let gaps = buffer.find_gaps();
+        assert_eq!(gaps.len(), 4);
+        for gap in &gaps {
+            assert_eq!(gap.size, 1);
+            assert_eq!(gap.severity, GapSeverity::Info);
+        }
+    }
+
+    // =========================================================================
+    // Section 21: Downsample Edge Cases (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_downsample_04_exact_multiple() {
+        let buffer = GpuPixelBuffer::new(100, 100, 42);
+        let downsampled = buffer.downsample(10, 10);
+        // Each cell averages 100 source pixels (10x10)
+        assert_eq!(downsampled.len(), 100);
+    }
+
+    #[test]
+    fn h0_downsample_05_non_multiple() {
+        let buffer = GpuPixelBuffer::new(100, 100, 42);
+        let downsampled = buffer.downsample(7, 7);
+        assert_eq!(downsampled.len(), 49);
+    }
+
+    #[test]
+    fn h0_downsample_06_larger_than_source() {
+        // When terminal is larger than source, scale factors become 0
+        // which means count stays 0 and result is all zeros
+        let buffer = GpuPixelBuffer::new(10, 10, 42);
+        let downsampled = buffer.downsample(100, 100);
+        assert_eq!(downsampled.len(), 10000);
+    }
+
+    // =========================================================================
+    // Section 22: RNG Edge Cases (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_rng_09_hash_pixel_edge_values() {
+        // Test with extreme values
+        let hash_max = PcgRng::hash_pixel(u32::MAX, u32::MAX, u32::MAX);
+        let hash_zero = PcgRng::hash_pixel(0, 0, 0);
+
+        // Hashes should be different
+        assert_ne!(hash_max, hash_zero);
+
+        // Should produce valid u32 values (not panic)
+        let _ = hash_max.to_string();
+        let _ = hash_zero.to_string();
+    }
+
+    #[test]
+    fn h0_rng_10_should_fill_edge_probability() {
+        // Test probability at boundary values
+        let near_zero = 0.000001;
+        let near_one = 0.999999;
+
+        // At near-zero probability, very few should fill
+        let mut fill_count = 0;
+        for idx in 0..1000 {
+            if PcgRng::should_fill(42, idx, 1, near_zero) {
+                fill_count += 1;
+            }
+        }
+        assert!(
+            fill_count < 10,
+            "Near-zero probability filled {} pixels",
+            fill_count
+        );
+
+        // At near-one probability, almost all should fill
+        let mut fill_count = 0;
+        for idx in 0..1000 {
+            if PcgRng::should_fill(42, idx, 1, near_one) {
+                fill_count += 1;
+            }
+        }
+        assert!(
+            fill_count > 990,
+            "Near-one probability filled {} pixels",
+            fill_count
+        );
+    }
+
+    // =========================================================================
+    // Section 23: Fill to Coverage Edge Cases (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_fill_01_max_frames_reached() {
+        let mut buffer = GpuPixelBuffer::new(100, 100, 42);
+        // Very low probability, won't reach 100% in 5 frames
+        buffer.fill_to_coverage(1.0, 0.001, 5);
+        // Should have run exactly 5 frames
+        assert_eq!(buffer.frame, 5);
+        // Coverage should be less than 100%
+        assert!(buffer.coverage_percentage() < 1.0);
+    }
+
+    #[test]
+    fn h0_fill_02_early_termination() {
+        let mut buffer = GpuPixelBuffer::new(10, 10, 42);
+        // High probability, should reach 50% quickly
+        buffer.fill_to_coverage(0.5, 1.0, 1000);
+        // Should not have run all 1000 frames
+        assert!(buffer.frame < 1000);
+        // Should have at least 50% coverage
+        assert!(buffer.coverage_percentage() >= 0.5);
+    }
+
+    // =========================================================================
+    // Section 24: Config Clone and Debug (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_config_12_clone_debug() {
+        let config = WasmDemoConfig::default();
+        let cloned = config.clone();
+
+        assert_eq!(cloned.width, config.width);
+        assert_eq!(cloned.height, config.height);
+        assert_eq!(cloned.seed, config.seed);
+
+        let debug = format!("{:?}", config);
+        assert!(debug.contains("WasmDemoConfig"));
+    }
+
+    // =========================================================================
+    // Section 25: PcgRng Clone and Debug (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_rng_11_clone_debug() {
+        let rng = PcgRng::new(42);
+        let cloned = rng.clone();
+
+        let debug = format!("{:?}", rng);
+        assert!(debug.contains("PcgRng"));
+
+        // Cloned RNG should produce same values
+        let mut rng1 = rng;
+        let mut rng2 = cloned;
+        assert_eq!(rng1.next_u32(), rng2.next_u32());
+    }
+
+    // =========================================================================
+    // Section 26: GpuPixelBuffer Clone and Debug (Coverage Boost)
+    // =========================================================================
+
+    #[test]
+    fn h0_buffer_12_clone_debug() {
+        let buffer = GpuPixelBuffer::new(10, 10, 42);
+        let cloned = buffer.clone();
+
+        assert_eq!(cloned.width, buffer.width);
+        assert_eq!(cloned.height, buffer.height);
+        assert_eq!(cloned.pixels.len(), buffer.pixels.len());
+
+        let debug = format!("{:?}", buffer);
+        assert!(debug.contains("GpuPixelBuffer"));
+    }
 }
