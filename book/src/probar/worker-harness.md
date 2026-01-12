@@ -269,8 +269,60 @@ let lifecycle_js = WorkerTestHarness::lifecycle_test_js();
 // ... inject and verify
 ```
 
+## WorkerBrick Code Generation
+
+Generate both JavaScript worker code and Rust bindings from a single definition:
+
+```rust
+use jugar_probar::brick::worker::{
+    WorkerBrick, BrickWorkerMessage, BrickWorkerMessageDirection, FieldType,
+};
+
+let audio_worker = WorkerBrick::new("audio_processor")
+    // Messages TO the worker
+    .message(
+        BrickWorkerMessage::new("init", BrickWorkerMessageDirection::ToWorker)
+            .field("sampleRate", FieldType::Number)
+            .field("sharedBuffer", FieldType::SharedArrayBuffer),
+    )
+    // Messages FROM the worker
+    .message(
+        BrickWorkerMessage::new("ready", BrickWorkerMessageDirection::FromWorker)
+    )
+    // State machine transitions
+    .transition("uninitialized", "init", "initializing")
+    .transition("initializing", "ready", "ready");
+
+// Generate JavaScript (zero hand-written JS!)
+let js = audio_worker.to_worker_js();
+
+// Generate Rust web_sys bindings
+let rust = audio_worker.to_rust_bindings();
+
+// Generate TypeScript definitions
+let ts = audio_worker.to_typescript_defs();
+```
+
+### Supported Field Types
+
+| FieldType | TypeScript | Rust |
+|-----------|------------|------|
+| `String` | `string` | `String` |
+| `Number` | `number` | `f64` |
+| `Boolean` | `boolean` | `bool` |
+| `SharedArrayBuffer` | `SharedArrayBuffer` | `js_sys::SharedArrayBuffer` |
+| `Float32Array` | `Float32Array` | `js_sys::Float32Array` |
+| `Optional(T)` | `T \| undefined` | `Option<T>` |
+
+Run the code generation demo:
+
+```bash
+cargo run --example worker_brick_demo -p jugar-probar
+```
+
 ## See Also
 
 - [Zero-JS Validation](./zero-js-validation.md) - WASM-first validation
 - [Docker Cross-Browser Testing](./docker-testing.md) - Multi-browser testing
 - [WASM Threading](./wasm-threading.md) - Thread capability detection
+- [Web Builders](./web-builders.md) - HTML/CSS/JS asset generation

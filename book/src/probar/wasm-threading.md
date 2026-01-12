@@ -163,10 +163,110 @@ probador comply . --checks C006
 # [✓] C006: COOP/COEP headers configured correctly
 ```
 
-## Example
+## Distributed Worker Execution
 
-Run the WASM capabilities demo:
+For multi-worker scenarios, Probar provides work-stealing and data locality tracking:
+
+### Backend Selection
+
+```rust
+use jugar_probar::brick::distributed::{BackendSelector, Backend};
+
+let selector = BackendSelector::new()
+    .with_gpu_threshold(1_000_000)   // 1M elements for GPU
+    .with_simd_threshold(10_000)     // 10K for SIMD
+    .with_cpu_max_threshold(100_000_000); // 100M max local
+
+let backend = selector.select(50_000, true);
+assert_eq!(backend, Backend::Simd);
+```
+
+### Data Locality Tracking
+
+```rust
+use jugar_probar::brick::distributed::{BrickDataTracker, WorkerId};
+
+let tracker = BrickDataTracker::new();
+
+// Register data locations
+tracker.track_data("model_weights", WorkerId::new(0), 100 * 1024 * 1024);
+tracker.track_data("embeddings", WorkerId::new(0), 50 * 1024 * 1024);
+
+// Calculate worker affinity for a task
+let deps = vec!["model_weights".into(), "embeddings".into()];
+let affinity = tracker.calculate_affinity(&deps);
+// Worker 0 has highest affinity (has both datasets)
+```
+
+### Work-Stealing Scheduler
+
+```rust
+use jugar_probar::brick::distributed::{
+    WorkStealingScheduler, DistributedBrick, Backend,
+};
+use std::sync::Arc;
+
+let data_tracker = Arc::new(BrickDataTracker::new());
+let scheduler = WorkStealingScheduler::new(data_tracker);
+
+// Submit tasks with priority
+let task_id = scheduler.submit_priority(
+    distributed_brick.to_task_spec(),
+    "input_key".into(),
+    10, // priority
+);
+
+let stats = scheduler.stats();
+println!("Submitted: {}, Completed: {}",
+    stats.total_submitted, stats.total_completed);
+```
+
+### PUB/SUB Coordination
+
+```rust
+use jugar_probar::brick::distributed::{BrickCoordinator, BrickMessage};
+
+let coordinator = BrickCoordinator::new();
+
+// Subscribe to weight updates
+let sub = coordinator.subscribe("weights");
+
+// Publish update
+coordinator.publish("weights", BrickMessage::WeightUpdate {
+    brick_name: "encoder".into(),
+    weights: vec![0u8; 100],
+    version: 1,
+});
+
+// Receive messages
+let messages = sub.drain();
+```
+
+Run the distributed demo:
 
 ```bash
-cargo run --example wasm_capabilities -p jugar-probar
+cargo run --example distributed_worker_demo -p jugar-probar
 ```
+
+## Examples
+
+Run the WASM capabilities demos:
+
+```bash
+# Threading capabilities
+cargo run --example wasm_capabilities -p jugar-probar
+
+# Worker harness testing
+cargo run --example worker_harness_demo -p jugar-probar
+
+# Worker code generation
+cargo run --example worker_brick_demo -p jugar-probar
+
+# Distributed execution
+cargo run --example distributed_worker_demo -p jugar-probar
+```
+
+## See Also
+
+- [Worker Harness Testing](./worker-harness.md) - Comprehensive worker testing
+- [Web Builders](./web-builders.md) - Asset generation

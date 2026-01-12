@@ -899,8 +899,8 @@ fn test_007() {}
         let mut checker = WasmThreadingCompliance::new();
         let result = checker.check(temp_dir.path());
 
-        // Should have run all 5 checks
-        assert_eq!(result.checks.len(), 5);
+        // Should have run all 6 checks (WASM-COMPLY-001 through 006)
+        assert_eq!(result.checks.len(), 6);
     }
 
     #[test]
