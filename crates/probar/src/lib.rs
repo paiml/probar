@@ -485,6 +485,18 @@ pub mod har;
 )]
 pub mod playbook;
 
+/// Presentar YAML Support (PROBAR-SPEC-015)
+///
+/// Native support for testing presentar TUI configurations with
+/// 100-point falsification protocol (F001-F100).
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod presentar;
+
 pub use accessibility::{
     AccessibilityAudit, AccessibilityConfig, AccessibilityIssue, AccessibilityValidator, Color,
     ContrastAnalysis, ContrastPair, FlashDetector, FlashResult, FocusConfig, KeyboardIssue,
@@ -568,6 +580,14 @@ pub use playbook::{
     PlaybookError, PlaybookExecutor, ReachabilityInfo, State as PlaybookState, StateMachine,
     StateMachineValidator, Transition as PlaybookTransition, ValidationIssue, ValidationResult,
     WaitCondition as PlaybookWaitCondition,
+};
+pub use presentar::{
+    generate_falsification_playbook, parse_and_validate as parse_and_validate_presentar,
+    validate_config as validate_presentar_config, Cell as PresentarCell, Color as PresentarColor,
+    FalsificationCheck, FalsificationResult, KeybindingConfig, LayoutConfig, PanelConfig,
+    PanelConfigs, PanelType, PresentarConfig, PresentarError, TerminalAssertion, TerminalSnapshot,
+    ThemeConfig, ValidationResult as PresentarValidationResult, FALSIFICATION_COUNT,
+    SCHEMA_VERSION,
 };
 pub use renacer_integration::{
     ChromeTrace, ChromeTraceEvent, TraceCollector, TraceContext, TraceSpan,

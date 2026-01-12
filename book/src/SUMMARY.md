@@ -43,6 +43,7 @@
 - [Page Objects](./probar/page-objects.md)
 - [Fixtures](./probar/fixtures.md)
 - [TUI Testing](./probar/tui-testing.md)
+- [Presentar YAML Testing](./probar/presentar-testing.md)
 - [Visual Regression](./probar/visual-regression.md)
 - [Playbook Testing](./probar/playbook-testing.md)
 
