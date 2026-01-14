@@ -172,6 +172,18 @@ mod fixture;
 )]
 pub mod tui;
 
+/// TUI Load Testing (Framework-Agnostic Performance Testing)
+///
+/// Test TUI performance with large datasets, hang detection, and frame timing.
+/// Works with any TUI framework (presentar, ratatui, crossterm, etc.).
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod tui_load;
+
 /// Deterministic Replay System (Feature 23 - EDD Compliance)
 #[allow(
     clippy::missing_errors_doc,
@@ -624,6 +636,10 @@ pub use tui::{
     expect_frame, FrameAssertion, FrameSequence, MultiValueTracker, SnapshotManager, TuiFrame,
     TuiSnapshot, TuiTestBackend, ValueTracker,
 };
+pub use tui_load::{
+    ComponentTimings, DataGenerator, IntegrationLoadTest, SyntheticItem, TuiFrameMetrics,
+    TuiLoadAssertion, TuiLoadConfig, TuiLoadError, TuiLoadResult, TuiLoadTest,
+};
 pub use ux_coverage::{
     calculator_coverage, game_coverage, ElementCoverage, ElementId, InteractionType, StateId,
     TrackedInteraction, UxCoverageBuilder, UxCoverageReport, UxCoverageTracker,
@@ -707,6 +723,10 @@ pub mod prelude {
     pub use super::tracing_support::*;
     #[cfg(feature = "tui")]
     pub use super::tui::*;
+    pub use super::tui_load::{
+        ComponentTimings, DataGenerator, IntegrationLoadTest, SyntheticItem, TuiFrameMetrics,
+        TuiLoadAssertion, TuiLoadConfig, TuiLoadError, TuiLoadResult, TuiLoadTest,
+    };
     pub use super::ux_coverage::*;
     pub use super::validators::*;
     pub use super::visual_regression::*;

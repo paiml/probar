@@ -39,7 +39,8 @@ impl TuiFrame {
     #[must_use]
     pub fn from_lines(lines: &[&str]) -> Self {
         let height = lines.len() as u16;
-        let width = lines.iter().map(|l| l.len()).max().unwrap_or(0) as u16;
+        // Count characters, not bytes (important for Unicode TUI content)
+        let width = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as u16;
         let content = lines.iter().map(|s| (*s).to_string()).collect();
 
         Self {
