@@ -221,14 +221,23 @@ impl FetchClient {
     }
 
     /// Fetch bytes from a URL (WASM)
+    /// Works in both main thread (window) and Web Worker (self) contexts
     #[cfg(target_arch = "wasm32")]
     pub async fn fetch_bytes(&self, url: &str) -> Result<Vec<u8>, WebSysError> {
         use wasm_bindgen::JsCast;
         use wasm_bindgen_futures::JsFuture;
 
-        let window = web_sys::window().ok_or(WebSysError::NoWindow)?;
+        // Use global fetch which works in both Window and Worker contexts
+        let global = js_sys::global();
+        let fetch_fn = js_sys::Reflect::get(&global, &wasm_bindgen::JsValue::from_str("fetch"))
+            .map_err(|_| WebSysError::NoWindow)?;
+        let fetch_fn: js_sys::Function = fetch_fn.dyn_into().map_err(|_| WebSysError::NoWindow)?;
 
-        let response = JsFuture::from(window.fetch_with_str(url))
+        let promise = fetch_fn
+            .call1(&wasm_bindgen::JsValue::UNDEFINED, &wasm_bindgen::JsValue::from_str(url))
+            .map_err(|_| WebSysError::FetchFailed)?;
+
+        let response = JsFuture::from(js_sys::Promise::from(promise))
             .await
             .map_err(|_| WebSysError::FetchFailed)?;
 

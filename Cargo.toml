@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.0"
+version = "1.0.2"
 edition = "2021"
 rust-version = "1.75.0"
 license = "MIT OR Apache-2.0"
@@ -79,7 +79,7 @@ syn = { version = "2.0", features = ["full", "visit", "parsing", "extra-traits"]
 bincode = "1.3"
 
 # GPU compute (trueno - SIMD-accelerated tensor operations)
-trueno = { version = "0.12", features = ["gpu"] }
+trueno = { version = "0.14", features = ["gpu"] }
 
 # TUI Testing (EDD compliance)
 # Uses custom TextGrid/MockTty - no ratatui
@@ -87,7 +87,7 @@ crossterm = "0.28"
 
 # ComputeBlock testing (presentar-terminal integration)
 # NOTE: Path dependency until published to crates.io
-presentar-terminal = { path = "../presentar/crates/presentar-terminal" }
+presentar-terminal = { version = "0.3", path = "../presentar/crates/presentar-terminal" }
 presentar-core = { version = "0.3", path = "../presentar/crates/presentar-core" }
 
 # Deterministic replay
