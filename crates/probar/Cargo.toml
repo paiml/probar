@@ -10,7 +10,7 @@ keywords = ["testing", "wasm", "games", "browser", "e2e"]
 categories = ["development-tools::testing", "wasm"]
 
 [features]
-default = ["tui"]
+default = ["tui", "media", "watch"]
 # Enable real browser control (requires chromium)
 browser = ["chromiumoxide", "tokio", "futures", "async-trait"]
 # Enable WASM runtime for logic testing (Phase 1)
@@ -30,18 +30,22 @@ compute-blocks = ["presentar-terminal", "presentar-core"]
 docker = ["bollard", "tokio", "futures", "async-trait"]
 # Property-based testing strategies (PROBAR-SPEC-WASM-001)
 proptest = ["dep:proptest"]
+# Media capture: screenshots, GIF recording, video, visual regression
+media = ["dep:image", "dep:gif", "dep:png", "dep:mp4"]
+# File watching for dev mode
+watch = ["dep:notify"]
 
 [dependencies]
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-image = { workspace = true }
+image = { workspace = true, optional = true }
 base64 = { workspace = true }
 
 # Media generation
-gif = { workspace = true }
-png = { workspace = true }
-mp4 = { workspace = true }
+gif = { workspace = true, optional = true }
+png = { workspace = true, optional = true }
+mp4 = { workspace = true, optional = true }
 
 # TUI testing (EDD compliance) - optional, not available on WASM
 # Uses custom TextGrid instead of ratatui for zero external dependencies
@@ -80,7 +84,7 @@ bincode = { workspace = true }
 # Native-only dependencies (not available on WASM)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Watch mode (Phase 6)
-notify = { workspace = true }
+notify = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 # Optional CDP browser control

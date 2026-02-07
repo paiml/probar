@@ -22,3 +22,10 @@ target
 
 # mdbook generated output
 book/book/
+
+# PMAT
+.pmat/backup/
+.pmat-qa/
+.pmat/context.idx/
+.pmat/workspace.idx/
+.pmat/deps-cache.json

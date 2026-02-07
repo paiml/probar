@@ -109,6 +109,7 @@ mod result;
 mod runtime;
 mod simulation;
 mod snapshot;
+#[cfg(feature = "media")]
 mod visual_regression;
 
 /// State Synchronization Linting (PROBAR-SPEC-WASM-001)
@@ -212,6 +213,7 @@ pub mod ux_coverage;
 pub mod emulation;
 
 /// Media Generation Module (Spec: missing-features-in-pure-rust.md)
+#[cfg(feature = "media")]
 #[allow(
     clippy::missing_errors_doc,
     clippy::must_use_candidate,
@@ -223,7 +225,7 @@ pub mod media;
 
 /// Watch Mode with Hot Reload (Feature 6)
 /// Note: Not available on WASM targets (requires filesystem access)
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "watch"))]
 #[allow(
     clippy::missing_errors_doc,
     clippy::must_use_candidate,
@@ -649,6 +651,7 @@ pub use validators::{
     StreamingMetricRecord, StreamingState, StreamingUxValidator, StreamingValidationError,
     StreamingValidationResult, TestExecutionStats, VuMeterConfig, VuMeterError, VuMeterSample,
 };
+#[cfg(feature = "media")]
 pub use visual_regression::{
     perceptual_diff, ImageDiffResult, MaskRegion, ScreenshotComparison, VisualRegressionConfig,
     VisualRegressionTester,
@@ -657,7 +660,7 @@ pub use wait::{
     wait_timeout, wait_until, FnCondition, LoadState, NavigationOptions, PageEvent, WaitCondition,
     WaitOptions, WaitResult, Waiter, DEFAULT_WAIT_TIMEOUT_MS, NETWORK_IDLE_THRESHOLD_MS,
 };
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "watch"))]
 pub use watch::{
     FileChange, FileChangeKind, FileWatcher, FnWatchHandler, WatchBuilder, WatchConfig,
     WatchHandler, WatchStats,
@@ -729,6 +732,7 @@ pub mod prelude {
     };
     pub use super::ux_coverage::*;
     pub use super::validators::*;
+    #[cfg(feature = "media")]
     pub use super::visual_regression::*;
     pub use super::worker_harness::*;
     pub use super::zero_js::*;
@@ -749,7 +753,7 @@ pub mod prelude {
         WaitCondition, WaitOptions, WaitResult, Waiter, DEFAULT_WAIT_TIMEOUT_MS,
         NETWORK_IDLE_THRESHOLD_MS,
     };
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "watch"))]
     pub use super::watch::*;
     pub use super::web::*;
     pub use super::websocket::*;

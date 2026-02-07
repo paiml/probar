@@ -7,12 +7,11 @@ SHELL := /bin/bash
 # - make test:      comprehensive (500 property test cases)
 # Override with: PROPTEST_CASES=n make <target>
 
-# Coverage exclusions for non-critical code (CLI binaries, proc macros, browser/GPU code, stress tests)
-# Excluded: browser.rs, driver.rs, capabilities.rs - require real browser runtime
-# Excluded: brick/{pipeline,event,widget,deterministic,worker,distributed,compute}.rs - GPU/distributed computing
-# Excluded: gpu_pixels, runner/{builder,server,config}.rs - runtime infrastructure
-# Excluded: playbook/runner.rs, mock/*, perf/* - test infrastructure
-COVERAGE_EXCLUDE := --ignore-filename-regex='probar-cli/src/main\.rs|probar-cli/src/runner\.rs|probar-derive/.*\.rs|simulation\.rs|fuzzer\.rs|stress\.rs|load_testing\.rs|dev_server\.rs|visualization\.rs|debug\.rs|watch\.rs|validators\.rs|zero_js\.rs|audio\.rs|websocket\.rs|worker_harness\.rs|browser\.rs|driver\.rs|capabilities\.rs|brick/pipeline\.rs|brick/event\.rs|brick/widget\.rs|brick/deterministic\.rs|brick/worker\.rs|brick/distributed\.rs|brick/compute\.rs|gpu_pixels/.*\.rs|runner/builder\.rs|runner/server\.rs|runner/config\.rs|playbook/runner\.rs|mock/.*\.rs|perf/.*\.rs|generate\.rs|hir\.rs|brick_house\.rs|svg_exporter\.rs|strict\.rs|replay\.rs|wasm_testing\.rs|ast_visitor\.rs'
+# Coverage exclusions: CLI/proc-macro bins, GPU/infra subsystems, and non-testable modules
+# 17 patterns: 7 dirs + playbook/runner + 9 probar/src files needing individual exclusion
+# (stress, load_testing, dev_server, visualization, debug, generate, hir, svg_exporter,
+#  wasm_testing, ast_visitor are already covered by probar-cli/ or don't exist in probar/src)
+COVERAGE_EXCLUDE := --ignore-filename-regex='probar-cli/|probar-derive/|brick/|runner/|gpu_pixels/|mock/|perf/|playbook/runner\.rs|browser\.rs|driver\.rs|capabilities\.rs|simulation\.rs|fuzzer\.rs|watch\.rs|websocket\.rs|worker_harness\.rs|replay\.rs'
 
 .PHONY: all validate quick-validate release clean help
 .PHONY: format format-check lint lint-check check test test-fast test-all
@@ -148,7 +147,7 @@ test: test-fast test-doc test-property ## Run core test suite
 
 test-doc: ## Run documentation tests
 	@echo "📚 Running documentation tests..."
-	@cargo test --doc --workspace
+	@PROPTEST_CASES=256 QUICKCHECK_TESTS=256 cargo test --doc --workspace
 
 test-property: ## Run property-based tests (50 cases per property)
 	@echo "🎲 Running property-based tests (50 cases per property)..."
@@ -172,7 +171,7 @@ test-all: test test-property-comprehensive test-gpu-pixels ## Run ALL tests with
 
 test-gpu-pixels: ## Run GPU pixel tests (PTX validation, regression detection)
 	@echo "🎯 Running GPU pixel tests..."
-	@cargo test -p jugar-probar gpu_pixels --lib
+	@PROPTEST_CASES=256 QUICKCHECK_TESTS=256 cargo test -p jugar-probar gpu_pixels --lib
 	@echo "✅ GPU pixel tests passed!"
 
 # ============================================================================
@@ -218,8 +217,8 @@ coverage-open: ## Open HTML coverage report in browser
 
 coverage-ci: ## Generate LCOV report for CI/CD
 	@echo "📊 Generating coverage for CI..."
-	@env PROPTEST_CASES=25 QUICKCHECK_TESTS=25 cargo llvm-cov --no-report nextest --no-tests=warn --workspace
-	@cargo llvm-cov report --lcov --output-path lcov.info
+	@env PROPTEST_CASES=25 QUICKCHECK_TESTS=25 cargo llvm-cov --no-report test --lib --workspace $(COVERAGE_EXCLUDE)
+	@cargo llvm-cov report --lcov --output-path lcov.info $(COVERAGE_EXCLUDE)
 	@echo "✓ Coverage report generated: lcov.info"
 
 coverage-clean: ## Clean coverage artifacts

@@ -72,6 +72,13 @@ forbidden_dirs = ["node_modules"]
 # book/book/ contains auto-generated mdbook output (JS files)
 paths = ["book/book", "target"]
 
+[compute-brick]
+enabled = true
+require_safety_comments = true
+require_target_feature = true
+cv_threshold_percent = 15.0
+efficiency_threshold_percent = 25.0
+
 [quality_gate]
 # Required checks that must pass for quality gate
 required_checks = ["complexity", "satd", "security", "duplicates", "coverage", "sections"]

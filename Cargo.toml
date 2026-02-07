@@ -28,7 +28,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Image comparison for visual regression
-image = "0.25"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 # Base64 for export/sharing
 base64 = "0.22"
@@ -43,8 +43,8 @@ wasmtime = "38"
 async-trait = "0.1"
 
 # Media generation (Phase 1)
-gif = "0.13"
-png = "0.17"
+gif = "0.14"
+png = "0.18"
 # Video recording - pure Rust approach
 mp4 = "0.14"
 
@@ -60,7 +60,7 @@ notify = "7.0"
 axum = { version = "0.8", features = ["ws"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "cors", "set-header", "compression-gzip"] }
-tokio-tungstenite = "0.26"
+tokio-tungstenite = "0.28"
 mime_guess = "2.0"
 
 # Tracing (Phase 3)
