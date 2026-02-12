@@ -124,6 +124,7 @@ harness = false
 [[bench]]
 name = "image_ops"
 harness = false
+required-features = ["media"]
 
 [[example]]
 name = "locator_demo"
@@ -136,10 +137,32 @@ path = "examples/accessibility_demo.rs"
 [[example]]
 name = "coverage_demo"
 path = "examples/coverage_demo.rs"
+required-features = ["media"]
 
 [[example]]
 name = "pong_simulation"
 path = "examples/pong_simulation.rs"
+required-features = ["media"]
+
+[[example]]
+name = "gui_coverage"
+path = "examples/gui_coverage.rs"
+required-features = ["media"]
+
+[[example]]
+name = "pixel_coverage_heatmap"
+path = "examples/pixel_coverage_heatmap.rs"
+required-features = ["media"]
+
+[[example]]
+name = "visual_regression_demo"
+path = "examples/visual_regression_demo.rs"
+required-features = ["media"]
+
+[[example]]
+name = "wasm_pixel_gui_demo"
+path = "examples/wasm_pixel_gui_demo.rs"
+required-features = ["media"]
 
 [[example]]
 name = "docker_demo"
@@ -153,6 +176,11 @@ path = "examples/zero_js_demo.rs"
 [[example]]
 name = "worker_harness_demo"
 path = "examples/worker_harness_demo.rs"
+
+[[example]]
+name = "watch_mode"
+path = "examples/watch_mode.rs"
+required-features = ["watch"]
 
 [lints]
 workspace = true

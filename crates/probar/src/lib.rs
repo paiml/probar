@@ -319,6 +319,9 @@ pub mod coverage;
 pub mod web;
 
 /// Pixel-Level GUI Coverage Visualization (Advanced Feature A)
+///
+/// Requires the `media` feature for `image` crate support.
+#[cfg(feature = "media")]
 #[allow(
     clippy::missing_errors_doc,
     clippy::must_use_candidate,
@@ -708,6 +711,7 @@ pub mod prelude {
     pub use super::page_object::*;
     pub use super::perf::*;
     pub use super::performance::*;
+    #[cfg(feature = "media")]
     pub use super::pixel_coverage::*;
     pub use super::replay::*;
     pub use super::reporter::*;
