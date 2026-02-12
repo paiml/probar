@@ -414,6 +414,7 @@ Probar is built on pragmatic testing principles:
 - **[API Docs](https://docs.rs/jugar-probar)** - Rust documentation
 - **[GUI Coverage Guide](book/src/probar/ux-coverage.md)** - GUI coverage tutorial
 - **[Examples](crates/probar/examples/)** - 20+ runnable examples
+- 🤖 [Coursera Hugging Face AI Development Specialization](https://www.coursera.org/specializations/hugging-face-ai-development) - Build Production AI systems with Hugging Face in Pure Rust
 
 ## Examples
 
