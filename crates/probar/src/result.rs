@@ -207,4 +207,18 @@ pub enum ProbarError {
         /// Error message
         message: String,
     },
+
+    /// AV sync verification error
+    #[error("AV sync error: {message}")]
+    AvSyncError {
+        /// Error message
+        message: String,
+    },
+
+    /// ffmpeg execution error
+    #[error("ffmpeg error: {message}")]
+    FfmpegError {
+        /// Error message
+        message: String,
+    },
 }

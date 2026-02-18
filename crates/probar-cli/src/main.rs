@@ -66,6 +66,10 @@ fn run() -> CliResult<()> {
         Commands::Watch(args) => run_watch(&args),
         Commands::Playbook(args) => run_playbook(&config, &args),
         Commands::Comply(args) => run_comply(&config, &args),
+        Commands::AvSync(args) => run_av_sync(&config, &args),
+        Commands::Audio(args) => run_audio(&config, &args),
+        Commands::Video(args) => run_video(&config, &args),
+        Commands::Animation(args) => run_animation(&config, &args),
         Commands::Stress(args) => run_stress(&config, &args),
     }
 }
@@ -320,15 +324,13 @@ fn run_serve_score(args: &probador::ScoreArgs, _default_dir: &std::path::Path) -
 /// 3. Console errors: Any console.error or uncaught exceptions? (errors = FAIL)
 /// 4. WASM initialization: Does the WASM module load? (load failure = FAIL)
 fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
-    use probador::{DevServerConfig, ModuleValidator};
-    use std::net::TcpListener;
+    use probador::DevServerConfig;
 
     eprintln!("\n══════════════════════════════════════════════════════════════");
     eprintln!("  LIVE BROWSER VALIDATION (Falsification Mode)");
     eprintln!("══════════════════════════════════════════════════════════════\n");
     eprintln!("This validates the app ACTUALLY WORKS by trying to break it.\n");
 
-    // Find HTML files to test
     let html_files = find_html_files(&args.path);
     if html_files.is_empty() {
         eprintln!("✗ FAIL: No HTML files found in {}", args.path.display());
@@ -344,11 +346,42 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
     }
     eprintln!();
 
-    // Step 1: Static module validation (fast, no browser needed)
-    eprintln!("[1/4] Module Resolution Check");
-    let validator = ModuleValidator::new(&args.path);
+    // Step 1: Static module validation
+    let pages_with_wasm = validate_module_imports(&args.path)?;
 
-    // First scan imports to identify which pages have WASM
+    // Step 2: Start temporary server
+    eprintln!("[2/4] Starting Validation Server");
+    let port = resolve_server_port(args.port)?;
+    eprintln!("  Starting server on port {port}...\n");
+
+    let config = DevServerConfig {
+        directory: args.path.clone(),
+        port,
+        ws_port: port + 1,
+        cors: true,
+        cross_origin_isolated: true,
+    };
+
+    let rt = tokio::runtime::Runtime::new().map_err(|e| {
+        probador::CliError::test_execution(format!("Failed to create runtime: {e}"))
+    })?;
+
+    let validation_errors = rt.block_on(async {
+        run_browser_validation_async(&args.path, &html_files, port, config, &pages_with_wasm).await
+    })?;
+
+    report_browser_validation_results(&validation_errors)
+}
+
+/// Step 1: Static module resolution check. Returns set of pages with WASM imports.
+fn validate_module_imports(
+    path: &std::path::Path,
+) -> CliResult<std::collections::HashSet<std::path::PathBuf>> {
+    use probador::ModuleValidator;
+
+    eprintln!("[1/4] Module Resolution Check");
+    let validator = ModuleValidator::new(path);
+
     let imports = validator.scan_imports();
     let pages_with_wasm: std::collections::HashSet<_> = imports
         .iter()
@@ -368,32 +401,8 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
     }
 
     let validation_result = validator.validate();
-
     if !validation_result.is_ok() {
-        eprintln!(
-            "  ✗ FAIL: {} broken import(s) found\n",
-            validation_result.errors.len()
-        );
-        for error in &validation_result.errors {
-            eprintln!(
-                "    • {} (from {}:{})",
-                error.import.import_path,
-                error.import.source_file.display(),
-                error.import.line_number
-            );
-            let status_str = if error.status == 404 {
-                "404 Not Found".to_string()
-            } else {
-                format!("{}", error.status)
-            };
-            eprintln!("      Status: {} - {}", status_str, error.message);
-            eprintln!("      MIME type: {}", error.actual_mime);
-        }
-        eprintln!();
-        eprintln!("══════════════════════════════════════════════════════════════");
-        eprintln!("  RESULT: FAIL (Grade: F)");
-        eprintln!("══════════════════════════════════════════════════════════════");
-        eprintln!("\n  Fix the broken imports above and run again.\n");
+        print_module_import_errors(&validation_result);
         return Err(probador::CliError::test_execution(format!(
             "Module resolution failed: {} broken import(s)",
             validation_result.errors.len()
@@ -404,45 +413,59 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
         validation_result.total_imports
     );
 
-    // Step 2: Start temporary server
-    eprintln!("[2/4] Starting Validation Server");
-    let port = if args.port == 0 {
-        // Find an available port
-        let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| {
-            probador::CliError::test_execution(format!("Failed to find available port: {e}"))
-        })?;
-        listener
-            .local_addr()
-            .map_err(|e| {
-                probador::CliError::test_execution(format!("Failed to get local address: {e}"))
-            })?
-            .port()
-    } else {
-        args.port
-    };
+    Ok(pages_with_wasm)
+}
 
-    eprintln!("  Starting server on port {port}...\n");
-
-    let config = DevServerConfig {
-        directory: args.path.clone(),
-        port,
-        ws_port: port + 1,
-        cors: true,
-        cross_origin_isolated: true,
-    };
-
-    let rt = tokio::runtime::Runtime::new().map_err(|e| {
-        probador::CliError::test_execution(format!("Failed to create runtime: {e}"))
-    })?;
-
-    // Run browser validation
-    let validation_errors = rt.block_on(async {
-        run_browser_validation_async(&args.path, &html_files, port, config, &pages_with_wasm).await
-    })?;
-
-    // Report results
+/// Print detailed module import errors.
+fn print_module_import_errors(result: &probador::ModuleValidationResult) {
+    eprintln!(
+        "  ✗ FAIL: {} broken import(s) found\n",
+        result.errors.len()
+    );
+    for error in &result.errors {
+        eprintln!(
+            "    • {} (from {}:{})",
+            error.import.import_path,
+            error.import.source_file.display(),
+            error.import.line_number
+        );
+        let status_str = if error.status == 404 {
+            "404 Not Found".to_string()
+        } else {
+            format!("{}", error.status)
+        };
+        eprintln!("      Status: {status_str} - {}", error.message);
+        eprintln!("      MIME type: {}", error.actual_mime);
+    }
+    eprintln!();
     eprintln!("══════════════════════════════════════════════════════════════");
-    if validation_errors.is_empty() {
+    eprintln!("  RESULT: FAIL (Grade: F)");
+    eprintln!("══════════════════════════════════════════════════════════════");
+    eprintln!("\n  Fix the broken imports above and run again.\n");
+}
+
+/// Resolve the server port: use specified port or find an available one.
+fn resolve_server_port(port: u16) -> CliResult<u16> {
+    use std::net::TcpListener;
+
+    if port != 0 {
+        return Ok(port);
+    }
+    let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| {
+        probador::CliError::test_execution(format!("Failed to find available port: {e}"))
+    })?;
+    listener
+        .local_addr()
+        .map_err(|e| {
+            probador::CliError::test_execution(format!("Failed to get local address: {e}"))
+        })
+        .map(|addr| addr.port())
+}
+
+/// Report final browser validation results.
+fn report_browser_validation_results(errors: &[String]) -> CliResult<()> {
+    eprintln!("══════════════════════════════════════════════════════════════");
+    if errors.is_empty() {
         eprintln!("  RESULT: PASS (App works!)");
         eprintln!("══════════════════════════════════════════════════════════════");
         eprintln!("\n  Could not prove the app is broken. All validation checks passed.\n");
@@ -452,15 +475,15 @@ fn run_live_browser_validation(args: &probador::ScoreArgs) -> CliResult<()> {
         eprintln!("══════════════════════════════════════════════════════════════");
         eprintln!(
             "\n  Found {} issue(s) that prove the app is broken:\n",
-            validation_errors.len()
+            errors.len()
         );
-        for (i, error) in validation_errors.iter().enumerate() {
-            eprintln!("  {}. {}", i + 1, error);
+        for (i, error) in errors.iter().enumerate() {
+            eprintln!("  {}. {error}", i + 1);
         }
         eprintln!();
         Err(probador::CliError::test_execution(format!(
             "Live validation failed: {} issue(s) found",
-            validation_errors.len()
+            errors.len()
         )))
     }
 }
@@ -493,147 +516,11 @@ async fn run_browser_validation_async(
 
     eprintln!("[3/4] Browser Bootstrap Check");
 
-    // Try to launch browser
     #[cfg(feature = "browser")]
     {
-        use jugar_probar::{Browser, BrowserConfig, BrowserConsoleLevel};
-        use tokio::time::timeout;
-
-        let browser_config = BrowserConfig::default()
-            .with_headless(true)
-            .with_no_sandbox()
-            .with_viewport(1280, 720);
-
-        match Browser::launch(browser_config).await {
-            Ok(browser) => {
-                for html_file in html_files {
-                    // Convert file path to URL
-                    let relative_path = html_file.strip_prefix(serve_dir).unwrap_or(html_file);
-                    let url_path = relative_path.to_string_lossy().replace('\\', "/");
-                    let url = format!("http://127.0.0.1:{port}/{url_path}");
-
-                    // Check if this page is expected to have WASM
-                    let expects_wasm = pages_with_wasm.contains(html_file);
-
-                    eprintln!("  Testing: {url}");
-                    if expects_wasm {
-                        eprintln!("    (WASM required - imported in HTML)");
-                    }
-
-                    match browser.new_page().await {
-                        Ok(mut page) => {
-                            // Enable console capture BEFORE navigation to catch load errors
-                            if let Err(e) = page.enable_console_capture().await {
-                                eprintln!("    Warning: Could not enable console capture: {e}");
-                            }
-                            if let Err(e) = page.inject_console_capture().await {
-                                eprintln!("    Warning: Could not inject console capture: {e}");
-                            }
-
-                            // Navigate to page with timeout
-                            let nav_result =
-                                timeout(Duration::from_secs(30), page.goto(&url)).await;
-
-                            match nav_result {
-                                Ok(Ok(())) => {
-                                    // Wait a bit for JS to execute
-                                    tokio::time::sleep(Duration::from_secs(2)).await;
-
-                                    // Fetch console messages - FALSIFICATION: any error proves broken
-                                    if let Ok(messages) = page.fetch_console_messages().await {
-                                        let error_messages: Vec<_> = messages
-                                            .iter()
-                                            .filter(|m| m.level == BrowserConsoleLevel::Error)
-                                            .collect();
-
-                                        if !error_messages.is_empty() {
-                                            eprintln!(
-                                                "    ✗ {} console error(s) found - APP IS BROKEN",
-                                                error_messages.len()
-                                            );
-                                            for msg in &error_messages {
-                                                eprintln!("      └─ {}", msg.text);
-                                                errors.push(format!(
-                                                    "[{}] Console error: {}",
-                                                    url_path, msg.text
-                                                ));
-                                            }
-                                        } else {
-                                            eprintln!("    ✓ No console errors");
-                                        }
-                                    }
-
-                                    // Check for WASM ready signal - FALSIFICATION if page requires WASM
-                                    eprintln!("\n[4/4] WASM Initialization Check");
-                                    let wasm_result = timeout(
-                                        Duration::from_secs(15),
-                                        page.wait_for_wasm_ready(),
-                                    )
-                                    .await;
-
-                                    match wasm_result {
-                                        Ok(Ok(())) => {
-                                            eprintln!("  ✓ WASM initialized successfully\n");
-                                        }
-                                        Ok(Err(e)) => {
-                                            if expects_wasm {
-                                                // FALSIFICATION: WASM was required but failed
-                                                eprintln!("  ✗ WASM initialization FAILED - APP IS BROKEN");
-                                                eprintln!("    Error: {e}\n");
-                                                errors.push(format!(
-                                                    "[{}] WASM required but failed: {}",
-                                                    url_path, e
-                                                ));
-                                            } else {
-                                                eprintln!("  ⚠ WASM initialization: {e}");
-                                                eprintln!("    (No WASM imports detected - may be expected)\n");
-                                            }
-                                        }
-                                        Err(_) => {
-                                            if expects_wasm {
-                                                // FALSIFICATION: WASM was required but timed out
-                                                eprintln!("  ✗ WASM initialization TIMED OUT - APP IS BROKEN");
-                                                eprintln!("    Page imports WASM but it failed to initialize.\n");
-                                                errors.push(format!(
-                                                    "[{}] WASM required but timed out after 15s",
-                                                    url_path
-                                                ));
-                                            } else {
-                                                eprintln!("  ⚠ WASM initialization timed out");
-                                                eprintln!("    (No WASM imports detected - may be expected)\n");
-                                            }
-                                        }
-                                    }
-                                }
-                                Ok(Err(e)) => {
-                                    eprintln!("    ✗ Navigation failed - APP IS BROKEN");
-                                    eprintln!("    Error: {e}");
-                                    errors.push(format!("[{}] Navigation failed: {}", url_path, e));
-                                }
-                                Err(_) => {
-                                    eprintln!(
-                                        "    ✗ Navigation timed out after 30s - APP IS BROKEN"
-                                    );
-                                    errors.push(format!("[{}] Navigation timed out", url_path));
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("    ✗ Failed to create page: {e}");
-                            errors.push(format!("Failed to create browser page: {}", e));
-                        }
-                    }
-                }
-
-                // Close browser
-                let _ = browser.close().await;
-            }
-            Err(e) => {
-                eprintln!("  ✗ Failed to launch browser: {e}");
-                eprintln!("    Make sure Chrome/Chromium is installed.\n");
-                errors.push(format!("Failed to launch browser: {}", e));
-            }
-        }
+        errors.extend(
+            run_browser_checks(serve_dir, html_files, port, pages_with_wasm).await,
+        );
     }
 
     #[cfg(not(feature = "browser"))]
@@ -650,6 +537,175 @@ async fn run_browser_validation_async(
     server_handle.abort();
 
     Ok(errors)
+}
+
+/// Launch browser and validate all HTML pages.
+#[cfg(feature = "browser")]
+async fn run_browser_checks(
+    serve_dir: &std::path::Path,
+    html_files: &[std::path::PathBuf],
+    port: u16,
+    pages_with_wasm: &std::collections::HashSet<std::path::PathBuf>,
+) -> Vec<String> {
+    use jugar_probar::{Browser, BrowserConfig};
+
+    let browser_config = BrowserConfig::default()
+        .with_headless(true)
+        .with_no_sandbox()
+        .with_viewport(1280, 720);
+
+    let browser = match Browser::launch(browser_config).await {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("  ✗ Failed to launch browser: {e}");
+            eprintln!("    Make sure Chrome/Chromium is installed.\n");
+            return vec![format!("Failed to launch browser: {e}")];
+        }
+    };
+
+    let mut errors = Vec::new();
+    for html_file in html_files {
+        errors.extend(
+            validate_browser_page(&browser, serve_dir, html_file, port, pages_with_wasm).await,
+        );
+    }
+
+    let _ = browser.close().await;
+    errors
+}
+
+/// Validate a single HTML page in the browser: navigate, check console errors, check WASM.
+#[cfg(feature = "browser")]
+async fn validate_browser_page(
+    browser: &jugar_probar::Browser,
+    serve_dir: &std::path::Path,
+    html_file: &std::path::Path,
+    port: u16,
+    pages_with_wasm: &std::collections::HashSet<std::path::PathBuf>,
+) -> Vec<String> {
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    let mut errors = Vec::new();
+    let relative_path = html_file.strip_prefix(serve_dir).unwrap_or(html_file);
+    let url_path = relative_path.to_string_lossy().replace('\\', "/");
+    let url = format!("http://127.0.0.1:{port}/{url_path}");
+    let expects_wasm = pages_with_wasm.contains(html_file);
+
+    eprintln!("  Testing: {url}");
+    if expects_wasm {
+        eprintln!("    (WASM required - imported in HTML)");
+    }
+
+    let mut page = match browser.new_page().await {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("    ✗ Failed to create page: {e}");
+            return vec![format!("Failed to create browser page: {e}")];
+        }
+    };
+
+    // Enable console capture BEFORE navigation to catch load errors
+    if let Err(e) = page.enable_console_capture().await {
+        eprintln!("    Warning: Could not enable console capture: {e}");
+    }
+    if let Err(e) = page.inject_console_capture().await {
+        eprintln!("    Warning: Could not inject console capture: {e}");
+    }
+
+    // Navigate to page with timeout
+    let nav_result = timeout(Duration::from_secs(30), page.goto(&url)).await;
+    match nav_result {
+        Ok(Ok(())) => {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            errors.extend(check_page_console_errors(&page, &url_path).await);
+            errors.extend(check_page_wasm_init(&mut page, &url_path, expects_wasm).await);
+        }
+        Ok(Err(e)) => {
+            eprintln!("    ✗ Navigation failed - APP IS BROKEN");
+            eprintln!("    Error: {e}");
+            errors.push(format!("[{url_path}] Navigation failed: {e}"));
+        }
+        Err(_) => {
+            eprintln!("    ✗ Navigation timed out after 30s - APP IS BROKEN");
+            errors.push(format!("[{url_path}] Navigation timed out"));
+        }
+    }
+
+    errors
+}
+
+/// Check for console errors on a loaded page.
+#[cfg(feature = "browser")]
+async fn check_page_console_errors(
+    page: &jugar_probar::Page,
+    url_path: &str,
+) -> Vec<String> {
+    use jugar_probar::BrowserConsoleLevel;
+
+    let mut errors = Vec::new();
+    if let Ok(messages) = page.fetch_console_messages().await {
+        let error_messages: Vec<_> = messages
+            .iter()
+            .filter(|m| m.level == BrowserConsoleLevel::Error)
+            .collect();
+
+        if error_messages.is_empty() {
+            eprintln!("    ✓ No console errors");
+        } else {
+            eprintln!(
+                "    ✗ {} console error(s) found - APP IS BROKEN",
+                error_messages.len()
+            );
+            for msg in &error_messages {
+                eprintln!("      └─ {}", msg.text);
+                errors.push(format!("[{url_path}] Console error: {}", msg.text));
+            }
+        }
+    }
+    errors
+}
+
+/// Check WASM initialization on a loaded page.
+#[cfg(feature = "browser")]
+async fn check_page_wasm_init(
+    page: &mut jugar_probar::Page,
+    url_path: &str,
+    expects_wasm: bool,
+) -> Vec<String> {
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    let mut errors = Vec::new();
+    eprintln!("\n[4/4] WASM Initialization Check");
+
+    let wasm_result = timeout(Duration::from_secs(15), page.wait_for_wasm_ready()).await;
+    match wasm_result {
+        Ok(Ok(())) => {
+            eprintln!("  ✓ WASM initialized successfully\n");
+        }
+        Ok(Err(e)) => {
+            if expects_wasm {
+                eprintln!("  ✗ WASM initialization FAILED - APP IS BROKEN");
+                eprintln!("    Error: {e}\n");
+                errors.push(format!("[{url_path}] WASM required but failed: {e}"));
+            } else {
+                eprintln!("  ⚠ WASM initialization: {e}");
+                eprintln!("    (No WASM imports detected - may be expected)\n");
+            }
+        }
+        Err(_) => {
+            if expects_wasm {
+                eprintln!("  ✗ WASM initialization TIMED OUT - APP IS BROKEN");
+                eprintln!("    Page imports WASM but it failed to initialize.\n");
+                errors.push(format!("[{url_path}] WASM required but timed out after 15s"));
+            } else {
+                eprintln!("  ⚠ WASM initialization timed out");
+                eprintln!("    (No WASM imports detected - may be expected)\n");
+            }
+        }
+    }
+    errors
 }
 
 fn run_build(args: &probador::BuildArgs) -> CliResult<()> {
@@ -873,189 +929,56 @@ fn run_watch(args: &probador::WatchArgs) -> CliResult<()> {
     })
 }
 
-fn run_playbook(config: &CliConfig, args: &probador::PlaybookArgs) -> CliResult<()> {
-    use jugar_probar::playbook::{
-        to_dot, to_svg, MutationClass, MutationGenerator, Playbook, StateMachineValidator,
-    };
+fn run_av_sync(config: &CliConfig, args: &probador::AvSyncArgs) -> CliResult<()> {
+    use probador::handlers::av_sync;
+    use probador::AvSyncSubcommand;
 
+    match &args.subcommand {
+        AvSyncSubcommand::Check(check_args) => av_sync::execute_check(config, check_args),
+        AvSyncSubcommand::Report(report_args) => av_sync::execute_report(config, report_args),
+    }
+}
+
+fn run_audio(config: &CliConfig, args: &probador::AudioArgs) -> CliResult<()> {
+    use probador::handlers::audio;
+    use probador::AudioSubcommand;
+
+    match &args.subcommand {
+        AudioSubcommand::Check(check_args) => audio::execute_check(config, check_args),
+    }
+}
+
+fn run_video(config: &CliConfig, args: &probador::VideoArgs) -> CliResult<()> {
+    use probador::handlers::video;
+    use probador::VideoSubcommand;
+
+    match &args.subcommand {
+        VideoSubcommand::Check(check_args) => video::execute_check(config, check_args),
+    }
+}
+
+fn run_animation(config: &CliConfig, args: &probador::AnimationArgs) -> CliResult<()> {
+    use probador::handlers::animation;
+    use probador::AnimationSubcommand;
+
+    match &args.subcommand {
+        AnimationSubcommand::Check(check_args) => animation::execute_check(config, check_args),
+    }
+}
+
+fn run_playbook(config: &CliConfig, args: &probador::PlaybookArgs) -> CliResult<()> {
     if config.verbosity != Verbosity::Quiet {
         println!("Running playbook(s)...");
     }
 
     let mut all_passed = true;
-
     for file in &args.files {
         if config.verbosity != Verbosity::Quiet {
             println!("\nProcessing: {}", file.display());
         }
-
-        // Load playbook from YAML file
-        let yaml_content = std::fs::read_to_string(file).map_err(|e| {
-            probador::CliError::test_execution(format!(
-                "Failed to read playbook {}: {}",
-                file.display(),
-                e
-            ))
-        })?;
-
-        let playbook = Playbook::from_yaml(&yaml_content).map_err(|e| {
-            probador::CliError::test_execution(format!(
-                "Failed to parse playbook {}: {}",
-                file.display(),
-                e
-            ))
-        })?;
-
-        // Validate the state machine
-        let validator = StateMachineValidator::new(&playbook);
-        let validation_result = validator.validate();
-
-        if config.verbosity != Verbosity::Quiet {
-            println!("  State machine: {}", playbook.machine.id);
-            println!("  States: {}", playbook.machine.states.len());
-            println!("  Transitions: {}", playbook.machine.transitions.len());
-            println!(
-                "  Valid: {}",
-                if validation_result.is_valid {
-                    "yes"
-                } else {
-                    "no"
-                }
-            );
-        }
-
-        if !validation_result.is_valid {
+        let passed = process_single_playbook(config, args, file)?;
+        if !passed {
             all_passed = false;
-            for issue in &validation_result.issues {
-                eprintln!("  Issue: {issue:?}");
-            }
-        }
-
-        // Handle --validate (dry run)
-        if args.validate {
-            if config.verbosity != Verbosity::Quiet {
-                println!("  Validation only mode - skipping execution");
-            }
-            continue;
-        }
-
-        // Handle --export
-        if let Some(ref format) = args.export {
-            let diagram = match format {
-                probador::DiagramFormat::Dot => to_dot(&playbook),
-                probador::DiagramFormat::Svg => to_svg(&playbook),
-            };
-
-            if let Some(ref output_path) = args.export_output {
-                std::fs::write(output_path, &diagram).map_err(|e| {
-                    probador::CliError::report_generation(format!("Failed to write diagram: {}", e))
-                })?;
-                if config.verbosity != Verbosity::Quiet {
-                    println!("  Diagram exported to: {}", output_path.display());
-                }
-            } else {
-                println!("{diagram}");
-            }
-        }
-
-        // Handle --mutate
-        if args.mutate {
-            let generator = MutationGenerator::new(&playbook);
-
-            let classes_to_run: Vec<MutationClass> =
-                if let Some(ref class_names) = args.mutation_classes {
-                    class_names
-                        .iter()
-                        .filter_map(|name| match name.as_str() {
-                            "M1" => Some(MutationClass::StateRemoval),
-                            "M2" => Some(MutationClass::TransitionRemoval),
-                            "M3" => Some(MutationClass::EventSwap),
-                            "M4" => Some(MutationClass::TargetSwap),
-                            "M5" => Some(MutationClass::GuardNegation),
-                            _ => {
-                                eprintln!("Unknown mutation class: {name}");
-                                None
-                            }
-                        })
-                        .collect()
-                } else {
-                    MutationClass::all()
-                };
-
-            if config.verbosity != Verbosity::Quiet {
-                println!(
-                    "  Running mutation testing ({} classes)...",
-                    classes_to_run.len()
-                );
-            }
-
-            let mut total_mutants = 0;
-            for class in &classes_to_run {
-                let mutants = generator.generate(*class);
-                if config.verbosity != Verbosity::Quiet {
-                    println!("    {}: {} mutants", class.id(), mutants.len());
-                }
-                total_mutants += mutants.len();
-            }
-
-            if config.verbosity != Verbosity::Quiet {
-                println!("  Total mutants generated: {total_mutants}");
-            }
-        }
-
-        // Output results based on format
-        match args.format {
-            probador::PlaybookOutputFormat::Json => {
-                let result = serde_json::json!({
-                    "file": file.display().to_string(),
-                    "machine_id": playbook.machine.id,
-                    "states": playbook.machine.states.len(),
-                    "transitions": playbook.machine.transitions.len(),
-                    "valid": validation_result.is_valid,
-                    "issues": validation_result.issues.len(),
-                });
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&result).unwrap_or_default()
-                );
-            }
-            probador::PlaybookOutputFormat::Junit => {
-                let timestamp = chrono::Utc::now().to_rfc3339();
-                let failures = i32::from(!validation_result.is_valid);
-                let junit = format!(
-                    r#"<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="playbook" tests="1" failures="{}" timestamp="{}">
-  <testsuite name="{}" tests="1" failures="{}">
-    <testcase name="validation" classname="{}">
-      {}
-    </testcase>
-  </testsuite>
-</testsuites>"#,
-                    failures,
-                    timestamp,
-                    playbook.machine.id,
-                    failures,
-                    file.display(),
-                    if validation_result.is_valid {
-                        String::new()
-                    } else {
-                        format!(
-                            "<failure message=\"Validation failed\">{} issues</failure>",
-                            validation_result.issues.len()
-                        )
-                    }
-                );
-                println!("{junit}");
-            }
-            probador::PlaybookOutputFormat::Text => {
-                // Already printed above
-            }
-        }
-
-        if args.fail_fast && !validation_result.is_valid {
-            return Err(probador::CliError::test_execution(
-                "Playbook validation failed (--fail-fast)".to_string(),
-            ));
         }
     }
 
@@ -1066,6 +989,227 @@ fn run_playbook(config: &CliConfig, args: &probador::PlaybookArgs) -> CliResult<
             "One or more playbooks failed validation".to_string(),
         ))
     }
+}
+
+/// Process a single playbook file: validate, optionally export/mutate/format.
+/// Returns true if validation passed.
+fn process_single_playbook(
+    config: &CliConfig,
+    args: &probador::PlaybookArgs,
+    file: &std::path::Path,
+) -> CliResult<bool> {
+    use jugar_probar::playbook::StateMachineValidator;
+
+    let playbook = load_playbook(file)?;
+    let validator = StateMachineValidator::new(&playbook);
+    let validation_result = validator.validate();
+
+    print_playbook_summary(config, &playbook, &validation_result);
+
+    if !validation_result.is_valid {
+        for issue in &validation_result.issues {
+            eprintln!("  Issue: {issue:?}");
+        }
+    }
+
+    if args.validate {
+        if config.verbosity != Verbosity::Quiet {
+            println!("  Validation only mode - skipping execution");
+        }
+        return Ok(validation_result.is_valid);
+    }
+
+    handle_playbook_export(config, args, &playbook)?;
+    handle_playbook_mutate(config, args, &playbook);
+    format_playbook_output(args, file, &playbook, &validation_result);
+
+    if args.fail_fast && !validation_result.is_valid {
+        return Err(probador::CliError::test_execution(
+            "Playbook validation failed (--fail-fast)".to_string(),
+        ));
+    }
+
+    Ok(validation_result.is_valid)
+}
+
+fn load_playbook(
+    file: &std::path::Path,
+) -> CliResult<jugar_probar::playbook::Playbook> {
+    use jugar_probar::playbook::Playbook;
+
+    let yaml_content = std::fs::read_to_string(file).map_err(|e| {
+        probador::CliError::test_execution(format!(
+            "Failed to read playbook {}: {e}",
+            file.display(),
+        ))
+    })?;
+    Playbook::from_yaml(&yaml_content).map_err(|e| {
+        probador::CliError::test_execution(format!(
+            "Failed to parse playbook {}: {e}",
+            file.display(),
+        ))
+    })
+}
+
+fn print_playbook_summary(
+    config: &CliConfig,
+    playbook: &jugar_probar::playbook::Playbook,
+    validation: &jugar_probar::playbook::ValidationResult,
+) {
+    if config.verbosity == Verbosity::Quiet {
+        return;
+    }
+    println!("  State machine: {}", playbook.machine.id);
+    println!("  States: {}", playbook.machine.states.len());
+    println!("  Transitions: {}", playbook.machine.transitions.len());
+    println!(
+        "  Valid: {}",
+        if validation.is_valid { "yes" } else { "no" }
+    );
+}
+
+fn handle_playbook_export(
+    config: &CliConfig,
+    args: &probador::PlaybookArgs,
+    playbook: &jugar_probar::playbook::Playbook,
+) -> CliResult<()> {
+    use jugar_probar::playbook::{to_dot, to_svg};
+
+    let Some(ref format) = args.export else {
+        return Ok(());
+    };
+
+    let diagram = match format {
+        probador::DiagramFormat::Dot => to_dot(playbook),
+        probador::DiagramFormat::Svg => to_svg(playbook),
+    };
+
+    if let Some(ref output_path) = args.export_output {
+        std::fs::write(output_path, &diagram).map_err(|e| {
+            probador::CliError::report_generation(format!("Failed to write diagram: {e}"))
+        })?;
+        if config.verbosity != Verbosity::Quiet {
+            println!("  Diagram exported to: {}", output_path.display());
+        }
+    } else {
+        println!("{diagram}");
+    }
+    Ok(())
+}
+
+fn handle_playbook_mutate(
+    config: &CliConfig,
+    args: &probador::PlaybookArgs,
+    playbook: &jugar_probar::playbook::Playbook,
+) {
+    use jugar_probar::playbook::MutationGenerator;
+
+    if !args.mutate {
+        return;
+    }
+
+    let generator = MutationGenerator::new(playbook);
+    let classes_to_run = parse_mutation_classes(args.mutation_classes.as_ref());
+
+    if config.verbosity != Verbosity::Quiet {
+        println!(
+            "  Running mutation testing ({} classes)...",
+            classes_to_run.len()
+        );
+    }
+
+    let mut total_mutants = 0;
+    for class in &classes_to_run {
+        let mutants = generator.generate(*class);
+        if config.verbosity != Verbosity::Quiet {
+            println!("    {}: {} mutants", class.id(), mutants.len());
+        }
+        total_mutants += mutants.len();
+    }
+
+    if config.verbosity != Verbosity::Quiet {
+        println!("  Total mutants generated: {total_mutants}");
+    }
+}
+
+fn parse_mutation_classes(
+    class_names: Option<&Vec<String>>,
+) -> Vec<jugar_probar::playbook::MutationClass> {
+    use jugar_probar::playbook::MutationClass;
+
+    class_names.map_or_else(MutationClass::all, |names| {
+        names
+            .iter()
+            .filter_map(|name| match name.as_str() {
+                "M1" => Some(MutationClass::StateRemoval),
+                "M2" => Some(MutationClass::TransitionRemoval),
+                "M3" => Some(MutationClass::EventSwap),
+                "M4" => Some(MutationClass::TargetSwap),
+                "M5" => Some(MutationClass::GuardNegation),
+                _ => {
+                    eprintln!("Unknown mutation class: {name}");
+                    None
+                }
+            })
+            .collect()
+    })
+}
+
+fn format_playbook_output(
+    args: &probador::PlaybookArgs,
+    file: &std::path::Path,
+    playbook: &jugar_probar::playbook::Playbook,
+    validation: &jugar_probar::playbook::ValidationResult,
+) {
+    match args.format {
+        probador::PlaybookOutputFormat::Json => {
+            let result = serde_json::json!({
+                "file": file.display().to_string(),
+                "machine_id": playbook.machine.id,
+                "states": playbook.machine.states.len(),
+                "transitions": playbook.machine.transitions.len(),
+                "valid": validation.is_valid,
+                "issues": validation.issues.len(),
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&result).unwrap_or_default()
+            );
+        }
+        probador::PlaybookOutputFormat::Junit => {
+            print_playbook_junit(file, playbook, validation);
+        }
+        probador::PlaybookOutputFormat::Text => {} // Already printed in summary
+    }
+}
+
+fn print_playbook_junit(
+    file: &std::path::Path,
+    playbook: &jugar_probar::playbook::Playbook,
+    validation: &jugar_probar::playbook::ValidationResult,
+) {
+    let timestamp = chrono::Utc::now().to_rfc3339();
+    let failures = i32::from(!validation.is_valid);
+    let failure_elem = if validation.is_valid {
+        String::new()
+    } else {
+        format!(
+            "<failure message=\"Validation failed\">{} issues</failure>",
+            validation.issues.len()
+        )
+    };
+    println!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="playbook" tests="1" failures="{failures}" timestamp="{timestamp}">
+  <testsuite name="{}" tests="1" failures="{failures}">
+    <testcase name="validation" classname="{}">
+      {failure_elem}
+    </testcase>
+  </testsuite>
+</testsuites>"#,
+        playbook.machine.id,
+        file.display(),
+    );
 }
 
 // =============================================================================
@@ -1122,10 +1266,6 @@ fn run_stress(_config: &CliConfig, args: &probador::StressArgs) -> CliResult<()>
 /// Implements the 10-point compliance checklist from the Advanced Probador
 /// Testing Concepts specification.
 fn run_comply(config: &CliConfig, args: &probador::ComplyArgs) -> CliResult<()> {
-    use jugar_probar::strict::{E2ETestChecklist, WasmStrictMode};
-    use std::fs;
-    type CheckFn = Box<dyn Fn(&std::path::Path, &probador::ComplyArgs) -> ComplianceResult>;
-
     // Handle subcommands if present
     if let Some(ref subcommand) = args.subcommand {
         return match subcommand {
@@ -1150,166 +1290,7 @@ fn run_comply(config: &CliConfig, args: &probador::ComplyArgs) -> CliResult<()> 
         eprintln!("══════════════════════════════════════════════════════════════\n");
     }
 
-    // Build checklist based on strict mode
-    let strict_mode = if args.strict {
-        WasmStrictMode::production()
-    } else {
-        WasmStrictMode::development()
-    };
-    let checklist = E2ETestChecklist::new().with_strict_mode(strict_mode);
-
-    let mut results: Vec<ComplianceResult> = Vec::new();
-    let mut all_passed = true;
-
-    // Define all checks
-    let checks_to_run: Vec<(&str, &str, CheckFn)> = vec![
-        (
-            "C001",
-            "Code execution verified",
-            Box::new(|path, _args| check_c001_code_execution(path)),
-        ),
-        (
-            "C002",
-            "Console errors fail tests",
-            Box::new(|_path, _args| check_c002_console_errors()),
-        ),
-        (
-            "C003",
-            "Custom elements tested",
-            Box::new(|path, _args| check_c003_custom_elements(path)),
-        ),
-        (
-            "C004",
-            "Threading modes tested",
-            Box::new(|_path, _args| check_c004_threading_modes()),
-        ),
-        (
-            "C005",
-            "Low memory tested",
-            Box::new(|_path, _args| check_c005_low_memory()),
-        ),
-        (
-            "C006",
-            "COOP/COEP headers",
-            Box::new(|path, _args| check_c006_headers(path)),
-        ),
-        (
-            "C007",
-            "Replay hash matches",
-            Box::new(|_path, _args| check_c007_replay_hash()),
-        ),
-        (
-            "C008",
-            "Cache handling",
-            Box::new(|_path, _args| check_c008_cache()),
-        ),
-        (
-            "C009",
-            "WASM size limit",
-            Box::new(|path, args| check_c009_wasm_size(path, args.max_wasm_size)),
-        ),
-        (
-            "C010",
-            "No panic paths",
-            Box::new(|path, _args| check_c010_panic_paths(path)),
-        ),
-    ];
-
-    // Filter checks if specific ones requested
-    let filtered_checks: Vec<(&str, &str, CheckFn)> = if let Some(ref requested) = args.checks {
-        checks_to_run
-            .into_iter()
-            .filter(|(id, _, _)| requested.iter().any(|r| r == id))
-            .collect()
-    } else {
-        checks_to_run
-    };
-
-    if config.verbosity != Verbosity::Quiet {
-        eprintln!(
-            "Running {} compliance check(s) on {}\n",
-            filtered_checks.len(),
-            args.path.display()
-        );
-    }
-
-    for (id, description, check_fn) in &filtered_checks {
-        let result = check_fn(&args.path, args);
-
-        let status = if result.passed { "✓" } else { "✗" };
-        let color = if result.passed {
-            "\x1b[32m"
-        } else {
-            "\x1b[31m"
-        };
-        let reset = "\x1b[0m";
-
-        if config.verbosity != Verbosity::Quiet {
-            eprintln!("  {color}[{status}]{reset} {id}: {description}");
-            if args.detailed && !result.details.is_empty() {
-                for detail in &result.details {
-                    eprintln!("      └─ {detail}");
-                }
-            }
-        }
-
-        if !result.passed {
-            all_passed = false;
-            if args.fail_fast {
-                break;
-            }
-        }
-
-        results.push(result);
-    }
-
-    // Generate output based on format
-    let passed_count = results.iter().filter(|r| r.passed).count();
-    let total_count = results.len();
-
-    if config.verbosity != Verbosity::Quiet {
-        eprintln!("\n══════════════════════════════════════════════════════════════");
-        eprintln!("  Result: {}/{} checks passed", passed_count, total_count);
-        eprintln!("══════════════════════════════════════════════════════════════\n");
-    }
-
-    // Write report if requested
-    if let Some(ref report_path) = args.report {
-        let report = generate_comply_report(&results, &args.format);
-        fs::write(report_path, &report).map_err(|e| {
-            probador::CliError::report_generation(format!("Failed to write report: {e}"))
-        })?;
-        if config.verbosity != Verbosity::Quiet {
-            eprintln!("Report written to: {}", report_path.display());
-        }
-    }
-
-    // Output to stdout based on format
-    match args.format {
-        probador::ComplyOutputFormat::Json => {
-            let report = generate_comply_report(&results, &args.format);
-            println!("{report}");
-        }
-        probador::ComplyOutputFormat::Junit => {
-            let report = generate_comply_report(&results, &args.format);
-            println!("{report}");
-        }
-        probador::ComplyOutputFormat::Text => {
-            // Already printed above
-        }
-    }
-
-    // Validate against checklist requirements
-    let _ = checklist; // Use checklist for additional validation
-
-    if all_passed {
-        Ok(())
-    } else {
-        Err(probador::CliError::test_execution(format!(
-            "Compliance check failed: {}/{} checks passed",
-            passed_count, total_count
-        )))
-    }
+    run_comply_checks_internal(config, args)
 }
 
 // =============================================================================
@@ -1354,74 +1335,11 @@ fn run_comply_check(config: &CliConfig, args: &probador::ComplyCheckArgs) -> Cli
 
 /// Internal check logic (shared between top-level and check subcommand)
 fn run_comply_checks_internal(config: &CliConfig, args: &probador::ComplyArgs) -> CliResult<()> {
-    use std::fs;
-
     type CheckFn = Box<dyn Fn(&std::path::Path, &probador::ComplyArgs) -> ComplianceResult>;
 
-    let mut results: Vec<ComplianceResult> = Vec::new();
-    let mut all_passed = true;
-
-    let checks_to_run: Vec<(&str, &str, CheckFn)> = vec![
-        (
-            "C001",
-            "Code execution verified",
-            Box::new(|path, _| check_c001_code_execution(path)),
-        ),
-        (
-            "C002",
-            "Console errors fail tests",
-            Box::new(|_, _| check_c002_console_errors()),
-        ),
-        (
-            "C003",
-            "Custom elements tested",
-            Box::new(|path, _| check_c003_custom_elements(path)),
-        ),
-        (
-            "C004",
-            "Threading modes tested",
-            Box::new(|_, _| check_c004_threading_modes()),
-        ),
-        (
-            "C005",
-            "Low memory tested",
-            Box::new(|_, _| check_c005_low_memory()),
-        ),
-        (
-            "C006",
-            "COOP/COEP headers",
-            Box::new(|path, _| check_c006_headers(path)),
-        ),
-        (
-            "C007",
-            "Replay hash matches",
-            Box::new(|_, _| check_c007_replay_hash()),
-        ),
-        (
-            "C008",
-            "Cache handling",
-            Box::new(|_, _| check_c008_cache()),
-        ),
-        (
-            "C009",
-            "WASM size limit",
-            Box::new(|path, args| check_c009_wasm_size(path, args.max_wasm_size)),
-        ),
-        (
-            "C010",
-            "No panic paths",
-            Box::new(|path, _| check_c010_panic_paths(path)),
-        ),
-    ];
-
-    let filtered_checks: Vec<(&str, &str, CheckFn)> = if let Some(ref requested) = args.checks {
-        checks_to_run
-            .into_iter()
-            .filter(|(id, _, _)| requested.iter().any(|r| r == id))
-            .collect()
-    } else {
-        checks_to_run
-    };
+    let checks_to_run = build_compliance_checks();
+    let filtered_checks: Vec<(&str, &str, CheckFn)> =
+        filter_compliance_checks(checks_to_run, args.checks.as_ref());
 
     if config.verbosity != Verbosity::Quiet {
         eprintln!(
@@ -1431,55 +1349,127 @@ fn run_comply_checks_internal(config: &CliConfig, args: &probador::ComplyArgs) -
         );
     }
 
-    for (id, description, check_fn) in &filtered_checks {
+    let (results, all_passed) =
+        execute_compliance_checks(&filtered_checks, config, args);
+
+    output_compliance_results(config, &results, &args.format, args.report.as_deref(), all_passed)
+}
+
+/// Build the vector of all compliance checks (C001-C010).
+fn build_compliance_checks(
+) -> Vec<(
+    &'static str,
+    &'static str,
+    Box<dyn Fn(&std::path::Path, &probador::ComplyArgs) -> ComplianceResult>,
+)> {
+    vec![
+        ("C001", "Code execution verified", Box::new(|path, _| check_c001_code_execution(path))),
+        ("C002", "Console errors fail tests", Box::new(|_, _| check_c002_console_errors())),
+        ("C003", "Custom elements tested", Box::new(|path, _| check_c003_custom_elements(path))),
+        ("C004", "Threading modes tested", Box::new(|_, _| check_c004_threading_modes())),
+        ("C005", "Low memory tested", Box::new(|_, _| check_c005_low_memory())),
+        ("C006", "COOP/COEP headers", Box::new(|path, _| check_c006_headers(path))),
+        ("C007", "Replay hash matches", Box::new(|_, _| check_c007_replay_hash())),
+        ("C008", "Cache handling", Box::new(|_, _| check_c008_cache())),
+        ("C009", "WASM size limit", Box::new(|path, args| check_c009_wasm_size(path, args.max_wasm_size))),
+        ("C010", "No panic paths", Box::new(|path, _| check_c010_panic_paths(path))),
+    ]
+}
+
+/// Filter compliance checks by requested IDs, or return all if none specified.
+fn filter_compliance_checks<F>(
+    checks: Vec<(&'static str, &'static str, F)>,
+    requested: Option<&Vec<String>>,
+) -> Vec<(&'static str, &'static str, F)> {
+    match requested {
+        Some(ids) => checks
+            .into_iter()
+            .filter(|(id, _, _)| ids.iter().any(|r| r == id))
+            .collect(),
+        None => checks,
+    }
+}
+
+/// Run each compliance check, printing results as we go.
+fn execute_compliance_checks(
+    checks: &[(
+        &str,
+        &str,
+        Box<dyn Fn(&std::path::Path, &probador::ComplyArgs) -> ComplianceResult>,
+    )],
+    config: &CliConfig,
+    args: &probador::ComplyArgs,
+) -> (Vec<ComplianceResult>, bool) {
+    let mut results = Vec::new();
+    let mut all_passed = true;
+
+    for (id, description, check_fn) in checks {
         let result = check_fn(&args.path, args);
-
-        let status = if result.passed { "✓" } else { "✗" };
-        let color = if result.passed {
-            "\x1b[32m"
-        } else {
-            "\x1b[31m"
-        };
-        let reset = "\x1b[0m";
-
-        if config.verbosity != Verbosity::Quiet {
-            eprintln!("  {color}[{status}]{reset} {id}: {description}");
-            if args.detailed && !result.details.is_empty() {
-                for detail in &result.details {
-                    eprintln!("      └─ {detail}");
-                }
-            }
-        }
+        print_check_result(config, id, description, &result, args.detailed);
 
         if !result.passed {
             all_passed = false;
             if args.fail_fast {
+                results.push(result);
                 break;
             }
         }
-
         results.push(result);
     }
 
+    (results, all_passed)
+}
+
+/// Print a single compliance check result.
+fn print_check_result(
+    config: &CliConfig,
+    id: &str,
+    description: &str,
+    result: &ComplianceResult,
+    detailed: bool,
+) {
+    if config.verbosity == Verbosity::Quiet {
+        return;
+    }
+    let status = if result.passed { "✓" } else { "✗" };
+    let color = if result.passed { "\x1b[32m" } else { "\x1b[31m" };
+    let reset = "\x1b[0m";
+
+    eprintln!("  {color}[{status}]{reset} {id}: {description}");
+    if detailed && !result.details.is_empty() {
+        for detail in &result.details {
+            eprintln!("      └─ {detail}");
+        }
+    }
+}
+
+/// Output compliance results: summary, report file, stdout format.
+fn output_compliance_results(
+    config: &CliConfig,
+    results: &[ComplianceResult],
+    format: &probador::ComplyOutputFormat,
+    report_path: Option<&std::path::Path>,
+    all_passed: bool,
+) -> CliResult<()> {
     let passed_count = results.iter().filter(|r| r.passed).count();
     let total_count = results.len();
 
     if config.verbosity != Verbosity::Quiet {
         eprintln!("\n══════════════════════════════════════════════════════════════");
-        eprintln!("  Result: {}/{} checks passed", passed_count, total_count);
+        eprintln!("  Result: {passed_count}/{total_count} checks passed");
         eprintln!("══════════════════════════════════════════════════════════════\n");
     }
 
-    if let Some(ref report_path) = args.report {
-        let report = generate_comply_report(&results, &args.format);
-        fs::write(report_path, &report).map_err(|e| {
+    if let Some(path) = report_path {
+        let report = generate_comply_report(results, format);
+        std::fs::write(path, &report).map_err(|e| {
             probador::CliError::report_generation(format!("Failed to write report: {e}"))
         })?;
     }
 
-    match args.format {
+    match format {
         probador::ComplyOutputFormat::Json | probador::ComplyOutputFormat::Junit => {
-            let report = generate_comply_report(&results, &args.format);
+            let report = generate_comply_report(results, format);
             println!("{report}");
         }
         probador::ComplyOutputFormat::Text => {}
@@ -1489,8 +1479,7 @@ fn run_comply_checks_internal(config: &CliConfig, args: &probador::ComplyArgs) -
         Ok(())
     } else {
         Err(probador::CliError::test_execution(format!(
-            "Compliance check failed: {}/{} checks passed",
-            passed_count, total_count
+            "Compliance check failed: {passed_count}/{total_count} checks passed",
         )))
     }
 }

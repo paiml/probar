@@ -502,6 +502,44 @@ pub mod har;
 )]
 pub mod playbook;
 
+/// AV Sync Testing: Verify rendered audio-visual synchronization against EDL ground truth.
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod av_sync;
+
+/// Audio Quality Verification: levels, clipping, silence analysis.
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown,
+    clippy::cast_precision_loss
+)]
+pub mod audio_quality;
+
+/// Video Quality Verification: codec, resolution, FPS, duration validation.
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown,
+    clippy::cast_precision_loss
+)]
+pub mod video_quality;
+
+/// Animation Verification: timing, easing curves, physics events.
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod animation;
+
 /// Presentar YAML Support (PROBAR-SPEC-015)
 ///
 /// Native support for testing presentar TUI configurations with
@@ -617,6 +655,25 @@ pub use replay::{
 pub use reporter::{
     AndonCordPulled, FailureMode, Reporter, TestResultEntry, TestStatus, TraceData,
 };
+pub use av_sync::{
+    compare_edl_to_onsets, detect_onsets, default_edl_path, extract_audio, AudioOnset,
+    AudioTickPlacement, AvSyncReport, DetectionConfig, EditDecision, EditDecisionList,
+    SegmentSyncResult, SyncVerdict, TickDelta, DEFAULT_SAMPLE_RATE,
+};
+pub use audio_quality::{
+    analyze_audio, analyze_samples, detect_clipping, detect_silence, AudioLevels,
+    AudioQualityConfig, AudioQualityReport, AudioVerdict, ClippingReport, SilenceRegion,
+    SilenceReport,
+};
+pub use video_quality::{
+    build_ffprobe_args, parse_ffprobe_json, probe_video, validate_video, VideoCheck,
+    VideoExpectations, VideoProbe, VideoQualityReport, VideoVerdict,
+};
+pub use animation::{
+    sample_easing, verify_easing, verify_events, verify_timeline, AnimationEvent,
+    AnimationEventType, AnimationReport, AnimationTimeline, AnimationVerdict, EasingFunction,
+    EasingVerification, EventResult, Keyframe, ObservedEvent,
+};
 pub use result::{ProbarError, ProbarResult};
 pub use runtime::{
     ComponentId, EntityId, FrameResult, GameHostState, MemoryView, ProbarComponent, ProbarEntity,
@@ -687,6 +744,25 @@ pub use websocket::{
 
 /// Prelude for convenient imports
 pub mod prelude {
+    pub use super::av_sync::{
+        compare_edl_to_onsets, default_edl_path, detect_onsets, extract_audio, AudioOnset,
+        AudioTickPlacement, AvSyncReport, DetectionConfig, EditDecision, EditDecisionList,
+        SegmentSyncResult, SyncVerdict, TickDelta,
+    };
+    pub use super::audio_quality::{
+        analyze_audio, analyze_samples, detect_clipping, detect_silence, AudioLevels,
+        AudioQualityConfig, AudioQualityReport, AudioVerdict, ClippingReport, SilenceRegion,
+        SilenceReport,
+    };
+    pub use super::video_quality::{
+        build_ffprobe_args, parse_ffprobe_json, probe_video, validate_video, VideoCheck,
+        VideoExpectations, VideoProbe, VideoQualityReport, VideoVerdict,
+    };
+    pub use super::animation::{
+        sample_easing, verify_easing, verify_events, verify_timeline, AnimationEvent,
+        AnimationEventType, AnimationReport, AnimationTimeline, AnimationVerdict, EasingFunction,
+        EasingVerification, EventResult, Keyframe, ObservedEvent,
+    };
     pub use super::accessibility::*;
     pub use super::assertion::*;
     // Brick Architecture (PROBAR-SPEC-009)

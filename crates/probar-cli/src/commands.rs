@@ -74,6 +74,30 @@ pub enum Commands {
     /// - C010: No panic paths in WASM
     Comply(ComplyArgs),
 
+    /// Verify audio-visual synchronization against EDL ground truth
+    ///
+    /// Extracts audio from rendered video, detects tick onsets, and compares
+    /// against EDL declarations. Fails when drift exceeds tolerance.
+    AvSync(AvSyncArgs),
+
+    /// Verify audio quality (levels, clipping, silence)
+    ///
+    /// Extracts audio from rendered video and analyzes peak/RMS levels,
+    /// detects digital clipping, and identifies silence regions.
+    Audio(AudioArgs),
+
+    /// Verify video quality (codec, resolution, FPS, duration)
+    ///
+    /// Probes video files with ffprobe and validates metadata against
+    /// expected properties.
+    Video(VideoArgs),
+
+    /// Verify animation timing and easing curves
+    ///
+    /// Compares declared animation events against actual timing data
+    /// from rendered output.
+    Animation(AnimationArgs),
+
     /// Run browser/WASM stress tests (Section H: Points 116-125)
     ///
     /// Validates system stability under concurrency stress:
@@ -83,6 +107,215 @@ pub enum Commands {
     /// - trace: Renacer tracing overhead (< 5%)
     /// - full: All stress tests combined
     Stress(StressArgs),
+}
+
+/// Arguments for the av-sync command
+#[derive(Parser, Debug)]
+pub struct AvSyncArgs {
+    /// AV sync subcommand
+    #[command(subcommand)]
+    pub subcommand: AvSyncSubcommand,
+}
+
+/// AV sync subcommands
+#[derive(Subcommand, Debug)]
+pub enum AvSyncSubcommand {
+    /// Check a single video against its EDL
+    Check(AvSyncCheckArgs),
+
+    /// Batch check a directory of videos
+    Report(AvSyncReportArgs),
+}
+
+/// Arguments for av-sync check
+#[derive(Parser, Debug)]
+pub struct AvSyncCheckArgs {
+    /// Path to the video file
+    pub video: PathBuf,
+
+    /// Path to EDL JSON file (default: <video>.edl.json)
+    #[arg(long)]
+    pub edl: Option<PathBuf>,
+
+    /// Tolerance in milliseconds (default: 20)
+    #[arg(long, default_value = "20")]
+    pub tolerance_ms: f64,
+
+    /// Output format
+    #[arg(long, default_value = "text")]
+    pub format: AvSyncOutputFormat,
+
+    /// Show per-tick details
+    #[arg(long)]
+    pub detailed: bool,
+}
+
+/// Arguments for av-sync report
+#[derive(Parser, Debug)]
+pub struct AvSyncReportArgs {
+    /// Directory containing rendered videos and EDL files
+    pub dir: PathBuf,
+
+    /// Tolerance in milliseconds (default: 20)
+    #[arg(long, default_value = "20")]
+    pub tolerance_ms: f64,
+
+    /// Output format
+    #[arg(long, default_value = "text")]
+    pub format: AvSyncOutputFormat,
+
+    /// Output file (default: stdout)
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+}
+
+/// Output format for av-sync commands
+#[derive(ValueEnum, Clone, Debug, Default)]
+pub enum AvSyncOutputFormat {
+    /// Human-readable text
+    #[default]
+    Text,
+    /// JSON output
+    Json,
+}
+
+/// Arguments for the audio command
+#[derive(Parser, Debug)]
+pub struct AudioArgs {
+    /// Audio subcommand
+    #[command(subcommand)]
+    pub subcommand: AudioSubcommand,
+}
+
+/// Audio subcommands
+#[derive(Subcommand, Debug)]
+pub enum AudioSubcommand {
+    /// Check audio quality of a single video
+    Check(AudioCheckArgs),
+}
+
+/// Arguments for audio check
+#[derive(Parser, Debug)]
+pub struct AudioCheckArgs {
+    /// Path to the video file
+    pub video: PathBuf,
+
+    /// Sample rate for extraction (default: 48000)
+    #[arg(long, default_value = "48000")]
+    pub sample_rate: u32,
+
+    /// Minimum RMS level in dBFS (default: -40)
+    #[arg(long, default_value = "-40", allow_hyphen_values = true)]
+    pub min_rms_dbfs: f64,
+
+    /// Maximum peak level in dBFS (default: -0.1)
+    #[arg(long, default_value = "-0.1", allow_hyphen_values = true)]
+    pub max_peak_dbfs: f64,
+
+    /// Fail if clipping detected (default: true)
+    #[arg(long, default_value = "true")]
+    pub no_clipping: bool,
+
+    /// Output format
+    #[arg(long, default_value = "text")]
+    pub format: OutputFormat,
+}
+
+/// Arguments for the video command
+#[derive(Parser, Debug)]
+pub struct VideoArgs {
+    /// Video subcommand
+    #[command(subcommand)]
+    pub subcommand: VideoSubcommand,
+}
+
+/// Video subcommands
+#[derive(Subcommand, Debug)]
+pub enum VideoSubcommand {
+    /// Check video quality of a single file
+    Check(VideoCheckArgs),
+}
+
+/// Arguments for video check
+#[derive(Parser, Debug)]
+pub struct VideoCheckArgs {
+    /// Path to the video file
+    pub video: PathBuf,
+
+    /// Expected width
+    #[arg(long)]
+    pub width: Option<u32>,
+
+    /// Expected height
+    #[arg(long)]
+    pub height: Option<u32>,
+
+    /// Expected FPS
+    #[arg(long)]
+    pub fps: Option<f64>,
+
+    /// Expected codec
+    #[arg(long)]
+    pub codec: Option<String>,
+
+    /// Minimum duration in seconds
+    #[arg(long)]
+    pub min_duration: Option<f64>,
+
+    /// Maximum duration in seconds
+    #[arg(long)]
+    pub max_duration: Option<f64>,
+
+    /// Require audio stream
+    #[arg(long)]
+    pub require_audio: bool,
+
+    /// Output format
+    #[arg(long, default_value = "text")]
+    pub format: OutputFormat,
+}
+
+/// Arguments for the animation command
+#[derive(Parser, Debug)]
+pub struct AnimationArgs {
+    /// Animation subcommand
+    #[command(subcommand)]
+    pub subcommand: AnimationSubcommand,
+}
+
+/// Animation subcommands
+#[derive(Subcommand, Debug)]
+pub enum AnimationSubcommand {
+    /// Verify animation timeline against observed events
+    Check(AnimationCheckArgs),
+}
+
+/// Arguments for animation check
+#[derive(Parser, Debug)]
+pub struct AnimationCheckArgs {
+    /// Path to the animation timeline JSON
+    pub timeline: PathBuf,
+
+    /// Path to the observed events JSON
+    pub observed: PathBuf,
+
+    /// Tolerance in milliseconds (default: 20)
+    #[arg(long, default_value = "20")]
+    pub tolerance_ms: f64,
+
+    /// Output format
+    #[arg(long, default_value = "text")]
+    pub format: OutputFormat,
+}
+
+/// Output format for check commands
+#[derive(ValueEnum, Clone, Debug, Default)]
+pub enum OutputFormat {
+    /// Human-readable text
+    #[default]
+    Text,
+    /// JSON output
+    Json,
 }
 
 /// Arguments for the stress command
@@ -1585,6 +1818,255 @@ mod tests {
             let _ = PlaybookOutputFormat::Text;
             let _ = PlaybookOutputFormat::Json;
             let _ = PlaybookOutputFormat::Junit;
+        }
+    }
+
+    mod av_sync_tests {
+        use super::*;
+
+        #[test]
+        fn test_parse_av_sync_check() {
+            let cli = Cli::parse_from(["probar", "av-sync", "check", "video.mp4"]);
+            assert!(matches!(cli.command, Commands::AvSync(_)));
+        }
+
+        #[test]
+        fn test_parse_av_sync_check_with_edl() {
+            let cli = Cli::parse_from([
+                "probar",
+                "av-sync",
+                "check",
+                "video.mp4",
+                "--edl",
+                "video.edl.json",
+            ]);
+            if let Commands::AvSync(args) = cli.command {
+                if let AvSyncSubcommand::Check(check_args) = args.subcommand {
+                    assert_eq!(check_args.edl, Some(PathBuf::from("video.edl.json")));
+                } else {
+                    panic!("expected Check subcommand");
+                }
+            } else {
+                panic!("expected AvSync command");
+            }
+        }
+
+        #[test]
+        fn test_parse_av_sync_check_with_tolerance() {
+            let cli = Cli::parse_from([
+                "probar",
+                "av-sync",
+                "check",
+                "video.mp4",
+                "--tolerance-ms",
+                "30",
+            ]);
+            if let Commands::AvSync(args) = cli.command {
+                if let AvSyncSubcommand::Check(check_args) = args.subcommand {
+                    assert!((check_args.tolerance_ms - 30.0).abs() < f64::EPSILON);
+                } else {
+                    panic!("expected Check subcommand");
+                }
+            } else {
+                panic!("expected AvSync command");
+            }
+        }
+
+        #[test]
+        fn test_parse_av_sync_report() {
+            let cli = Cli::parse_from(["probar", "av-sync", "report", "/output/dir"]);
+            if let Commands::AvSync(args) = cli.command {
+                if let AvSyncSubcommand::Report(report_args) = args.subcommand {
+                    assert_eq!(report_args.dir, PathBuf::from("/output/dir"));
+                } else {
+                    panic!("expected Report subcommand");
+                }
+            } else {
+                panic!("expected AvSync command");
+            }
+        }
+
+        #[test]
+        fn test_parse_av_sync_check_detailed() {
+            let cli =
+                Cli::parse_from(["probar", "av-sync", "check", "video.mp4", "--detailed"]);
+            if let Commands::AvSync(args) = cli.command {
+                if let AvSyncSubcommand::Check(check_args) = args.subcommand {
+                    assert!(check_args.detailed);
+                } else {
+                    panic!("expected Check subcommand");
+                }
+            } else {
+                panic!("expected AvSync command");
+            }
+        }
+
+        #[test]
+        fn test_parse_av_sync_report_with_output() {
+            let cli = Cli::parse_from([
+                "probar",
+                "av-sync",
+                "report",
+                "/output",
+                "-o",
+                "report.json",
+            ]);
+            if let Commands::AvSync(args) = cli.command {
+                if let AvSyncSubcommand::Report(report_args) = args.subcommand {
+                    assert_eq!(report_args.output, Some(PathBuf::from("report.json")));
+                } else {
+                    panic!("expected Report subcommand");
+                }
+            } else {
+                panic!("expected AvSync command");
+            }
+        }
+
+        #[test]
+        fn test_av_sync_output_format_default() {
+            let format = AvSyncOutputFormat::default();
+            assert!(matches!(format, AvSyncOutputFormat::Text));
+        }
+
+        #[test]
+        fn test_parse_av_sync_check_json_format() {
+            let cli = Cli::parse_from([
+                "probar",
+                "av-sync",
+                "check",
+                "video.mp4",
+                "--format",
+                "json",
+            ]);
+            if let Commands::AvSync(args) = cli.command {
+                if let AvSyncSubcommand::Check(check_args) = args.subcommand {
+                    assert!(matches!(check_args.format, AvSyncOutputFormat::Json));
+                } else {
+                    panic!("expected Check subcommand");
+                }
+            } else {
+                panic!("expected AvSync command");
+            }
+        }
+    }
+
+    mod audio_tests {
+        use super::*;
+
+        #[test]
+        fn test_parse_audio_check() {
+            let cli = Cli::parse_from(["probar", "audio", "check", "video.mp4"]);
+            assert!(matches!(cli.command, Commands::Audio(_)));
+        }
+
+        #[test]
+        fn test_parse_audio_check_with_options() {
+            let cli = Cli::parse_from([
+                "probar",
+                "audio",
+                "check",
+                "video.mp4",
+                "--min-rms-dbfs",
+                "-30",
+                "--sample-rate",
+                "44100",
+            ]);
+            if let Commands::Audio(args) = cli.command {
+                if let AudioSubcommand::Check(check_args) = args.subcommand {
+                    assert!((check_args.min_rms_dbfs - (-30.0)).abs() < f64::EPSILON);
+                    assert_eq!(check_args.sample_rate, 44100);
+                } else {
+                    panic!("expected Check subcommand");
+                }
+            } else {
+                panic!("expected Audio command");
+            }
+        }
+
+        #[test]
+        fn test_output_format_default() {
+            let format = OutputFormat::default();
+            assert!(matches!(format, OutputFormat::Text));
+        }
+    }
+
+    mod video_tests {
+        use super::*;
+
+        #[test]
+        fn test_parse_video_check() {
+            let cli = Cli::parse_from(["probar", "video", "check", "video.mp4"]);
+            assert!(matches!(cli.command, Commands::Video(_)));
+        }
+
+        #[test]
+        fn test_parse_video_check_with_expectations() {
+            let cli = Cli::parse_from([
+                "probar",
+                "video",
+                "check",
+                "video.mp4",
+                "--width",
+                "1920",
+                "--height",
+                "1080",
+                "--fps",
+                "24",
+                "--codec",
+                "h264",
+                "--require-audio",
+            ]);
+            if let Commands::Video(args) = cli.command {
+                if let VideoSubcommand::Check(check_args) = args.subcommand {
+                    assert_eq!(check_args.width, Some(1920));
+                    assert_eq!(check_args.height, Some(1080));
+                    assert!((check_args.fps.unwrap() - 24.0).abs() < f64::EPSILON);
+                    assert_eq!(check_args.codec.as_deref(), Some("h264"));
+                    assert!(check_args.require_audio);
+                } else {
+                    panic!("expected Check subcommand");
+                }
+            } else {
+                panic!("expected Video command");
+            }
+        }
+    }
+
+    mod animation_tests {
+        use super::*;
+
+        #[test]
+        fn test_parse_animation_check() {
+            let cli = Cli::parse_from([
+                "probar",
+                "animation",
+                "check",
+                "timeline.json",
+                "observed.json",
+            ]);
+            assert!(matches!(cli.command, Commands::Animation(_)));
+        }
+
+        #[test]
+        fn test_parse_animation_check_with_tolerance() {
+            let cli = Cli::parse_from([
+                "probar",
+                "animation",
+                "check",
+                "timeline.json",
+                "observed.json",
+                "--tolerance-ms",
+                "30",
+            ]);
+            if let Commands::Animation(args) = cli.command {
+                if let AnimationSubcommand::Check(check_args) = args.subcommand {
+                    assert!((check_args.tolerance_ms - 30.0).abs() < f64::EPSILON);
+                } else {
+                    panic!("expected Check subcommand");
+                }
+            } else {
+                panic!("expected Animation command");
+            }
         }
     }
 

@@ -33,12 +33,14 @@ pub mod visualization;
 pub mod wasm_testing;
 
 pub use commands::{
-    BuildArgs, Cli, Commands, ComplyArgs, ComplyCheckArgs, ComplyDiffArgs, ComplyEnforceArgs,
-    ComplyMigrateArgs, ComplyOutputFormat, ComplyReportArgs, ComplyReportFormat, ComplySubcommand,
-    ConfigArgs, CoverageArgs, DiagramFormat, InitArgs, PaletteArg, PlaybookArgs,
-    PlaybookOutputFormat, RecordArgs, RecordFormat, ReportArgs, ReportFormat, ScoreArgs,
-    ScoreOutputFormat, ServeArgs, ServeSubcommand, StressArgs, TestArgs, TreeArgs, VizArgs,
-    WasmTarget, WatchArgs,
+    AnimationArgs, AnimationCheckArgs, AnimationSubcommand, AudioArgs, AudioCheckArgs,
+    AudioSubcommand, AvSyncArgs, AvSyncCheckArgs, AvSyncOutputFormat, AvSyncReportArgs,
+    AvSyncSubcommand, BuildArgs, Cli, Commands, ComplyArgs, ComplyCheckArgs, ComplyDiffArgs,
+    ComplyEnforceArgs, ComplyMigrateArgs, ComplyOutputFormat, ComplyReportArgs, ComplyReportFormat,
+    ComplySubcommand, ConfigArgs, CoverageArgs, DiagramFormat, InitArgs, OutputFormat, PaletteArg,
+    PlaybookArgs, PlaybookOutputFormat, RecordArgs, RecordFormat, ReportArgs, ReportFormat,
+    ScoreArgs, ScoreOutputFormat, ServeArgs, ServeSubcommand, StressArgs, TestArgs, TreeArgs,
+    VizArgs, VideoArgs, VideoCheckArgs, VideoSubcommand, WasmTarget, WatchArgs,
 };
 pub use config::{CliConfig, ColorChoice, Verbosity};
 pub use debug::{create_tracer, DebugCategory, DebugTracer, DebugVerbosity, ResolutionRule};
@@ -57,7 +59,7 @@ pub use load_testing::{
     LoadTestErrorKind, LoadTestOutputFormat, LoadTestRequest, LoadTestResult, LoadTestScenario,
     LoadTestStage, ResourceUsage, UserConfig,
 };
-pub use output::{OutputFormat, ProgressReporter};
+pub use output::{OutputFormat as CliOutputFormat, ProgressReporter};
 pub use runner::TestRunner;
 pub use score::{
     CategoryScore, CategoryStatus, CriterionResult, Effort, Grade, ProjectScore, Recommendation,

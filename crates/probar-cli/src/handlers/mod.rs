@@ -5,6 +5,9 @@
 //! - Pure helper functions
 //! - Comprehensive tests
 
+pub mod animation;
+pub mod audio;
+pub mod av_sync;
 pub mod build;
 pub mod comply;
 pub mod config;
@@ -12,6 +15,7 @@ pub mod coverage;
 pub mod init;
 pub mod report;
 pub mod serve;
+pub mod video;
 
 // Re-export handlers for convenient access
 pub use comply::{
