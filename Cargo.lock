@@ -4010,9 +4010,9 @@ dependencies = [
 
 [[package]]
 name = "trueno"
-version = "0.14.4"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35d2c230ebde5da651c4dc89c32bfe0d277f4e36750a5849d2e69af50b646211"
+checksum = "85e19fa22753d395f043b205999122520efd45a33e0867d137f20b777ad794ef"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -4025,7 +4025,17 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "toml 0.8.23",
+ "trueno-quant",
  "wgpu",
+]
+
+[[package]]
+name = "trueno-quant"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5da5ac788b596e45d1d3fa0991c04b0e1bac63ffe4ae2faf6ae7c0d9fdfc00eb"
+dependencies = [
+ "half",
 ]
 
 [[package]]
