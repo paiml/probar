@@ -1,6 +1,6 @@
 [package]
 name = "probador"
-version = "1.0.2"
+version = "1.0.3"
 edition.workspace = true
 rust-version.workspace = true
 description = "CLI for Probar: Rust-native testing framework for WASM games"
@@ -21,7 +21,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Core library - exact version for verified release
-jugar-probar = { version = "=1.0.2", path = "../probar" }
+jugar-probar = { version = "=1.0.3", path = "../probar" }
 
 # CLI framework
 clap = { workspace = true }
@@ -37,7 +37,7 @@ thiserror = { workspace = true }
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = { workspace = true }
+serde_yaml_ng = { workspace = true }
 
 # HTTP Server for WASM dev
 axum = { workspace = true }

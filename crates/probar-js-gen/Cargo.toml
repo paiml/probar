@@ -1,6 +1,6 @@
 [package]
 name = "probar-js-gen"
-version = "1.0.1"
+version = "1.0.3"
 edition = "2021"
 description = "NASA/DO-178B-grade Rust DSL for type-safe JavaScript generation"
 license = "MIT OR Apache-2.0"

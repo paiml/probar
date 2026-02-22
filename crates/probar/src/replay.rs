@@ -231,7 +231,7 @@ impl Replay {
     /// Save replay to YAML file
     pub fn save_yaml(&self, path: &Path) -> ProbarResult<()> {
         let yaml =
-            serde_yaml::to_string(self).map_err(|e| ProbarError::SnapshotSerializationError {
+            serde_yaml_ng::to_string(self).map_err(|e| ProbarError::SnapshotSerializationError {
                 message: format!("Failed to serialize replay: {e}"),
             })?;
 
@@ -247,7 +247,7 @@ impl Replay {
     pub fn load_yaml(path: &Path) -> ProbarResult<Self> {
         let yaml = fs::read_to_string(path)?;
         let replay: Replay =
-            serde_yaml::from_str(&yaml).map_err(|e| ProbarError::SnapshotSerializationError {
+            serde_yaml_ng::from_str(&yaml).map_err(|e| ProbarError::SnapshotSerializationError {
                 message: format!("Failed to deserialize replay: {e}"),
             })?;
         Ok(replay)

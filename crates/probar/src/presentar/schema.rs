@@ -569,13 +569,13 @@ impl PanelType {
 
 impl PresentarConfig {
     /// Parse configuration from YAML string.
-    pub fn from_yaml(yaml: &str) -> Result<Self, serde_yaml::Error> {
-        serde_yaml::from_str(yaml)
+    pub fn from_yaml(yaml: &str) -> Result<Self, serde_yaml_ng::Error> {
+        serde_yaml_ng::from_str(yaml)
     }
 
     /// Serialize configuration to YAML string.
-    pub fn to_yaml(&self) -> Result<String, serde_yaml::Error> {
-        serde_yaml::to_string(self)
+    pub fn to_yaml(&self) -> Result<String, serde_yaml_ng::Error> {
+        serde_yaml_ng::to_string(self)
     }
 }
 
@@ -671,7 +671,7 @@ panels:
   cpu:
     histogram: block
 "#;
-        let config: PresentarConfig = serde_yaml::from_str(yaml).unwrap();
+        let config: PresentarConfig = serde_yaml_ng::from_str(yaml).unwrap();
         assert_eq!(config.panels.cpu.histogram, HistogramStyle::Block);
     }
 
@@ -681,7 +681,7 @@ panels:
 layout:
   border_style: sharp
 "#;
-        let config: PresentarConfig = serde_yaml::from_str(yaml).unwrap();
+        let config: PresentarConfig = serde_yaml_ng::from_str(yaml).unwrap();
         assert_eq!(config.layout.border_style, BorderStyle::Sharp);
     }
 

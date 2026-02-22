@@ -155,8 +155,8 @@ impl PixelCoverageConfig {
     ///
     /// # Errors
     /// Returns error if YAML parsing fails
-    pub fn from_yaml(yaml: &str) -> Result<Self, serde_yaml::Error> {
-        serde_yaml::from_str(yaml)
+    pub fn from_yaml(yaml: &str) -> Result<Self, serde_yaml_ng::Error> {
+        serde_yaml_ng::from_str(yaml)
     }
 
     /// Serialize to JSON
@@ -171,8 +171,8 @@ impl PixelCoverageConfig {
     ///
     /// # Errors
     /// Returns error if serialization fails
-    pub fn to_yaml(&self) -> Result<String, serde_yaml::Error> {
-        serde_yaml::to_string(self)
+    pub fn to_yaml(&self) -> Result<String, serde_yaml_ng::Error> {
+        serde_yaml_ng::to_string(self)
     }
 
     /// Validate configuration values

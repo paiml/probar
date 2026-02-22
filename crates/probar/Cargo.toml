@@ -1,6 +1,6 @@
 [package]
 name = "jugar-probar"
-version = "1.0.2"
+version = "1.0.3"
 edition.workspace = true
 rust-version.workspace = true
 description = "Probar: Rust-native testing framework for WASM games"
@@ -52,14 +52,14 @@ mp4 = { workspace = true, optional = true }
 crossterm = { workspace = true, optional = true }
 regex = { workspace = true }
 sha2 = { workspace = true }
-serde_yaml = { workspace = true }
+serde_yaml_ng = { workspace = true }
 
 # Tracing and UUID (available on all targets)
 tracing = { workspace = true }
 uuid = { workspace = true }
 
 # Optional derive macros for type-safe selectors (Phase 4)
-jugar-probar-derive = { version = "=1.0.1", path = "../probar-derive", optional = true }
+jugar-probar-derive = { version = "=1.0.3", path = "../probar-derive", optional = true }
 
 # Optional GPU compute via trueno
 trueno = { workspace = true, optional = true }
