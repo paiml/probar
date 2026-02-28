@@ -21,7 +21,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Core library - exact version for verified release
-jugar-probar = { version = "=1.0.3", path = "../probar" }
+jugar-probar = { version = "=1.0.4", path = "../probar" }
 
 # CLI framework
 clap = { workspace = true }
