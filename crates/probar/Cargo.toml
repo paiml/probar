@@ -1,12 +1,12 @@
 [package]
 name = "jugar-probar"
-version = "1.0.3"
+version = "1.0.4"
 edition.workspace = true
 rust-version.workspace = true
-description = "Probar: Rust-native testing framework for WASM games"
+description = "Probar: Rust-native testing framework with pixel coverage, TUI snapshots, and visual regression"
 license.workspace = true
 repository.workspace = true
-keywords = ["testing", "wasm", "games", "browser", "e2e"]
+keywords = ["testing", "pixel-coverage", "visual-regression", "tui", "snapshot"]
 categories = ["development-tools::testing", "wasm"]
 
 [features]
