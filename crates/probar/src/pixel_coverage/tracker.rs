@@ -317,11 +317,13 @@ impl PixelCoverageTracker {
     }
 
     /// Export to PNG bytes with default settings
+    #[cfg(feature = "media")]
     pub fn export_png(&self, width: u32, height: u32) -> Result<Vec<u8>, std::io::Error> {
         self.png_heatmap(width, height).export(&self.cells)
     }
 
     /// Export to PNG file with default settings
+    #[cfg(feature = "media")]
     pub fn export_png_to_file(
         &self,
         width: u32,

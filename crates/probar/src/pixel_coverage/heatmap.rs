@@ -404,6 +404,7 @@ impl PngHeatmap {
     }
 
     /// Export to PNG bytes (trueno-viz style with margins)
+    #[cfg(feature = "media")]
     pub fn export(&self, cells: &[Vec<CoverageCell>]) -> Result<Vec<u8>, std::io::Error> {
         use image::{ImageBuffer, Rgb as ImageRgb, RgbImage};
         use std::io::Cursor;
@@ -649,6 +650,7 @@ impl PngHeatmap {
     }
 
     /// Export to file
+    #[cfg(feature = "media")]
     pub fn export_to_file(
         &self,
         cells: &[Vec<CoverageCell>],
@@ -966,6 +968,7 @@ impl BitmapFont {
     }
 
     /// Render text to an image buffer at the specified position
+    #[cfg(feature = "media")]
     pub fn render_text(&self, img: &mut image::RgbImage, text: &str, x: u32, y: u32, color: Rgb) {
         use image::Rgb as ImageRgb;
 
