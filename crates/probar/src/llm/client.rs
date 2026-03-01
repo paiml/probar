@@ -208,7 +208,19 @@ impl LlmClient {
         let url = format!("{}/v1/chat/completions", self.base_url);
         let start = Instant::now();
 
-        let resp = self.client.post(&url).json(request).send().await?;
+        // Use the client's model name if the request's model is empty
+        let actual_request;
+        let req = if request.model.is_empty() {
+            actual_request = ChatRequest {
+                model: self.model.clone(),
+                ..request.clone()
+            };
+            &actual_request
+        } else {
+            request
+        };
+
+        let resp = self.client.post(&url).json(req).send().await?;
         let ttfb = start.elapsed();
 
         let status = resp.status();
@@ -331,6 +343,20 @@ mod tests {
         assert_eq!(resp.choices[0].message.content, "Hello!");
         let usage = resp.usage.unwrap();
         assert_eq!(usage.total_tokens, 15);
+    }
+
+    #[test]
+    fn test_apr_response_deserialization() {
+        let json = r#"{"_apr_metrics":{"latency_ms":1978,"tok_per_sec":4.14},"choices":[{"finish_reason":"stop","index":0,"message":{"content":"hello","role":"assistant"}}],"created":1772386202,"id":"chatcmpl-123","model":"test","object":"chat.completion","usage":{"completion_tokens":8,"prompt_tokens":9,"total_tokens":17}}"#;
+        let resp: ChatResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.choices[0].message.content, "hello");
+    }
+
+    #[test]
+    fn test_gguf_response_with_name_null() {
+        let json = r#"{"id":"chatcmpl-q4k-123","object":"chat.completion","created":1772385841,"model":"qwen","choices":[{"index":0,"message":{"role":"assistant","content":"4","name":null},"finish_reason":"stop"}],"usage":{"prompt_tokens":24,"completion_tokens":1,"total_tokens":25}}"#;
+        let resp: ChatResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.choices[0].message.content, "4");
     }
 
     #[test]
