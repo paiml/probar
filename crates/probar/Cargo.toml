@@ -34,6 +34,8 @@ proptest = ["dep:proptest"]
 media = ["dep:image", "dep:gif", "dep:png", "dep:mp4"]
 # File watching for dev mode
 watch = ["dep:notify"]
+# LLM/API testing and load testing
+llm = ["dep:reqwest", "tokio", "futures"]
 
 [dependencies]
 thiserror = { workspace = true }
@@ -73,6 +75,9 @@ bollard = { workspace = true, optional = true }
 
 # Optional property-based testing (PROBAR-SPEC-WASM-001)
 proptest = { workspace = true, optional = true }
+
+# LLM testing (OpenAI-compatible API client)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 
 # AST analysis for state sync linter (PROBAR-WASM-003)
 syn = { workspace = true }

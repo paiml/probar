@@ -107,6 +107,14 @@ pub enum Commands {
     /// - trace: Renacer tracing overhead (< 5%)
     /// - full: All stress tests combined
     Stress(StressArgs),
+
+    /// LLM inference testing: correctness, load testing, and reporting
+    ///
+    /// Test OpenAI-compatible LLM inference endpoints (realizar, ollama, llama.cpp):
+    /// - test: Run correctness tests from a YAML config
+    /// - load: Run concurrent load tests with latency/throughput metrics
+    /// - report: Generate Markdown/JSON reports from results
+    Llm(LlmArgs),
 }
 
 /// Arguments for the av-sync command
@@ -377,6 +385,93 @@ impl StressArgs {
             self.mode.clone()
         }
     }
+}
+
+/// Arguments for the llm command
+#[derive(Parser, Debug)]
+pub struct LlmArgs {
+    /// LLM subcommand
+    #[command(subcommand)]
+    pub subcommand: LlmSubcommand,
+}
+
+/// LLM subcommands
+#[derive(Subcommand, Debug)]
+pub enum LlmSubcommand {
+    /// Run correctness tests against an LLM endpoint
+    Test(LlmTestArgs),
+    /// Run concurrent load test against an LLM endpoint
+    Load(LlmLoadArgs),
+    /// Generate reports from test results
+    Report(LlmReportArgs),
+}
+
+/// Arguments for `probador llm test`
+#[derive(Parser, Debug)]
+pub struct LlmTestArgs {
+    /// Path to the YAML test configuration file
+    #[arg(short, long)]
+    pub config: PathBuf,
+
+    /// Base URL of the LLM API server
+    #[arg(short, long)]
+    pub url: String,
+
+    /// Model name to include in requests
+    #[arg(short, long, default_value = "default")]
+    pub model: String,
+
+    /// Runtime name for reporting (e.g., realizar, ollama, llamacpp)
+    #[arg(long, default_value = "unknown")]
+    pub runtime_name: String,
+
+    /// Output file path for JSON results
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+}
+
+/// Arguments for `probador llm load`
+#[derive(Parser, Debug)]
+pub struct LlmLoadArgs {
+    /// Base URL of the LLM API server
+    #[arg(short, long)]
+    pub url: String,
+
+    /// Model name to include in requests
+    #[arg(short, long, default_value = "default")]
+    pub model: String,
+
+    /// Number of concurrent workers
+    #[arg(short, long, default_value = "4")]
+    pub concurrency: usize,
+
+    /// Test duration (e.g., 30s, 2m, 1h)
+    #[arg(short, long, default_value = "30s")]
+    pub duration: String,
+
+    /// Runtime name for reporting
+    #[arg(long, default_value = "unknown")]
+    pub runtime_name: String,
+
+    /// Output file path for JSON results
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+}
+
+/// Arguments for `probador llm report`
+#[derive(Parser, Debug)]
+pub struct LlmReportArgs {
+    /// Directory containing JSON result files
+    #[arg(short, long)]
+    pub results: PathBuf,
+
+    /// Output path for the performance Markdown table
+    #[arg(short, long, default_value = "performance.md")]
+    pub output: PathBuf,
+
+    /// Also update a README.md with the latest results
+    #[arg(long)]
+    pub update_readme: Option<PathBuf>,
 }
 
 /// Arguments for the test command

@@ -22,7 +22,7 @@
 #![allow(clippy::doc_markdown)]
 #![allow(clippy::cast_precision_loss)]
 #![allow(clippy::items_after_statements)]
-#![allow(clippy::unchecked_time_subtraction)]
+#![allow(clippy::manual_saturating_arithmetic)]
 #![allow(clippy::use_self)]
 
 use serde::{Deserialize, Serialize};

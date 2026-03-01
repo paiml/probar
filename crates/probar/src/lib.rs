@@ -552,6 +552,19 @@ pub mod animation;
 )]
 pub mod presentar;
 
+/// LLM Testing: Correctness assertions and load testing for OpenAI-compatible APIs.
+///
+/// Feature-gated behind `llm`. Provides HTTP client, assertion builders,
+/// concurrent load testing, and Markdown/JSON reporting.
+#[cfg(feature = "llm")]
+#[allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::missing_const_for_fn,
+    clippy::doc_markdown
+)]
+pub mod llm;
+
 pub use accessibility::{
     AccessibilityAudit, AccessibilityConfig, AccessibilityIssue, AccessibilityValidator, Color,
     ContrastAnalysis, ContrastPair, FlashDetector, FlashResult, FocusConfig, KeyboardIssue,
@@ -837,6 +850,8 @@ pub mod prelude {
     pub use super::watch::*;
     pub use super::web::*;
     pub use super::websocket::*;
+    #[cfg(feature = "llm")]
+    pub use super::llm::*;
     // Note: renacer_integration types are available as RenacerTracingConfig, etc.
     // to avoid conflicts with tracing_support::TracingConfig
     pub use super::renacer_integration::{

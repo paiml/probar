@@ -20,7 +20,6 @@
 #![allow(clippy::option_if_let_else)]
 #![allow(clippy::use_self)]
 #![allow(clippy::only_used_in_recursion)]
-#![allow(clippy::self_only_used_in_recursion)]
 #![allow(clippy::map_unwrap_or)]
 #![allow(clippy::redundant_closure_for_method_calls)]
 

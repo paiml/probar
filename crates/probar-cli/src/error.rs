@@ -50,6 +50,10 @@ pub enum CliError {
         /// Error message
         message: String,
     },
+
+    /// Generic error for extensible error handling
+    #[error("{0}")]
+    Generic(String),
 }
 
 impl CliError {

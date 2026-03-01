@@ -13,6 +13,8 @@ pub mod comply;
 pub mod config;
 pub mod coverage;
 pub mod init;
+#[cfg(feature = "llm")]
+pub mod llm;
 pub mod report;
 pub mod serve;
 pub mod video;

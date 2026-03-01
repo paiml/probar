@@ -71,6 +71,12 @@ fn run() -> CliResult<()> {
         Commands::Video(args) => run_video(&config, &args),
         Commands::Animation(args) => run_animation(&config, &args),
         Commands::Stress(args) => run_stress(&config, &args),
+        #[cfg(feature = "llm")]
+        Commands::Llm(args) => run_llm(&args),
+        #[cfg(not(feature = "llm"))]
+        Commands::Llm(_) => Err(probador::CliError::Generic(
+            "LLM features not enabled. Rebuild with --features llm".to_string(),
+        )),
     }
 }
 
@@ -1254,6 +1260,28 @@ fn run_stress(_config: &CliConfig, args: &probador::StressArgs) -> CliResult<()>
             "Stress test {} failed: {}",
             mode, result.actual_value
         )))
+    }
+}
+
+// =============================================================================
+// LLM Testing
+// =============================================================================
+
+#[cfg(feature = "llm")]
+fn run_llm(args: &probador::LlmArgs) -> CliResult<()> {
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| probador::CliError::Generic(format!("Failed to create async runtime: {e}")))?;
+
+    match &args.subcommand {
+        probador::LlmSubcommand::Test(test_args) => {
+            rt.block_on(probador::handlers::llm::execute_llm_test(test_args))
+        }
+        probador::LlmSubcommand::Load(load_args) => {
+            rt.block_on(probador::handlers::llm::execute_llm_load(load_args))
+        }
+        probador::LlmSubcommand::Report(report_args) => {
+            probador::handlers::llm::execute_llm_report(report_args)
+        }
     }
 }
 

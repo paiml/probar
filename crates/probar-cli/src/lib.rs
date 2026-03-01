@@ -37,10 +37,11 @@ pub use commands::{
     AudioSubcommand, AvSyncArgs, AvSyncCheckArgs, AvSyncOutputFormat, AvSyncReportArgs,
     AvSyncSubcommand, BuildArgs, Cli, Commands, ComplyArgs, ComplyCheckArgs, ComplyDiffArgs,
     ComplyEnforceArgs, ComplyMigrateArgs, ComplyOutputFormat, ComplyReportArgs, ComplyReportFormat,
-    ComplySubcommand, ConfigArgs, CoverageArgs, DiagramFormat, InitArgs, OutputFormat, PaletteArg,
-    PlaybookArgs, PlaybookOutputFormat, RecordArgs, RecordFormat, ReportArgs, ReportFormat,
-    ScoreArgs, ScoreOutputFormat, ServeArgs, ServeSubcommand, StressArgs, TestArgs, TreeArgs,
-    VizArgs, VideoArgs, VideoCheckArgs, VideoSubcommand, WasmTarget, WatchArgs,
+    ComplySubcommand, ConfigArgs, CoverageArgs, DiagramFormat, InitArgs, LlmArgs, LlmLoadArgs,
+    LlmReportArgs, LlmSubcommand, LlmTestArgs, OutputFormat, PaletteArg, PlaybookArgs,
+    PlaybookOutputFormat, RecordArgs, RecordFormat, ReportArgs, ReportFormat, ScoreArgs,
+    ScoreOutputFormat, ServeArgs, ServeSubcommand, StressArgs, TestArgs, TreeArgs, VizArgs,
+    VideoArgs, VideoCheckArgs, VideoSubcommand, WasmTarget, WatchArgs,
 };
 pub use config::{CliConfig, ColorChoice, Verbosity};
 pub use debug::{create_tracer, DebugCategory, DebugTracer, DebugVerbosity, ResolutionRule};
