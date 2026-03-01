@@ -1041,4 +1041,128 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_data_generator_default() {
+        let gen = DataGenerator::default();
+        let items = gen.generate();
+        assert_eq!(items.len(), 1000);
+    }
+
+    #[test]
+    fn test_integration_load_test_run_success() {
+        let test = IntegrationLoadTest::new()
+            .with_frame_budget_ms(500.0)
+            .with_timeout_ms(2000)
+            .with_frame_count(3);
+
+        let mut call_count = 0;
+        let result = test.run(|| {
+            call_count += 1;
+            let mut timings = ComponentTimings::new();
+            timings.record("render", 1.0);
+            timings
+        });
+
+        assert!(result.is_ok());
+        let metrics = result.unwrap();
+        assert_eq!(metrics.frame_count, 3);
+        assert_eq!(call_count, 3);
+    }
+
+    #[test]
+    fn test_integration_load_test_default() {
+        let test = IntegrationLoadTest::default();
+        let result = test.run(|| ComponentTimings::new());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_integration_load_test_budget_exceeded() {
+        let test = IntegrationLoadTest::new()
+            .with_frame_count(2)
+            .with_timeout_ms(5000)
+            .with_component_budget("slow_component", 0.001); // impossibly tight
+
+        let result = test.run(|| {
+            let mut timings = ComponentTimings::new();
+            timings.record("slow_component", 10.0); // 10ms, way over 0.001ms
+            timings
+        });
+
+        assert!(result.is_err());
+        match result {
+            Err(TuiLoadError::BudgetExceeded { actual_ms, budget_ms, .. }) => {
+                assert!((actual_ms - 10.0).abs() < f64::EPSILON);
+                assert!((budget_ms - 0.001).abs() < f64::EPSILON);
+            }
+            _ => panic!("Expected BudgetExceeded error"),
+        }
+    }
+
+    #[test]
+    fn test_integration_load_test_component_within_budget() {
+        let test = IntegrationLoadTest::new()
+            .with_frame_count(2)
+            .with_timeout_ms(5000)
+            .with_component_budget("fast", 100.0);
+
+        let result = test.run(|| {
+            let mut timings = ComponentTimings::new();
+            timings.record("fast", 1.0);
+            timings
+        });
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_component_timings() {
+        let mut t = ComponentTimings::new();
+        assert!(t.get("render").is_none());
+
+        t.record("render", 5.5);
+        assert!((t.get("render").unwrap() - 5.5).abs() < f64::EPSILON);
+
+        t.record("layout", 2.0);
+        assert!((t.get("layout").unwrap() - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_tui_load_config_builder() {
+        let config = TuiLoadConfig {
+            item_count: 500,
+            frame_budget_ms: 32.0,
+            timeout_ms: 3000,
+            frames_per_filter: 10,
+            filters: vec!["sys".to_string(), "usr".to_string()],
+            strict_budget: true,
+        };
+        assert_eq!(config.item_count, 500);
+        assert!((config.frame_budget_ms - 32.0).abs() < f64::EPSILON);
+        assert_eq!(config.timeout_ms, 3000);
+        assert_eq!(config.frames_per_filter, 10);
+        assert_eq!(config.filters.len(), 2);
+        assert!(config.strict_budget);
+    }
+
+    #[test]
+    fn test_tui_load_error_budget_exceeded_display() {
+        let err = TuiLoadError::BudgetExceeded {
+            frame: 3,
+            actual_ms: 150.0,
+            budget_ms: 16.6,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("150"));
+        assert!(msg.contains("16.6"));
+    }
+
+    #[test]
+    fn test_frame_metrics_empty() {
+        let metrics = TuiFrameMetrics::new();
+        assert_eq!(metrics.frame_count, 0);
+        assert_eq!(metrics.p50_frame_ms(), 0.0);
+        assert_eq!(metrics.p95_frame_ms(), 0.0);
+    }
 }

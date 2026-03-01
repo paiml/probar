@@ -449,4 +449,56 @@ Total violations: 0
         assert_eq!(bridge.pmat_path, "/custom/pmat");
         assert!(bridge.extra_flags.contains(&"--strict".to_string()));
     }
+
+    #[test]
+    fn test_to_compliance_checks_all_pass() {
+        let bridge = PmatBridge::new();
+        let result = PmatResult::default(); // all zeros
+
+        let checks = bridge.to_compliance_checks(&result);
+        assert_eq!(checks.len(), 5);
+        for check in &checks {
+            assert_eq!(check.status, ComplianceStatus::Pass);
+        }
+    }
+
+    #[test]
+    fn test_to_compliance_checks_satd_warn_no_critical() {
+        let bridge = PmatBridge::new();
+        let result = PmatResult {
+            satd_count: 5,
+            satd_critical: 0, // no critical => warn, not fail
+            ..Default::default()
+        };
+
+        let checks = bridge.to_compliance_checks(&result);
+        let satd = checks.iter().find(|c| c.id == "PMAT-SATD-001").unwrap();
+        assert_eq!(satd.status, ComplianceStatus::Warn);
+    }
+
+    #[test]
+    fn test_to_compliance_checks_dead_code_warn() {
+        let bridge = PmatBridge::new();
+        let result = PmatResult {
+            dead_code_count: 12,
+            ..Default::default()
+        };
+
+        let checks = bridge.to_compliance_checks(&result);
+        let dead = checks.iter().find(|c| c.id == "PMAT-DEADCODE-001").unwrap();
+        assert_eq!(dead.status, ComplianceStatus::Warn);
+    }
+
+    #[test]
+    fn test_to_compliance_checks_duplicates_warn() {
+        let bridge = PmatBridge::new();
+        let result = PmatResult {
+            duplicate_count: 8,
+            ..Default::default()
+        };
+
+        let checks = bridge.to_compliance_checks(&result);
+        let dup = checks.iter().find(|c| c.id == "PMAT-DUPLICATE-001").unwrap();
+        assert_eq!(dup.status, ComplianceStatus::Warn);
+    }
 }
