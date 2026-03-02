@@ -34,8 +34,10 @@ proptest = ["dep:proptest"]
 media = ["dep:image", "dep:gif", "dep:png", "dep:mp4"]
 # File watching for dev mode
 watch = ["dep:notify"]
-# LLM/API testing and load testing
-llm = ["dep:reqwest", "tokio", "futures"]
+# LLM types and assertions (no HTTP dependencies)
+llm-types = []
+# LLM/API testing and load testing (includes llm-types + HTTP client)
+llm = ["llm-types", "dep:reqwest", "tokio", "futures"]
 
 [dependencies]
 thiserror = { workspace = true }

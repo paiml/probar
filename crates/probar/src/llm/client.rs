@@ -4,7 +4,9 @@
 //! and any server exposing the OpenAI `/v1/chat/completions` API.
 
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+#[cfg(feature = "llm")]
+use std::time::Instant;
+use std::time::Duration;
 
 /// Chat message role.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -96,6 +98,7 @@ pub struct TimedChatResponse {
 }
 
 /// Errors from the LLM client.
+#[cfg(feature = "llm")]
 #[derive(Debug, thiserror::Error)]
 pub enum LlmClientError {
     /// HTTP request failed.
@@ -115,6 +118,7 @@ pub enum LlmClientError {
 }
 
 /// OpenAI-compatible HTTP client for LLM inference.
+#[cfg(feature = "llm")]
 #[derive(Debug, Clone)]
 pub struct LlmClient {
     base_url: String,
@@ -122,6 +126,7 @@ pub struct LlmClient {
     model: String,
 }
 
+#[cfg(feature = "llm")]
 impl LlmClient {
     /// Create a new client pointing at the given base URL.
     ///
@@ -265,6 +270,7 @@ impl LlmClient {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "llm")]
     #[test]
     fn test_client_creation() {
         let client = LlmClient::new("http://localhost:8081", "qwen-coder");
@@ -272,6 +278,7 @@ mod tests {
         assert_eq!(client.model(), "qwen-coder");
     }
 
+    #[cfg(feature = "llm")]
     #[test]
     fn test_client_strips_trailing_slash() {
         let client = LlmClient::new("http://localhost:8081/", "model");
@@ -395,6 +402,7 @@ mod tests {
         assert_eq!(usage.total_tokens, 0);
     }
 
+    #[cfg(feature = "llm")]
     #[test]
     fn test_client_with_custom_client() {
         let http = reqwest::Client::builder()

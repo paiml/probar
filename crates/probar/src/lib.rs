@@ -556,7 +556,7 @@ pub mod presentar;
 ///
 /// Feature-gated behind `llm`. Provides HTTP client, assertion builders,
 /// concurrent load testing, and Markdown/JSON reporting.
-#[cfg(feature = "llm")]
+#[cfg(any(feature = "llm-types", feature = "llm"))]
 #[allow(
     clippy::missing_errors_doc,
     clippy::must_use_candidate,
