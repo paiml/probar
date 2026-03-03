@@ -203,16 +203,41 @@ fn aggregate_results(
         0.0
     };
 
-    // Inter-token latency: (latency - ttft) / (tokens - 1) for requests with >= 2 tokens
-    let mut itls: Vec<f64> = records
+    // Inter-token latency and decode throughput.
+    // For streaming: ITL = (latency - ttft) / (tokens - 1) — pure decode speed.
+    // For non-streaming: ttfb ≈ latency (server generates all tokens before
+    // sending response), so ITL from ttfb is meaningless. Fall back to
+    // per-request throughput: tokens / latency.
+    let multi_token_records: Vec<&RequestRecord> = records
         .iter()
         .filter(|r| r.success && r.tokens >= 2)
-        .map(|r| {
-            let decode_ms =
-                (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;
-            decode_ms / (r.tokens as f64 - 1.0)
-        })
         .collect();
+
+    let is_streaming = multi_token_records.iter().any(|r| {
+        let ratio = r.ttfb.as_secs_f64() / r.latency.as_secs_f64().max(1e-9);
+        ratio < 0.95
+    });
+
+    let mut itls: Vec<f64> = if is_streaming {
+        // Streaming: real ITL from decode phase
+        multi_token_records
+            .iter()
+            .map(|r| {
+                let decode_ms =
+                    (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;
+                decode_ms / (r.tokens as f64 - 1.0)
+            })
+            .collect()
+    } else {
+        // Non-streaming: per-request throughput as ITL proxy
+        // ITL ≈ latency / tokens (includes prefill, but still comparable)
+        multi_token_records
+            .iter()
+            .map(|r| {
+                r.latency.as_secs_f64() * 1000.0 / r.tokens as f64
+            })
+            .collect()
+    };
     itls.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     let itl_p50_ms = percentile(&itls, 0.50);
@@ -402,9 +427,10 @@ mod tests {
     }
 
     #[test]
-    fn test_itl_calculation() {
-        // GH-23: ITL = (latency - ttfb) / (tokens - 1)
+    fn test_itl_streaming() {
+        // GH-23: Streaming mode — ITL = (latency - ttfb) / (tokens - 1)
         // Request: 200ms latency, 50ms ttfb, 16 tokens
+        // ttfb/latency = 0.25 < 0.95 → streaming detected
         // Decode time = 200 - 50 = 150ms, ITL = 150 / 15 = 10ms
         let records = vec![RequestRecord {
             latency: Duration::from_millis(200),
@@ -416,6 +442,23 @@ mod tests {
         assert!((result.itl_p50_ms - 10.0).abs() < 0.1);
         assert!((result.decode_tok_per_sec - 100.0).abs() < 1.0);
         assert!((result.avg_tok_per_req - 16.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_itl_non_streaming() {
+        // GH-23: Non-streaming — ttfb ≈ latency, fallback to latency/tokens
+        // Request: 1600ms latency, 1599ms ttfb, 16 tokens
+        // ttfb/latency = 0.999 > 0.95 → non-streaming detected
+        // ITL proxy = 1600 / 16 = 100ms
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(1600),
+            ttfb: Duration::from_millis(1599),
+            tokens: 16,
+            success: true,
+        }];
+        let result = aggregate_results(&records, 1.0, "test", 1);
+        assert!((result.itl_p50_ms - 100.0).abs() < 0.1);
+        assert!((result.decode_tok_per_sec - 10.0).abs() < 0.1);
     }
 
     #[test]
