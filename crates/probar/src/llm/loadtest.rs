@@ -50,8 +50,19 @@ pub struct LoadTestResult {
     pub latency_p99_ms: f64,
     /// Median time to first byte (ms).
     pub ttft_p50_ms: f64,
-    /// Average tokens per second across all successful requests.
+    /// Total tokens per second (sum of all completion tokens / wall time).
+    /// NOTE: Not comparable across backends with different response lengths.
     pub tokens_per_sec: f64,
+    /// Average completion tokens per response (GH-23).
+    #[serde(default)]
+    pub avg_tok_per_req: f64,
+    /// Median inter-token latency in ms: (latency - ttft) / (tokens - 1) (GH-23).
+    /// Comparable across backends regardless of response length.
+    #[serde(default)]
+    pub itl_p50_ms: f64,
+    /// Decode throughput: 1000 / itl_p50_ms. True generation speed (GH-23).
+    #[serde(default)]
+    pub decode_tok_per_sec: f64,
     /// ISO 8601 timestamp of the run.
     pub timestamp: String,
     /// Name of the runtime tested.
@@ -185,6 +196,32 @@ fn aggregate_results(
         0.0
     };
 
+    // GH-23: Normalized metrics for cross-backend comparison
+    let avg_tok_per_req = if successful > 0 {
+        total_tokens as f64 / successful as f64
+    } else {
+        0.0
+    };
+
+    // Inter-token latency: (latency - ttft) / (tokens - 1) for requests with >= 2 tokens
+    let mut itls: Vec<f64> = records
+        .iter()
+        .filter(|r| r.success && r.tokens >= 2)
+        .map(|r| {
+            let decode_ms =
+                (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;
+            decode_ms / (r.tokens as f64 - 1.0)
+        })
+        .collect();
+    itls.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let itl_p50_ms = percentile(&itls, 0.50);
+    let decode_tok_per_sec = if itl_p50_ms > 0.0 {
+        1000.0 / itl_p50_ms
+    } else {
+        0.0
+    };
+
     let now = chrono::Utc::now().to_rfc3339();
 
     LoadTestResult {
@@ -197,6 +234,9 @@ fn aggregate_results(
         latency_p99_ms: percentile(&latencies, 0.99),
         ttft_p50_ms: percentile(&ttfbs, 0.50),
         tokens_per_sec,
+        avg_tok_per_req,
+        itl_p50_ms,
+        decode_tok_per_sec,
         timestamp: now,
         runtime_name: runtime_name.to_string(),
         elapsed_secs,
@@ -279,6 +319,10 @@ mod tests {
         assert!((result.throughput_rps - 1.0).abs() < f64::EPSILON);
         assert!(result.latency_p50_ms > 0.0);
         assert!(result.tokens_per_sec > 0.0);
+        // GH-23: normalized metrics
+        assert!((result.avg_tok_per_req - 20.0).abs() < f64::EPSILON);
+        assert!(result.itl_p50_ms > 0.0);
+        assert!(result.decode_tok_per_sec > 0.0);
         assert_eq!(result.runtime_name, "realizar");
         assert_eq!(result.concurrency, 2);
     }
@@ -333,6 +377,9 @@ mod tests {
             latency_p99_ms: 500.0,
             ttft_p50_ms: 80.0,
             tokens_per_sec: 200.0,
+            avg_tok_per_req: 15.0,
+            itl_p50_ms: 5.0,
+            decode_tok_per_sec: 200.0,
             timestamp: "2026-03-01T00:00:00Z".to_string(),
             runtime_name: "realizar".to_string(),
             elapsed_secs: 10.0,
@@ -342,6 +389,9 @@ mod tests {
         let back: LoadTestResult = serde_json::from_str(&json).unwrap();
         assert_eq!(back.total_requests, 100);
         assert_eq!(back.runtime_name, "realizar");
+        assert!((back.avg_tok_per_req - 15.0).abs() < f64::EPSILON);
+        assert!((back.itl_p50_ms - 5.0).abs() < f64::EPSILON);
+        assert!((back.decode_tok_per_sec - 200.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -349,6 +399,39 @@ mod tests {
         let data = vec![1.0, 2.0, 3.0];
         assert_eq!(percentile(&data, 0.0), 1.0);
         assert_eq!(percentile(&data, 1.0), 3.0);
+    }
+
+    #[test]
+    fn test_itl_calculation() {
+        // GH-23: ITL = (latency - ttfb) / (tokens - 1)
+        // Request: 200ms latency, 50ms ttfb, 16 tokens
+        // Decode time = 200 - 50 = 150ms, ITL = 150 / 15 = 10ms
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(200),
+            ttfb: Duration::from_millis(50),
+            tokens: 16,
+            success: true,
+        }];
+        let result = aggregate_results(&records, 1.0, "test", 1);
+        assert!((result.itl_p50_ms - 10.0).abs() < 0.1);
+        assert!((result.decode_tok_per_sec - 100.0).abs() < 1.0);
+        assert!((result.avg_tok_per_req - 16.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_itl_single_token_excluded() {
+        // GH-23: Requests with < 2 tokens should be excluded from ITL
+        // (can't compute inter-token latency with 0 or 1 token)
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(100),
+            ttfb: Duration::from_millis(100),
+            tokens: 1,
+            success: true,
+        }];
+        let result = aggregate_results(&records, 1.0, "test", 1);
+        assert_eq!(result.itl_p50_ms, 0.0);
+        assert_eq!(result.decode_tok_per_sec, 0.0);
+        assert!((result.avg_tok_per_req - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]

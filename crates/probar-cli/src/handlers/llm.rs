@@ -240,6 +240,11 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
     println!("Latency P99:  {:.1} ms", result.latency_p99_ms);
     println!("TTFT P50:     {:.1} ms", result.ttft_p50_ms);
     println!("Tokens/sec:   {:.1}", result.tokens_per_sec);
+    println!("Avg tok/req:  {:.1}", result.avg_tok_per_req);
+    if result.decode_tok_per_sec > 0.0 {
+        println!("ITL P50:      {:.1} ms", result.itl_p50_ms);
+        println!("Decode tok/s: {:.1}", result.decode_tok_per_sec);
+    }
 
     if let Some(ref output_path) = args.output {
         let json = jugar_probar::llm::report::to_json(&result);

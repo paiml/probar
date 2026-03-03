@@ -13,8 +13,18 @@ pub fn to_json(result: &LoadTestResult) -> String {
 
 /// Produce a single Markdown table row for a load test result.
 pub fn to_markdown_row(result: &LoadTestResult) -> String {
+    let decode = if result.decode_tok_per_sec > 0.0 {
+        format!("{:.1}", result.decode_tok_per_sec)
+    } else {
+        "-".to_string()
+    };
+    let itl = if result.itl_p50_ms > 0.0 {
+        format!("{:.1}", result.itl_p50_ms)
+    } else {
+        "-".to_string()
+    };
     format!(
-        "| {} | {} | {} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {} |",
+        "| {} | {} | {} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {} | {} | {} |",
         result.timestamp.split('T').next().unwrap_or(&result.timestamp),
         result.runtime_name,
         result.concurrency,
@@ -24,14 +34,17 @@ pub fn to_markdown_row(result: &LoadTestResult) -> String {
         result.latency_p99_ms,
         result.ttft_p50_ms,
         result.tokens_per_sec,
+        result.avg_tok_per_req,
+        itl,
+        decode,
         result.total_requests,
     )
 }
 
 /// Header for the performance Markdown table.
 const TABLE_HEADER: &str = "\
-| Date | Runtime | Concurrency | RPS | P50 (ms) | P95 (ms) | P99 (ms) | TTFT P50 (ms) | Tok/s | Requests |
-|------|---------|-------------|-----|----------|----------|----------|---------------|-------|----------|";
+| Date | Runtime | Concurrency | RPS | P50 (ms) | P95 (ms) | P99 (ms) | TTFT P50 (ms) | Tok/s | Avg tok/req | ITL P50 (ms) | Decode tok/s | Requests |
+|------|---------|-------------|-----|----------|----------|----------|---------------|-------|-------------|--------------|--------------|----------|";
 
 /// Generate a complete Markdown table from multiple results.
 pub fn to_markdown_table(results: &[LoadTestResult]) -> String {
@@ -113,6 +126,9 @@ mod tests {
             latency_p99_ms: 500.2,
             ttft_p50_ms: 80.1,
             tokens_per_sec: 200.0,
+            avg_tok_per_req: 15.0,
+            itl_p50_ms: 5.0,
+            decode_tok_per_sec: 200.0,
             timestamp: "2026-03-01T04:00:00Z".to_string(),
             runtime_name: runtime.to_string(),
             elapsed_secs: 10.0,
