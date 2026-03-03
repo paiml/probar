@@ -470,6 +470,10 @@ pub struct LlmLoadArgs {
     /// Output file path for JSON results
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+
+    /// Use SSE streaming for per-token TPOT measurement (GH-24)
+    #[arg(long)]
+    pub stream: bool,
 }
 
 /// Arguments for `probador llm bench` (full benchmark lifecycle)
@@ -534,6 +538,10 @@ pub struct LlmBenchArgs {
     /// Output file path for JSON results
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+
+    /// Use SSE streaming for per-token TPOT measurement (GH-24)
+    #[arg(long)]
+    pub stream: bool,
 }
 
 /// Arguments for `probador llm report`

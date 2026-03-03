@@ -20,7 +20,8 @@ pub mod report;
 
 pub use assertion::{LlmAssertion, LlmAssertionError, LlmAssertionResult};
 pub use client::{
-    ChatMessage, ChatRequest, ChatResponse, ChatResponseChoice, Role, TimedChatResponse, Usage,
+    ChatMessage, ChatRequest, ChatResponse, ChatResponseChoice, Role, StreamChunk,
+    StreamedChatResponse, TimedChatResponse, Usage,
 };
 #[cfg(feature = "llm")]
 pub use client::{LlmClient, LlmClientError};

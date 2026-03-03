@@ -20,6 +20,8 @@ pub struct LoadTestConfig {
     pub runtime_name: String,
     /// Duration of warmup phase (excluded from metrics). Default: zero (no warmup).
     pub warmup_duration: Duration,
+    /// Use SSE streaming for per-token TPOT measurement. Default: false.
+    pub stream: bool,
 }
 
 impl Default for LoadTestConfig {
@@ -30,6 +32,7 @@ impl Default for LoadTestConfig {
             prompts: vec![default_prompt()],
             runtime_name: "unknown".to_string(),
             warmup_duration: Duration::ZERO,
+            stream: false,
         }
     }
 }
@@ -131,6 +134,8 @@ struct RequestRecord {
     tokens: u32,
     prompt_tokens: u32,
     success: bool,
+    /// Per-token timestamps from SSE streaming (empty if non-streaming).
+    token_timestamps: Vec<Duration>,
 }
 
 impl LoadTest {
@@ -163,6 +168,7 @@ impl LoadTest {
     async fn run_phase(&self, duration: Duration) -> Result<Vec<RequestRecord>, LlmClientError> {
         let deadline = Instant::now() + duration;
         let mut handles = Vec::new();
+        let use_stream = self.config.stream;
 
         for worker_id in 0..self.config.concurrency {
             let client = self.client.clone();
@@ -174,27 +180,57 @@ impl LoadTest {
 
                 while Instant::now() < deadline {
                     let prompt = &prompts[prompt_idx % prompts.len()];
-                    match client.send(prompt).await {
-                        Ok(timed) => {
-                            let usage = timed.response.usage.as_ref();
-                            let tokens = usage.map_or(0, |u| u.completion_tokens);
-                            let prompt_tokens = usage.map_or(0, |u| u.prompt_tokens);
-                            records.push(RequestRecord {
-                                latency: timed.latency,
-                                ttfb: timed.ttfb,
-                                tokens,
-                                prompt_tokens,
-                                success: true,
-                            });
+                    if use_stream {
+                        match client.chat_completion_stream(prompt).await {
+                            Ok(streamed) => {
+                                let token_count = streamed.token_timestamps.len() as u32;
+                                let usage_tokens = streamed.usage.as_ref().map_or(token_count, |u| u.completion_tokens);
+                                let prompt_tokens = streamed.usage.as_ref().map_or(0, |u| u.prompt_tokens);
+                                records.push(RequestRecord {
+                                    latency: streamed.latency,
+                                    ttfb: streamed.ttft,
+                                    tokens: usage_tokens,
+                                    prompt_tokens,
+                                    success: true,
+                                    token_timestamps: streamed.token_timestamps,
+                                });
+                            }
+                            Err(_) => {
+                                records.push(RequestRecord {
+                                    latency: Duration::from_millis(0),
+                                    ttfb: Duration::from_millis(0),
+                                    tokens: 0,
+                                    prompt_tokens: 0,
+                                    success: false,
+                                    token_timestamps: Vec::new(),
+                                });
+                            }
                         }
-                        Err(_) => {
-                            records.push(RequestRecord {
-                                latency: Duration::from_millis(0),
-                                ttfb: Duration::from_millis(0),
-                                tokens: 0,
-                                prompt_tokens: 0,
-                                success: false,
-                            });
+                    } else {
+                        match client.send(prompt).await {
+                            Ok(timed) => {
+                                let usage = timed.response.usage.as_ref();
+                                let tokens = usage.map_or(0, |u| u.completion_tokens);
+                                let prompt_tokens = usage.map_or(0, |u| u.prompt_tokens);
+                                records.push(RequestRecord {
+                                    latency: timed.latency,
+                                    ttfb: timed.ttfb,
+                                    tokens,
+                                    prompt_tokens,
+                                    success: true,
+                                    token_timestamps: Vec::new(),
+                                });
+                            }
+                            Err(_) => {
+                                records.push(RequestRecord {
+                                    latency: Duration::from_millis(0),
+                                    ttfb: Duration::from_millis(0),
+                                    tokens: 0,
+                                    prompt_tokens: 0,
+                                    success: false,
+                                    token_timestamps: Vec::new(),
+                                });
+                            }
                         }
                     }
                     prompt_idx += 1;
@@ -267,22 +303,38 @@ fn aggregate_results(
     };
 
     // Inter-token latency and decode throughput.
-    // For streaming: ITL = (latency - ttft) / (tokens - 1) — pure decode speed.
-    // For non-streaming: ttfb ≈ latency (server generates all tokens before
-    // sending response), so ITL from ttfb is meaningless. Fall back to
-    // per-request throughput: tokens / latency.
+    // GH-24: When streaming token_timestamps are available, compute real per-token ITL.
+    // Otherwise fall back to request-level approximation.
     let multi_token_records: Vec<&RequestRecord> = records
         .iter()
         .filter(|r| r.success && r.tokens >= 2)
         .collect();
 
-    let is_streaming = multi_token_records.iter().any(|r| {
-        let ratio = r.ttfb.as_secs_f64() / r.latency.as_secs_f64().max(1e-9);
-        ratio < 0.95
-    });
+    // Check if we have real streaming timestamps
+    let has_streaming_timestamps = multi_token_records
+        .iter()
+        .any(|r| r.token_timestamps.len() >= 2);
 
-    let mut itls: Vec<f64> = if is_streaming {
-        // Streaming: real ITL from decode phase
+    let is_streaming = has_streaming_timestamps
+        || multi_token_records.iter().any(|r| {
+            let ratio = r.ttfb.as_secs_f64() / r.latency.as_secs_f64().max(1e-9);
+            ratio < 0.95
+        });
+
+    let mut itls: Vec<f64> = if has_streaming_timestamps {
+        // GH-24: Real per-token ITL from SSE timestamps
+        multi_token_records
+            .iter()
+            .filter(|r| r.token_timestamps.len() >= 2)
+            .flat_map(|r| {
+                r.token_timestamps
+                    .windows(2)
+                    .map(|w| (w[1] - w[0]).as_secs_f64() * 1000.0)
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    } else if is_streaming {
+        // Streaming without timestamps: ITL from decode phase
         multi_token_records
             .iter()
             .map(|r| {
@@ -293,12 +345,9 @@ fn aggregate_results(
             .collect()
     } else {
         // Non-streaming: per-request throughput as ITL proxy
-        // ITL ≈ latency / tokens (includes prefill, but still comparable)
         multi_token_records
             .iter()
-            .map(|r| {
-                r.latency.as_secs_f64() * 1000.0 / r.tokens as f64
-            })
+            .map(|r| r.latency.as_secs_f64() * 1000.0 / r.tokens as f64)
             .collect()
     };
     itls.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -310,15 +359,32 @@ fn aggregate_results(
         0.0
     };
 
-    // TPOT: Time per output token = (latency - TTFB) / (tokens - 1)
-    // Always computed (not conditional on streaming detection) per spec.
-    let mut tpots: Vec<f64> = multi_token_records
-        .iter()
-        .map(|r| {
-            let decode_ms = (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;
-            decode_ms / (r.tokens as f64 - 1.0)
-        })
-        .collect();
+    // TPOT: Time per output token
+    // GH-24: When streaming timestamps available, use mean of per-token deltas per request.
+    // Otherwise: (latency - TTFB) / (tokens - 1).
+    let mut tpots: Vec<f64> = if has_streaming_timestamps {
+        multi_token_records
+            .iter()
+            .filter(|r| r.token_timestamps.len() >= 2)
+            .map(|r| {
+                let deltas: Vec<f64> = r
+                    .token_timestamps
+                    .windows(2)
+                    .map(|w| (w[1] - w[0]).as_secs_f64() * 1000.0)
+                    .collect();
+                deltas.iter().sum::<f64>() / deltas.len() as f64
+            })
+            .collect()
+    } else {
+        multi_token_records
+            .iter()
+            .map(|r| {
+                let decode_ms =
+                    (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;
+                decode_ms / (r.tokens as f64 - 1.0)
+            })
+            .collect()
+    };
     tpots.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     // Latency statistics
@@ -449,6 +515,7 @@ mod tests {
                 tokens: 20,
                 prompt_tokens: 10,
                 success: true,
+                token_timestamps: Vec::new(),
             })
             .collect();
         let result = aggregate_results(&records, 10.0, "realizar", 2);
@@ -486,6 +553,7 @@ mod tests {
                 tokens: 10,
                 prompt_tokens: 5,
                 success: true,
+                token_timestamps: Vec::new(),
             },
             RequestRecord {
                 latency: Duration::from_millis(0),
@@ -493,6 +561,7 @@ mod tests {
                 tokens: 0,
                 prompt_tokens: 0,
                 success: false,
+                token_timestamps: Vec::new(),
             },
         ];
         let result = aggregate_results(&records, 5.0, "ollama", 1);
@@ -609,6 +678,7 @@ mod tests {
             tokens: 16,
             prompt_tokens: 10,
             success: true,
+            token_timestamps: Vec::new(),
         }];
         let result = aggregate_results(&records, 1.0, "test", 1);
         assert!((result.itl_p50_ms - 10.0).abs() < 0.1);
@@ -628,6 +698,7 @@ mod tests {
             tokens: 16,
             prompt_tokens: 10,
             success: true,
+            token_timestamps: Vec::new(),
         }];
         let result = aggregate_results(&records, 1.0, "test", 1);
         assert!((result.itl_p50_ms - 100.0).abs() < 0.1);
@@ -644,6 +715,7 @@ mod tests {
             tokens: 1,
             prompt_tokens: 10,
             success: true,
+            token_timestamps: Vec::new(),
         }];
         let result = aggregate_results(&records, 1.0, "test", 1);
         assert_eq!(result.itl_p50_ms, 0.0);
@@ -659,6 +731,7 @@ mod tests {
             tokens: 10,
             prompt_tokens: 5,
             success: true,
+            token_timestamps: Vec::new(),
         }];
         let result = aggregate_results(&records, 0.0, "test", 1);
         assert_eq!(result.throughput_rps, 0.0);
@@ -685,6 +758,7 @@ mod tests {
             tokens: 16,
             prompt_tokens: 10,
             success: true,
+            token_timestamps: Vec::new(),
         }];
         let result = aggregate_results(&records, 1.0, "test", 1);
         assert!((result.tpot_p50_ms - 10.0).abs() < 0.1);
@@ -699,6 +773,7 @@ mod tests {
                 tokens: 10,
                 prompt_tokens: 5,
                 success: true,
+                token_timestamps: Vec::new(),
             },
             RequestRecord {
                 latency: Duration::from_millis(300),
@@ -706,6 +781,7 @@ mod tests {
                 tokens: 10,
                 prompt_tokens: 5,
                 success: true,
+                token_timestamps: Vec::new(),
             },
         ];
         let result = aggregate_results(&records, 1.0, "test", 1);
@@ -723,6 +799,7 @@ mod tests {
                 tokens: 10,
                 prompt_tokens: 20,
                 success: true,
+                token_timestamps: Vec::new(),
             },
             RequestRecord {
                 latency: Duration::from_millis(100),
@@ -730,10 +807,77 @@ mod tests {
                 tokens: 15,
                 prompt_tokens: 25,
                 success: true,
+                token_timestamps: Vec::new(),
             },
         ];
         let result = aggregate_results(&records, 1.0, "test", 1);
         assert_eq!(result.prompt_tokens_total, 45);
         assert_eq!(result.completion_tokens_total, 25);
+    }
+
+    #[test]
+    fn test_tpot_from_streaming_timestamps() {
+        // GH-24: When token_timestamps are available, TPOT uses real per-token deltas.
+        // 5 tokens arriving at 50ms, 60ms, 70ms, 80ms, 90ms
+        // Inter-token deltas: 10ms, 10ms, 10ms, 10ms → mean TPOT = 10ms
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(100),
+            ttfb: Duration::from_millis(50),
+            tokens: 5,
+            prompt_tokens: 10,
+            success: true,
+            token_timestamps: vec![
+                Duration::from_millis(50),
+                Duration::from_millis(60),
+                Duration::from_millis(70),
+                Duration::from_millis(80),
+                Duration::from_millis(90),
+            ],
+        }];
+        let result = aggregate_results(&records, 1.0, "test", 1);
+        // Real TPOT from timestamps: mean of [10, 10, 10, 10] = 10ms
+        assert!((result.tpot_p50_ms - 10.0).abs() < 0.1);
+        // ITL also uses real timestamps
+        assert!((result.itl_p50_ms - 10.0).abs() < 0.1);
+        assert!((result.decode_tok_per_sec - 100.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn test_tpot_mixed_streaming_and_non_streaming() {
+        // GH-24: When some records have timestamps and some don't,
+        // only records with timestamps >= 2 are used for streaming TPOT.
+        let records = vec![
+            RequestRecord {
+                latency: Duration::from_millis(200),
+                ttfb: Duration::from_millis(50),
+                tokens: 4,
+                prompt_tokens: 10,
+                success: true,
+                token_timestamps: vec![
+                    Duration::from_millis(50),
+                    Duration::from_millis(70),
+                    Duration::from_millis(90),
+                    Duration::from_millis(110),
+                ],
+            },
+            RequestRecord {
+                latency: Duration::from_millis(100),
+                ttfb: Duration::from_millis(50),
+                tokens: 5,
+                prompt_tokens: 10,
+                success: true,
+                token_timestamps: Vec::new(), // non-streaming request
+            },
+        ];
+        let result = aggregate_results(&records, 1.0, "test", 1);
+        // Only the first record with timestamps is used for TPOT
+        // Deltas: [20, 20, 20] → mean TPOT = 20ms
+        assert!((result.tpot_p50_ms - 20.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_stream_config_default() {
+        let config = LoadTestConfig::default();
+        assert!(!config.stream);
     }
 }

@@ -37,6 +37,8 @@ pub struct BenchmarkConfig {
     pub baseline: Option<LoadTestResult>,
     /// Percentage threshold for regression detection.
     pub fail_on_regression: Option<f64>,
+    /// Use SSE streaming for per-token TPOT measurement (GH-24).
+    pub stream: bool,
 }
 
 /// Complete benchmark report with per-run results and cross-run statistics.
@@ -155,6 +157,7 @@ impl Benchmark {
                 prompts: self.config.prompts.clone(),
                 runtime_name: self.config.runtime_name.clone(),
                 warmup_duration: Duration::ZERO,
+                stream: self.config.stream,
             };
             let warmup_test = LoadTest::new(client.clone(), warmup_config);
             let _ = warmup_test.run().await;
@@ -175,6 +178,7 @@ impl Benchmark {
                 prompts: self.config.prompts.clone(),
                 runtime_name: self.config.runtime_name.clone(),
                 warmup_duration: Duration::ZERO,
+                stream: self.config.stream,
             };
             let load_test = LoadTest::new(client.clone(), measure_config);
             let result = load_test.run().await?;

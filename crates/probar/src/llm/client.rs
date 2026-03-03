@@ -8,6 +8,46 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use std::time::Duration;
 
+/// SSE streaming chunk from an OpenAI-compatible chat completion endpoint.
+#[derive(Debug, Clone, Deserialize)]
+pub struct StreamDelta {
+    /// Content fragment (may be empty or absent).
+    pub content: Option<String>,
+}
+
+/// A single choice in a streaming chunk.
+#[derive(Debug, Clone, Deserialize)]
+pub struct StreamChoice {
+    /// The delta content for this choice.
+    pub delta: StreamDelta,
+    /// Finish reason (present on final chunk).
+    pub finish_reason: Option<String>,
+}
+
+/// A streaming chunk response from the chat completion endpoint.
+#[derive(Debug, Clone, Deserialize)]
+pub struct StreamChunk {
+    /// Generated choices (typically 1).
+    pub choices: Vec<StreamChoice>,
+    /// Token usage (only present on final chunk for some backends).
+    pub usage: Option<Usage>,
+}
+
+/// Result of a streaming chat completion with per-token timestamps.
+#[derive(Debug, Clone)]
+pub struct StreamedChatResponse {
+    /// Concatenated response text.
+    pub content: String,
+    /// Total request duration.
+    pub latency: Duration,
+    /// Time to first token (first SSE data event with non-empty content).
+    pub ttft: Duration,
+    /// Timestamps of each token arrival relative to request start.
+    pub token_timestamps: Vec<Duration>,
+    /// Token usage (if reported by server).
+    pub usage: Option<Usage>,
+}
+
 /// Chat message role.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -267,6 +307,87 @@ impl LlmClient {
         )))
     }
 
+    /// Send a streaming chat completion request and collect per-token timestamps.
+    ///
+    /// Sends `stream: true` and parses SSE `data: {...}` events. Records
+    /// the arrival time of each content-bearing chunk for TPOT computation.
+    pub async fn chat_completion_stream(
+        &self,
+        request: &ChatRequest,
+    ) -> Result<StreamedChatResponse, LlmClientError> {
+        let url = format!("{}/v1/chat/completions", self.base_url);
+
+        // Force streaming on
+        let stream_request = ChatRequest {
+            model: if request.model.is_empty() {
+                self.model.clone()
+            } else {
+                request.model.clone()
+            },
+            messages: request.messages.clone(),
+            temperature: request.temperature,
+            max_tokens: request.max_tokens,
+            stream: Some(true),
+        };
+
+        let start = Instant::now();
+        let resp = self.client.post(&url).json(&stream_request).send().await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(LlmClientError::ApiError {
+                status: status.as_u16(),
+                body,
+            });
+        }
+
+        let mut content = String::new();
+        let mut token_timestamps = Vec::new();
+        let mut ttft = None;
+        let mut final_usage = None;
+
+        // Read the response as bytes stream and parse SSE events
+        let bytes = resp.bytes().await?;
+        let text = String::from_utf8_lossy(&bytes);
+
+        for line in text.lines() {
+            let line = line.trim();
+            if line == "data: [DONE]" {
+                break;
+            }
+            if let Some(json_str) = line.strip_prefix("data: ") {
+                if let Ok(chunk) = serde_json::from_str::<StreamChunk>(json_str) {
+                    if let Some(choice) = chunk.choices.first() {
+                        if let Some(ref c) = choice.delta.content {
+                            if !c.is_empty() {
+                                let now = start.elapsed();
+                                if ttft.is_none() {
+                                    ttft = Some(now);
+                                }
+                                token_timestamps.push(now);
+                                content.push_str(c);
+                            }
+                        }
+                    }
+                    if chunk.usage.is_some() {
+                        final_usage = chunk.usage;
+                    }
+                }
+            }
+        }
+
+        let latency = start.elapsed();
+
+        Ok(StreamedChatResponse {
+            content,
+            latency,
+            ttft: ttft.unwrap_or(latency),
+            token_timestamps,
+            usage: final_usage,
+        })
+    }
+
     /// Poll the server until it becomes ready or the timeout expires.
     ///
     /// Returns the time elapsed until the server was ready.
@@ -443,5 +564,54 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("30"));
         assert!(msg.contains("timed out"));
+    }
+
+    #[test]
+    fn test_stream_chunk_deserialization() {
+        // GH-24: Parse SSE streaming chunk from OpenAI-compatible API
+        let json = r#"{"choices":[{"delta":{"content":"Hello"},"finish_reason":null}]}"#;
+        let chunk: StreamChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(chunk.choices.len(), 1);
+        assert_eq!(
+            chunk.choices[0].delta.content.as_deref(),
+            Some("Hello")
+        );
+        assert!(chunk.choices[0].finish_reason.is_none());
+        assert!(chunk.usage.is_none());
+    }
+
+    #[test]
+    fn test_stream_chunk_final_with_usage() {
+        // GH-24: Final streaming chunk with usage stats
+        let json = r#"{"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}"#;
+        let chunk: StreamChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            chunk.choices[0].finish_reason.as_deref(),
+            Some("stop")
+        );
+        assert!(chunk.choices[0].delta.content.is_none());
+        let usage = chunk.usage.unwrap();
+        assert_eq!(usage.completion_tokens, 5);
+    }
+
+    #[test]
+    fn test_stream_chunk_empty_content() {
+        // GH-24: Chunk with empty content (role-only delta)
+        let json = r#"{"choices":[{"delta":{"content":""},"finish_reason":null}]}"#;
+        let chunk: StreamChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(chunk.choices[0].delta.content.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn test_chat_request_with_stream_true() {
+        let req = ChatRequest {
+            model: "test".to_string(),
+            messages: vec![],
+            temperature: None,
+            max_tokens: None,
+            stream: Some(true),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"stream\":true"));
     }
 }

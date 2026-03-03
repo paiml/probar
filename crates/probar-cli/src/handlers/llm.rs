@@ -229,6 +229,7 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
         prompts,
         runtime_name: args.runtime_name.clone(),
         warmup_duration: warmup,
+        stream: args.stream,
     };
 
     let load_test = jugar_probar::llm::LoadTest::new(client, config);
@@ -321,6 +322,7 @@ pub async fn execute_llm_bench(args: &LlmBenchArgs) -> CliResult<()> {
         runtime_name: args.runtime_name.clone(),
         baseline,
         fail_on_regression: args.fail_on_regression,
+        stream: args.stream,
     };
 
     let mut benchmark = jugar_probar::llm::benchmark::Benchmark::new(config);
