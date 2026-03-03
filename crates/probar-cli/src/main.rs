@@ -1279,6 +1279,9 @@ fn run_llm(args: &probador::LlmArgs) -> CliResult<()> {
         probador::LlmSubcommand::Load(load_args) => {
             rt.block_on(probador::handlers::llm::execute_llm_load(load_args))
         }
+        probador::LlmSubcommand::Bench(bench_args) => {
+            rt.block_on(probador::handlers::llm::execute_llm_bench(bench_args))
+        }
         probador::LlmSubcommand::Report(report_args) => {
             probador::handlers::llm::execute_llm_report(report_args)
         }

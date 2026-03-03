@@ -8,9 +8,13 @@
 //! - **Reporting**: JSON and Markdown report generation with historical tracking (feature: `llm`)
 
 pub mod assertion;
+#[cfg(feature = "llm")]
+pub mod benchmark;
 pub mod client;
 #[cfg(feature = "llm")]
 pub mod loadtest;
+#[cfg(feature = "llm")]
+pub mod prompts;
 #[cfg(feature = "llm")]
 pub mod report;
 
@@ -22,5 +26,7 @@ pub use client::{
 pub use client::{LlmClient, LlmClientError};
 #[cfg(feature = "llm")]
 pub use loadtest::{LoadTest, LoadTestConfig, LoadTestResult};
+#[cfg(feature = "llm")]
+pub use prompts::{load_from_file as load_prompts_from_file, load_profile, PromptProfile};
 #[cfg(feature = "llm")]
 pub use report::{to_json, to_markdown_row, to_markdown_table, update_performance_md};

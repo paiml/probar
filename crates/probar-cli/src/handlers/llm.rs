@@ -4,6 +4,7 @@
 //! for OpenAI-compatible LLM inference endpoints.
 
 use crate::error::{CliError, CliResult};
+use crate::LlmBenchArgs;
 use crate::LlmLoadArgs;
 use crate::LlmReportArgs;
 use crate::LlmTestArgs;
@@ -199,13 +200,18 @@ pub async fn execute_llm_test(args: &LlmTestArgs) -> CliResult<()> {
 /// Execute `probador llm load`.
 pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
     let duration = parse_duration(&args.duration)?;
+    let warmup = parse_duration(&args.warmup)?;
     let client = jugar_probar::llm::LlmClient::new(&args.url, &args.model);
 
+    // Load prompts from profile or file
+    let prompts = resolve_prompts(args.prompt_profile.as_deref(), args.prompt_file.as_deref())?;
+
     println!(
-        "Load testing {} (concurrency={}, duration={:.0}s, runtime={})",
+        "Load testing {} (concurrency={}, duration={:.0}s, warmup={:.0}s, runtime={})",
         args.url,
         args.concurrency,
         duration.as_secs_f64(),
+        warmup.as_secs_f64(),
         args.runtime_name,
     );
 
@@ -220,8 +226,9 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
     let config = jugar_probar::llm::LoadTestConfig {
         concurrency: args.concurrency,
         duration,
+        prompts,
         runtime_name: args.runtime_name.clone(),
-        ..Default::default()
+        warmup_duration: warmup,
     };
 
     let load_test = jugar_probar::llm::LoadTest::new(client, config);
@@ -244,6 +251,12 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
     if result.decode_tok_per_sec > 0.0 {
         println!("ITL P50:      {:.1} ms", result.itl_p50_ms);
         println!("Decode tok/s: {:.1}", result.decode_tok_per_sec);
+    }
+    if result.tpot_p50_ms > 0.0 {
+        println!("TPOT P50:     {:.1} ms", result.tpot_p50_ms);
+    }
+    if result.error_rate > 0.0 {
+        println!("Error rate:   {:.1}%", result.error_rate * 100.0);
     }
 
     if let Some(ref output_path) = args.output {
@@ -277,6 +290,145 @@ pub fn execute_llm_report(args: &LlmReportArgs) -> CliResult<()> {
     }
 
     Ok(())
+}
+
+/// Execute `probador llm bench`.
+pub async fn execute_llm_bench(args: &LlmBenchArgs) -> CliResult<()> {
+    let duration = parse_duration(&args.duration)?;
+    let warmup = parse_duration(&args.warmup)?;
+    let health_timeout = parse_duration(&args.health_timeout)?;
+    let cooldown = parse_duration(&args.cooldown)?;
+    let prompts = resolve_prompts(Some(&args.prompt_profile), args.prompt_file.as_deref())?;
+    let baseline = load_baseline(args.baseline.as_deref())?;
+
+    println!(
+        "Benchmark: {} (runs={}, duration={:.0}s, warmup={:.0}s, concurrency={}, runtime={})",
+        args.url, args.runs, duration.as_secs_f64(), warmup.as_secs_f64(),
+        args.concurrency, args.runtime_name,
+    );
+
+    let config = jugar_probar::llm::benchmark::BenchmarkConfig {
+        url: args.url.clone(),
+        model: args.model.clone(),
+        start_command: args.start.clone(),
+        health_timeout,
+        warmup,
+        duration,
+        concurrency: args.concurrency,
+        runs: args.runs,
+        cooldown,
+        prompts,
+        runtime_name: args.runtime_name.clone(),
+        baseline,
+        fail_on_regression: args.fail_on_regression,
+    };
+
+    let mut benchmark = jugar_probar::llm::benchmark::Benchmark::new(config);
+    let report = benchmark
+        .run()
+        .await
+        .map_err(|e| CliError::Generic(e.to_string()))?;
+
+    print_bench_report(&report);
+    write_bench_output(args.output.as_deref(), &report)?;
+
+    let has_exceeding = report.regressions.iter().any(|r| r.exceeds_threshold);
+    if has_exceeding {
+        return Err(CliError::Generic(
+            "Benchmark regression detected: one or more metrics exceeded threshold".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Load a baseline result from a JSON file (`BenchmarkReport` or single `LoadTestResult`).
+fn load_baseline(path: Option<&Path>) -> CliResult<Option<jugar_probar::llm::LoadTestResult>> {
+    let Some(baseline_path) = path else {
+        return Ok(None);
+    };
+    let content = std::fs::read_to_string(baseline_path)
+        .map_err(|e| CliError::Generic(format!("Failed to read baseline: {e}")))?;
+    if let Ok(report) = serde_json::from_str::<jugar_probar::llm::benchmark::BenchmarkReport>(&content) {
+        return Ok(report.runs.first().cloned());
+    }
+    let result: jugar_probar::llm::LoadTestResult = serde_json::from_str(&content)
+        .map_err(|e| CliError::Generic(format!("Failed to parse baseline: {e}")))?;
+    Ok(Some(result))
+}
+
+/// Print the full benchmark report (per-run + aggregate + regressions).
+fn print_bench_report(report: &jugar_probar::llm::benchmark::BenchmarkReport) {
+    for (i, run) in report.runs.iter().enumerate() {
+        println!("\n--- Run {}/{} ---", i + 1, report.runs.len());
+        println!("  Throughput:   {:.1} req/s", run.throughput_rps);
+        println!("  Latency P50:  {:.1} ms", run.latency_p50_ms);
+        println!("  TTFT P50:     {:.1} ms", run.ttft_p50_ms);
+        println!("  Tokens/sec:   {:.1}", run.tokens_per_sec);
+        if run.tpot_p50_ms > 0.0 {
+            println!("  TPOT P50:     {:.1} ms", run.tpot_p50_ms);
+        }
+    }
+
+    println!("\n--- Aggregate ({} runs) ---", report.runs.len());
+    print_stat("Throughput (req/s)", &report.aggregate.throughput_rps);
+    print_stat("Latency P50 (ms)", &report.aggregate.latency_p50);
+    print_stat("Tokens/sec", &report.aggregate.tokens_per_sec);
+    print_stat("TTFT P50 (ms)", &report.aggregate.ttft_p50);
+    print_stat("TPOT P50 (ms)", &report.aggregate.tpot_p50);
+
+    if !report.regressions.is_empty() {
+        println!("\n--- Regressions ---");
+        for r in &report.regressions {
+            let tag = if r.exceeds_threshold { "EXCEEDED" } else { "" };
+            println!(
+                "  {}: {:.1} → {:.1} ({:+.1}%) {tag}",
+                r.metric, r.baseline_value, r.current_value, r.change_pct,
+            );
+        }
+    }
+}
+
+fn print_stat(label: &str, stat: &jugar_probar::llm::benchmark::StatSummary) {
+    println!(
+        "  {}: {:.1} ± {:.1} (95% CI: [{:.1}, {:.1}])",
+        label, stat.mean, stat.stddev, stat.ci_95_lower, stat.ci_95_upper
+    );
+}
+
+/// Write benchmark report to JSON file.
+fn write_bench_output(
+    output_path: Option<&Path>,
+    report: &jugar_probar::llm::benchmark::BenchmarkReport,
+) -> CliResult<()> {
+    let Some(path) = output_path else {
+        return Ok(());
+    };
+    let json = serde_json::to_string_pretty(report)
+        .map_err(|e| CliError::Generic(e.to_string()))?;
+    std::fs::write(path, json).map_err(|e| CliError::Generic(e.to_string()))?;
+    println!("\nResults written to {}", path.display());
+    Ok(())
+}
+
+/// Resolve prompts from profile name or file path.
+fn resolve_prompts(
+    profile_name: Option<&str>,
+    prompt_file: Option<&Path>,
+) -> CliResult<Vec<jugar_probar::llm::ChatRequest>> {
+    if let Some(file_path) = prompt_file {
+        jugar_probar::llm::load_prompts_from_file(file_path)
+            .map_err(CliError::Generic)
+    } else if let Some(name) = profile_name {
+        let profile = jugar_probar::llm::PromptProfile::from_name(name)
+            .ok_or_else(|| CliError::Generic(format!(
+                "Unknown prompt profile: {name}. Use: micro, short, medium, long"
+            )))?;
+        Ok(jugar_probar::llm::load_profile(profile))
+    } else {
+        // Default: use the medium profile
+        Ok(jugar_probar::llm::load_profile(jugar_probar::llm::PromptProfile::Medium))
+    }
 }
 
 /// Load all JSON result files from a directory.

@@ -18,6 +18,8 @@ pub struct LoadTestConfig {
     pub prompts: Vec<ChatRequest>,
     /// Name of the runtime being tested (for reporting).
     pub runtime_name: String,
+    /// Duration of warmup phase (excluded from metrics). Default: zero (no warmup).
+    pub warmup_duration: Duration,
 }
 
 impl Default for LoadTestConfig {
@@ -27,6 +29,7 @@ impl Default for LoadTestConfig {
             duration: Duration::from_secs(30),
             prompts: vec![default_prompt()],
             runtime_name: "unknown".to_string(),
+            warmup_duration: Duration::ZERO,
         }
     }
 }
@@ -71,6 +74,46 @@ pub struct LoadTestResult {
     pub elapsed_secs: f64,
     /// Concurrency level used.
     pub concurrency: usize,
+    // --- Extended percentiles (Benchmarking v2.0) ---
+    /// TTFT 90th percentile (ms).
+    #[serde(default)]
+    pub ttft_p90_ms: f64,
+    /// TTFT 95th percentile (ms).
+    #[serde(default)]
+    pub ttft_p95_ms: f64,
+    /// TTFT 99th percentile (ms).
+    #[serde(default)]
+    pub ttft_p99_ms: f64,
+    /// Time per output token P50 (ms). TPOT = (latency - TTFB) / (tokens - 1).
+    #[serde(default)]
+    pub tpot_p50_ms: f64,
+    /// TPOT 90th percentile (ms).
+    #[serde(default)]
+    pub tpot_p90_ms: f64,
+    /// TPOT 95th percentile (ms).
+    #[serde(default)]
+    pub tpot_p95_ms: f64,
+    /// TPOT 99th percentile (ms).
+    #[serde(default)]
+    pub tpot_p99_ms: f64,
+    /// Minimum latency (ms).
+    #[serde(default)]
+    pub latency_min_ms: f64,
+    /// Maximum latency (ms).
+    #[serde(default)]
+    pub latency_max_ms: f64,
+    /// Latency standard deviation (ms).
+    #[serde(default)]
+    pub latency_stddev_ms: f64,
+    /// Error rate: failed / total.
+    #[serde(default)]
+    pub error_rate: f64,
+    /// Total prompt (input) tokens across all requests.
+    #[serde(default)]
+    pub prompt_tokens_total: u64,
+    /// Total completion (output) tokens across all requests.
+    #[serde(default)]
+    pub completion_tokens_total: u64,
 }
 
 /// Load test executor.
@@ -86,6 +129,7 @@ struct RequestRecord {
     latency: Duration,
     ttfb: Duration,
     tokens: u32,
+    prompt_tokens: u32,
     success: bool,
 }
 
@@ -97,7 +141,27 @@ impl LoadTest {
 
     /// Run the load test and return aggregated results.
     pub async fn run(&self) -> Result<LoadTestResult, LlmClientError> {
-        let deadline = Instant::now() + self.config.duration;
+        // Warmup phase: send requests but discard results
+        if self.config.warmup_duration > Duration::ZERO {
+            self.run_phase(self.config.warmup_duration).await?;
+        }
+
+        // Measurement phase: use actual wall time
+        let measure_start = Instant::now();
+        let all_records = self.run_phase(self.config.duration).await?;
+        let elapsed = measure_start.elapsed().as_secs_f64();
+
+        Ok(aggregate_results(
+            &all_records,
+            elapsed,
+            &self.config.runtime_name,
+            self.config.concurrency,
+        ))
+    }
+
+    /// Run a single phase (warmup or measurement) for the given duration.
+    async fn run_phase(&self, duration: Duration) -> Result<Vec<RequestRecord>, LlmClientError> {
+        let deadline = Instant::now() + duration;
         let mut handles = Vec::new();
 
         for worker_id in 0..self.config.concurrency {
@@ -112,15 +176,14 @@ impl LoadTest {
                     let prompt = &prompts[prompt_idx % prompts.len()];
                     match client.send(prompt).await {
                         Ok(timed) => {
-                            let tokens = timed
-                                .response
-                                .usage
-                                .as_ref()
-                                .map_or(0, |u| u.completion_tokens);
+                            let usage = timed.response.usage.as_ref();
+                            let tokens = usage.map_or(0, |u| u.completion_tokens);
+                            let prompt_tokens = usage.map_or(0, |u| u.prompt_tokens);
                             records.push(RequestRecord {
                                 latency: timed.latency,
                                 ttfb: timed.ttfb,
                                 tokens,
+                                prompt_tokens,
                                 success: true,
                             });
                         }
@@ -129,6 +192,7 @@ impl LoadTest {
                                 latency: Duration::from_millis(0),
                                 ttfb: Duration::from_millis(0),
                                 tokens: 0,
+                                prompt_tokens: 0,
                                 success: false,
                             });
                         }
@@ -147,13 +211,7 @@ impl LoadTest {
             }
         }
 
-        let elapsed = self.config.duration.as_secs_f64();
-        Ok(aggregate_results(
-            &all_records,
-            elapsed,
-            &self.config.runtime_name,
-            self.config.concurrency,
-        ))
+        Ok(all_records)
     }
 }
 
@@ -183,6 +241,11 @@ fn aggregate_results(
     ttfbs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     let total_tokens: u64 = records.iter().filter(|r| r.success).map(|r| u64::from(r.tokens)).sum();
+    let total_prompt_tokens: u64 = records
+        .iter()
+        .filter(|r| r.success)
+        .map(|r| u64::from(r.prompt_tokens))
+        .sum();
 
     let throughput_rps = if elapsed_secs > 0.0 {
         successful as f64 / elapsed_secs
@@ -247,6 +310,28 @@ fn aggregate_results(
         0.0
     };
 
+    // TPOT: Time per output token = (latency - TTFB) / (tokens - 1)
+    // Always computed (not conditional on streaming detection) per spec.
+    let mut tpots: Vec<f64> = multi_token_records
+        .iter()
+        .map(|r| {
+            let decode_ms = (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;
+            decode_ms / (r.tokens as f64 - 1.0)
+        })
+        .collect();
+    tpots.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Latency statistics
+    let latency_min_ms = latencies.first().copied().unwrap_or(0.0);
+    let latency_max_ms = latencies.last().copied().unwrap_or(0.0);
+    let latency_stddev_ms = stddev(&latencies);
+
+    let error_rate = if total > 0 {
+        failed as f64 / total as f64
+    } else {
+        0.0
+    };
+
     let now = chrono::Utc::now().to_rfc3339();
 
     LoadTestResult {
@@ -266,6 +351,20 @@ fn aggregate_results(
         runtime_name: runtime_name.to_string(),
         elapsed_secs,
         concurrency,
+        // Extended percentiles
+        ttft_p90_ms: percentile(&ttfbs, 0.90),
+        ttft_p95_ms: percentile(&ttfbs, 0.95),
+        ttft_p99_ms: percentile(&ttfbs, 0.99),
+        tpot_p50_ms: percentile(&tpots, 0.50),
+        tpot_p90_ms: percentile(&tpots, 0.90),
+        tpot_p95_ms: percentile(&tpots, 0.95),
+        tpot_p99_ms: percentile(&tpots, 0.99),
+        latency_min_ms,
+        latency_max_ms,
+        latency_stddev_ms,
+        error_rate,
+        prompt_tokens_total: total_prompt_tokens,
+        completion_tokens_total: total_tokens,
     }
 }
 
@@ -276,6 +375,17 @@ fn percentile(sorted: &[f64], p: f64) -> f64 {
     }
     let idx = ((sorted.len() as f64 - 1.0) * p).round() as usize;
     sorted[idx.min(sorted.len() - 1)]
+}
+
+/// Compute standard deviation of a slice of f64 values.
+fn stddev(values: &[f64]) -> f64 {
+    if values.len() < 2 {
+        return 0.0;
+    }
+    let n = values.len() as f64;
+    let mean = values.iter().sum::<f64>() / n;
+    let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n - 1.0);
+    variance.sqrt()
 }
 
 /// Default prompt for load testing.
@@ -325,6 +435,9 @@ mod tests {
         assert_eq!(result.failed, 0);
         assert_eq!(result.throughput_rps, 0.0);
         assert_eq!(result.latency_p50_ms, 0.0);
+        assert_eq!(result.error_rate, 0.0);
+        assert_eq!(result.prompt_tokens_total, 0);
+        assert_eq!(result.completion_tokens_total, 0);
     }
 
     #[test]
@@ -334,6 +447,7 @@ mod tests {
                 latency: Duration::from_millis(100 + i * 10),
                 ttfb: Duration::from_millis(50 + i * 5),
                 tokens: 20,
+                prompt_tokens: 10,
                 success: true,
             })
             .collect();
@@ -350,6 +464,17 @@ mod tests {
         assert!(result.decode_tok_per_sec > 0.0);
         assert_eq!(result.runtime_name, "realizar");
         assert_eq!(result.concurrency, 2);
+        // Extended percentiles
+        assert!(result.ttft_p90_ms > 0.0);
+        assert!(result.ttft_p95_ms > 0.0);
+        assert!(result.ttft_p99_ms > 0.0);
+        assert!(result.tpot_p50_ms > 0.0);
+        assert!(result.latency_min_ms > 0.0);
+        assert!(result.latency_max_ms >= result.latency_min_ms);
+        assert!(result.latency_stddev_ms >= 0.0);
+        assert!((result.error_rate).abs() < f64::EPSILON);
+        assert_eq!(result.prompt_tokens_total, 100);
+        assert_eq!(result.completion_tokens_total, 200);
     }
 
     #[test]
@@ -359,12 +484,14 @@ mod tests {
                 latency: Duration::from_millis(100),
                 ttfb: Duration::from_millis(50),
                 tokens: 10,
+                prompt_tokens: 5,
                 success: true,
             },
             RequestRecord {
                 latency: Duration::from_millis(0),
                 ttfb: Duration::from_millis(0),
                 tokens: 0,
+                prompt_tokens: 0,
                 success: false,
             },
         ];
@@ -372,6 +499,7 @@ mod tests {
         assert_eq!(result.total_requests, 2);
         assert_eq!(result.successful, 1);
         assert_eq!(result.failed, 1);
+        assert!((result.error_rate - 0.5).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -380,6 +508,7 @@ mod tests {
         assert_eq!(config.concurrency, 1);
         assert_eq!(config.duration, Duration::from_secs(30));
         assert_eq!(config.prompts.len(), 1);
+        assert_eq!(config.warmup_duration, Duration::ZERO);
     }
 
     #[test]
@@ -409,6 +538,19 @@ mod tests {
             runtime_name: "realizar".to_string(),
             elapsed_secs: 10.0,
             concurrency: 4,
+            ttft_p90_ms: 90.0,
+            ttft_p95_ms: 95.0,
+            ttft_p99_ms: 99.0,
+            tpot_p50_ms: 6.0,
+            tpot_p90_ms: 8.0,
+            tpot_p95_ms: 9.0,
+            tpot_p99_ms: 12.0,
+            latency_min_ms: 50.0,
+            latency_max_ms: 800.0,
+            latency_stddev_ms: 120.0,
+            error_rate: 0.05,
+            prompt_tokens_total: 950,
+            completion_tokens_total: 1425,
         };
         let json = serde_json::to_string(&result).unwrap();
         let back: LoadTestResult = serde_json::from_str(&json).unwrap();
@@ -417,6 +559,35 @@ mod tests {
         assert!((back.avg_tok_per_req - 15.0).abs() < f64::EPSILON);
         assert!((back.itl_p50_ms - 5.0).abs() < f64::EPSILON);
         assert!((back.decode_tok_per_sec - 200.0).abs() < f64::EPSILON);
+        assert!((back.tpot_p50_ms - 6.0).abs() < f64::EPSILON);
+        assert!((back.error_rate - 0.05).abs() < f64::EPSILON);
+        assert_eq!(back.prompt_tokens_total, 950);
+        assert_eq!(back.completion_tokens_total, 1425);
+    }
+
+    #[test]
+    fn test_load_test_result_backwards_compat() {
+        // Old JSON without new fields should deserialize with defaults
+        let json = r#"{
+            "total_requests": 50,
+            "successful": 50,
+            "failed": 0,
+            "throughput_rps": 5.0,
+            "latency_p50_ms": 100.0,
+            "latency_p95_ms": 200.0,
+            "latency_p99_ms": 300.0,
+            "ttft_p50_ms": 50.0,
+            "tokens_per_sec": 100.0,
+            "timestamp": "2026-01-01T00:00:00Z",
+            "runtime_name": "old",
+            "elapsed_secs": 10.0,
+            "concurrency": 1
+        }"#;
+        let result: LoadTestResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.total_requests, 50);
+        assert_eq!(result.tpot_p50_ms, 0.0);
+        assert_eq!(result.error_rate, 0.0);
+        assert_eq!(result.prompt_tokens_total, 0);
     }
 
     #[test]
@@ -436,6 +607,7 @@ mod tests {
             latency: Duration::from_millis(200),
             ttfb: Duration::from_millis(50),
             tokens: 16,
+            prompt_tokens: 10,
             success: true,
         }];
         let result = aggregate_results(&records, 1.0, "test", 1);
@@ -454,6 +626,7 @@ mod tests {
             latency: Duration::from_millis(1600),
             ttfb: Duration::from_millis(1599),
             tokens: 16,
+            prompt_tokens: 10,
             success: true,
         }];
         let result = aggregate_results(&records, 1.0, "test", 1);
@@ -469,6 +642,7 @@ mod tests {
             latency: Duration::from_millis(100),
             ttfb: Duration::from_millis(100),
             tokens: 1,
+            prompt_tokens: 10,
             success: true,
         }];
         let result = aggregate_results(&records, 1.0, "test", 1);
@@ -483,10 +657,83 @@ mod tests {
             latency: Duration::from_millis(100),
             ttfb: Duration::from_millis(50),
             tokens: 10,
+            prompt_tokens: 5,
             success: true,
         }];
         let result = aggregate_results(&records, 0.0, "test", 1);
         assert_eq!(result.throughput_rps, 0.0);
         assert_eq!(result.tokens_per_sec, 0.0);
+    }
+
+    #[test]
+    fn test_stddev() {
+        assert_eq!(stddev(&[]), 0.0);
+        assert_eq!(stddev(&[5.0]), 0.0);
+        // [10, 20, 30]: mean=20, var=((100+0+100)/2)=100, stddev=10
+        let sd = stddev(&[10.0, 20.0, 30.0]);
+        assert!((sd - 10.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_tpot_computation() {
+        // TPOT = (latency - ttfb) / (tokens - 1)
+        // Streaming: 200ms latency, 50ms ttfb, 16 tokens
+        // TPOT = (200 - 50) / 15 = 10ms
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(200),
+            ttfb: Duration::from_millis(50),
+            tokens: 16,
+            prompt_tokens: 10,
+            success: true,
+        }];
+        let result = aggregate_results(&records, 1.0, "test", 1);
+        assert!((result.tpot_p50_ms - 10.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_latency_min_max_stddev() {
+        let records = vec![
+            RequestRecord {
+                latency: Duration::from_millis(100),
+                ttfb: Duration::from_millis(50),
+                tokens: 10,
+                prompt_tokens: 5,
+                success: true,
+            },
+            RequestRecord {
+                latency: Duration::from_millis(300),
+                ttfb: Duration::from_millis(100),
+                tokens: 10,
+                prompt_tokens: 5,
+                success: true,
+            },
+        ];
+        let result = aggregate_results(&records, 1.0, "test", 1);
+        assert!((result.latency_min_ms - 100.0).abs() < 0.1);
+        assert!((result.latency_max_ms - 300.0).abs() < 0.1);
+        assert!(result.latency_stddev_ms > 0.0);
+    }
+
+    #[test]
+    fn test_prompt_tokens_tracking() {
+        let records = vec![
+            RequestRecord {
+                latency: Duration::from_millis(100),
+                ttfb: Duration::from_millis(50),
+                tokens: 10,
+                prompt_tokens: 20,
+                success: true,
+            },
+            RequestRecord {
+                latency: Duration::from_millis(100),
+                ttfb: Duration::from_millis(50),
+                tokens: 15,
+                prompt_tokens: 25,
+                success: true,
+            },
+        ];
+        let result = aggregate_results(&records, 1.0, "test", 1);
+        assert_eq!(result.prompt_tokens_total, 45);
+        assert_eq!(result.completion_tokens_total, 25);
     }
 }

@@ -402,6 +402,8 @@ pub enum LlmSubcommand {
     Test(LlmTestArgs),
     /// Run concurrent load test against an LLM endpoint
     Load(LlmLoadArgs),
+    /// Run full benchmark lifecycle (start, warmup, measure, compare, teardown)
+    Bench(LlmBenchArgs),
     /// Generate reports from test results
     Report(LlmReportArgs),
 }
@@ -450,6 +452,82 @@ pub struct LlmLoadArgs {
     pub duration: String,
 
     /// Runtime name for reporting
+    #[arg(long, default_value = "unknown")]
+    pub runtime_name: String,
+
+    /// Prompt profile: micro, short, medium, long
+    #[arg(long)]
+    pub prompt_profile: Option<String>,
+
+    /// Path to YAML prompt file
+    #[arg(long)]
+    pub prompt_file: Option<PathBuf>,
+
+    /// Warmup duration before measurement (e.g., 5s, 10s). Default: no warmup.
+    #[arg(long, default_value = "0s")]
+    pub warmup: String,
+
+    /// Output file path for JSON results
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+}
+
+/// Arguments for `probador llm bench` (full benchmark lifecycle)
+#[derive(Parser, Debug)]
+pub struct LlmBenchArgs {
+    /// Base URL of the LLM API server
+    #[arg(short, long)]
+    pub url: String,
+
+    /// Model name to include in requests
+    #[arg(short, long, default_value = "default")]
+    pub model: String,
+
+    /// Shell command to start the server (optional)
+    #[arg(long)]
+    pub start: Option<String>,
+
+    /// Maximum time to wait for server readiness (e.g., 120s)
+    #[arg(long, default_value = "120s")]
+    pub health_timeout: String,
+
+    /// Prompt profile: micro, short, medium, long
+    #[arg(long, default_value = "medium")]
+    pub prompt_profile: String,
+
+    /// Path to YAML prompt file (overrides --prompt-profile)
+    #[arg(long)]
+    pub prompt_file: Option<PathBuf>,
+
+    /// Warmup duration before measurement (e.g., 10s)
+    #[arg(long, default_value = "10s")]
+    pub warmup: String,
+
+    /// Per-run measurement duration (e.g., 60s)
+    #[arg(short, long, default_value = "60s")]
+    pub duration: String,
+
+    /// Number of concurrent workers
+    #[arg(short, long, default_value = "1")]
+    pub concurrency: usize,
+
+    /// Number of measurement runs
+    #[arg(long, default_value = "3")]
+    pub runs: usize,
+
+    /// Cooldown between runs (e.g., 5s)
+    #[arg(long, default_value = "5s")]
+    pub cooldown: String,
+
+    /// Baseline JSON file for regression detection
+    #[arg(long)]
+    pub baseline: Option<PathBuf>,
+
+    /// Percentage threshold for regression detection (exit 1 if exceeded)
+    #[arg(long)]
+    pub fail_on_regression: Option<f64>,
+
+    /// Runtime name for reporting (e.g., apr-gguf-gpu)
     #[arg(long, default_value = "unknown")]
     pub runtime_name: String,
 

@@ -115,6 +115,9 @@ pub enum LlmClientError {
     /// Health check failed.
     #[error("Health check failed: {0}")]
     HealthCheckFailed(String),
+    /// Health check timed out waiting for server readiness.
+    #[error("Health check timed out after {0:?}")]
+    HealthCheckTimeout(Duration),
 }
 
 /// OpenAI-compatible HTTP client for LLM inference.
@@ -262,6 +265,26 @@ impl LlmClient {
             "No health endpoint responded at {}",
             self.base_url
         )))
+    }
+
+    /// Poll the server until it becomes ready or the timeout expires.
+    ///
+    /// Returns the time elapsed until the server was ready.
+    pub async fn wait_ready(
+        &self,
+        timeout: Duration,
+        poll_interval: Duration,
+    ) -> Result<Duration, LlmClientError> {
+        let start = Instant::now();
+        loop {
+            if start.elapsed() > timeout {
+                return Err(LlmClientError::HealthCheckTimeout(timeout));
+            }
+            if self.health_check().await.is_ok() {
+                return Ok(start.elapsed());
+            }
+            tokio::time::sleep(poll_interval).await;
+        }
     }
 }
 
@@ -411,5 +434,14 @@ mod tests {
             .unwrap();
         let client = LlmClient::with_client("http://example.com", "model", http);
         assert_eq!(client.base_url(), "http://example.com");
+    }
+
+    #[cfg(feature = "llm")]
+    #[test]
+    fn test_health_check_timeout_error_display() {
+        let err = LlmClientError::HealthCheckTimeout(Duration::from_secs(30));
+        let msg = err.to_string();
+        assert!(msg.contains("30"));
+        assert!(msg.contains("timed out"));
     }
 }
