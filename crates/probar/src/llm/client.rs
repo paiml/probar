@@ -124,6 +124,34 @@ pub struct ChatResponse {
     pub choices: Vec<ChatResponseChoice>,
     /// Token usage statistics.
     pub usage: Option<Usage>,
+    /// Brick-level trace data (when X-Trace-Level: brick header is sent).
+    #[serde(default)]
+    pub brick_trace: Option<BrickTrace>,
+}
+
+/// Brick-level trace data from BrickProfiler (GH-114).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BrickTrace {
+    /// Trace level (e.g., "brick").
+    pub level: String,
+    /// Number of operations traced.
+    pub operations: usize,
+    /// Total time in microseconds.
+    pub total_time_us: u64,
+    /// Per-operation timing breakdown.
+    pub breakdown: Vec<BrickTraceOp>,
+}
+
+/// Individual traced operation from BrickProfiler.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BrickTraceOp {
+    /// Operation name (e.g., "attention_qkv", "mlp_gate_up").
+    pub name: String,
+    /// Time in microseconds.
+    pub time_us: u64,
+    /// Additional details.
+    #[serde(default)]
+    pub details: Option<String>,
 }
 
 /// A chat response with timing metadata.
@@ -135,6 +163,8 @@ pub struct TimedChatResponse {
     pub latency: Duration,
     /// Time to first byte (approximation for non-streaming).
     pub ttfb: Duration,
+    /// Brick trace data extracted from response (when trace_level was set).
+    pub brick_trace: Option<BrickTrace>,
 }
 
 /// Errors from the LLM client.
@@ -243,11 +273,13 @@ impl LlmClient {
 
         let response: ChatResponse = resp.json().await?;
         let latency = start.elapsed();
+        let brick_trace = response.brick_trace.clone();
 
         Ok(TimedChatResponse {
             response,
             latency,
             ttfb,
+            brick_trace,
         })
     }
 
@@ -282,11 +314,63 @@ impl LlmClient {
 
         let response: ChatResponse = resp.json().await?;
         let latency = start.elapsed();
+        let brick_trace = response.brick_trace.clone();
 
         Ok(TimedChatResponse {
             response,
             latency,
             ttfb,
+            brick_trace,
+        })
+    }
+
+    /// Send a raw `ChatRequest` with X-Trace-Level header.
+    pub async fn send_with_trace(
+        &self,
+        request: &ChatRequest,
+        trace_level: &str,
+    ) -> Result<TimedChatResponse, LlmClientError> {
+        let url = format!("{}/v1/chat/completions", self.base_url);
+        let start = Instant::now();
+
+        let actual_request;
+        let req = if request.model.is_empty() {
+            actual_request = ChatRequest {
+                model: self.model.clone(),
+                ..request.clone()
+            };
+            &actual_request
+        } else {
+            request
+        };
+
+        let resp = self
+            .client
+            .post(&url)
+            .header("X-Trace-Level", trace_level)
+            .json(req)
+            .send()
+            .await?;
+        let ttfb = start.elapsed();
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(LlmClientError::ApiError {
+                status: status.as_u16(),
+                body,
+            });
+        }
+
+        let response: ChatResponse = resp.json().await?;
+        let latency = start.elapsed();
+        let brick_trace = response.brick_trace.clone();
+
+        Ok(TimedChatResponse {
+            response,
+            latency,
+            ttfb,
+            brick_trace,
         })
     }
 

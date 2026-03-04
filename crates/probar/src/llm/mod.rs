@@ -20,13 +20,13 @@ pub mod report;
 
 pub use assertion::{LlmAssertion, LlmAssertionError, LlmAssertionResult};
 pub use client::{
-    ChatMessage, ChatRequest, ChatResponse, ChatResponseChoice, Role, StreamChunk,
-    StreamedChatResponse, TimedChatResponse, Usage,
+    BrickTrace, BrickTraceOp, ChatMessage, ChatRequest, ChatResponse, ChatResponseChoice,
+    Role, StreamChunk, StreamedChatResponse, TimedChatResponse, Usage,
 };
 #[cfg(feature = "llm")]
 pub use client::{LlmClient, LlmClientError};
 #[cfg(feature = "llm")]
-pub use loadtest::{LoadTest, LoadTestConfig, LoadTestResult};
+pub use loadtest::{BrickTraceOpSummary, LoadTest, LoadTestConfig, LoadTestResult};
 #[cfg(feature = "llm")]
 pub use prompts::{load_from_file as load_prompts_from_file, load_profile, PromptProfile};
 #[cfg(feature = "llm")]

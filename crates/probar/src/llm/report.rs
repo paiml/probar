@@ -261,6 +261,7 @@ mod tests {
             error_rate: 0.05,
             prompt_tokens_total: 950,
             completion_tokens_total: 1425,
+            brick_trace_summary: None,
         }
     }
 

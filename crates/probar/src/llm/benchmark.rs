@@ -39,6 +39,8 @@ pub struct BenchmarkConfig {
     pub fail_on_regression: Option<f64>,
     /// Use SSE streaming for per-token TPOT measurement (GH-24).
     pub stream: bool,
+    /// Trace level for BrickProfiler data collection (GH-114).
+    pub trace_level: Option<String>,
 }
 
 /// Complete benchmark report with per-run results and cross-run statistics.
@@ -158,6 +160,7 @@ impl Benchmark {
                 runtime_name: self.config.runtime_name.clone(),
                 warmup_duration: Duration::ZERO,
                 stream: self.config.stream,
+                trace_level: None, // No tracing during warmup
             };
             let warmup_test = LoadTest::new(client.clone(), warmup_config);
             let _ = warmup_test.run().await;
@@ -179,6 +182,7 @@ impl Benchmark {
                 runtime_name: self.config.runtime_name.clone(),
                 warmup_duration: Duration::ZERO,
                 stream: self.config.stream,
+                trace_level: self.config.trace_level.clone(),
             };
             let load_test = LoadTest::new(client.clone(), measure_config);
             let result = load_test.run().await?;
@@ -343,6 +347,7 @@ mod tests {
             error_rate: 0.0,
             prompt_tokens_total: 1000,
             completion_tokens_total: 2000,
+            brick_trace_summary: None,
         }
     }
 

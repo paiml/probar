@@ -3,8 +3,9 @@
 //! Generates concurrent chat completion requests, collects timing metrics,
 //! and produces percentile-based latency reports.
 
-use super::client::{ChatMessage, ChatRequest, LlmClient, LlmClientError, Role};
+use super::client::{BrickTrace, ChatMessage, ChatRequest, LlmClient, LlmClientError, Role};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// Configuration for a load test run.
@@ -22,6 +23,8 @@ pub struct LoadTestConfig {
     pub warmup_duration: Duration,
     /// Use SSE streaming for per-token TPOT measurement. Default: false.
     pub stream: bool,
+    /// Trace level for BrickProfiler data collection. Default: None.
+    pub trace_level: Option<String>,
 }
 
 impl Default for LoadTestConfig {
@@ -33,6 +36,7 @@ impl Default for LoadTestConfig {
             runtime_name: "unknown".to_string(),
             warmup_duration: Duration::ZERO,
             stream: false,
+            trace_level: None,
         }
     }
 }
@@ -117,6 +121,27 @@ pub struct LoadTestResult {
     /// Total completion (output) tokens across all requests.
     #[serde(default)]
     pub completion_tokens_total: u64,
+    /// Aggregated BrickProfiler per-operation timing (GH-114).
+    /// Present when --trace-level brick is used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brick_trace_summary: Option<Vec<BrickTraceOpSummary>>,
+}
+
+/// Aggregated BrickProfiler operation timing across benchmark requests.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrickTraceOpSummary {
+    /// Operation name (e.g., "attention_qkv", "mlp_gate_up").
+    pub name: String,
+    /// Mean time in microseconds across all requests.
+    pub mean_us: f64,
+    /// Minimum time in microseconds.
+    pub min_us: f64,
+    /// Maximum time in microseconds.
+    pub max_us: f64,
+    /// Percentage of total inference time.
+    pub pct_of_total: f64,
+    /// Number of samples.
+    pub samples: usize,
 }
 
 /// Load test executor.
@@ -136,6 +161,8 @@ struct RequestRecord {
     success: bool,
     /// Per-token timestamps from SSE streaming (empty if non-streaming).
     token_timestamps: Vec<Duration>,
+    /// Brick trace data from response (when trace_level was set).
+    brick_trace: Option<BrickTrace>,
 }
 
 impl LoadTest {
@@ -169,10 +196,12 @@ impl LoadTest {
         let deadline = Instant::now() + duration;
         let mut handles = Vec::new();
         let use_stream = self.config.stream;
+        let trace_level = self.config.trace_level.clone();
 
         for worker_id in 0..self.config.concurrency {
             let client = self.client.clone();
             let prompts = self.config.prompts.clone();
+            let trace_level = trace_level.clone();
 
             handles.push(tokio::spawn(async move {
                 let mut records = Vec::new();
@@ -193,6 +222,7 @@ impl LoadTest {
                                     prompt_tokens,
                                     success: true,
                                     token_timestamps: streamed.token_timestamps,
+                                    brick_trace: None,
                                 });
                             }
                             Err(_) => {
@@ -203,11 +233,18 @@ impl LoadTest {
                                     prompt_tokens: 0,
                                     success: false,
                                     token_timestamps: Vec::new(),
+                                    brick_trace: None,
                                 });
                             }
                         }
                     } else {
-                        match client.send(prompt).await {
+                        // GH-114: Use send_with_trace when trace_level is set
+                        let result = if let Some(ref tl) = trace_level {
+                            client.send_with_trace(prompt, tl).await
+                        } else {
+                            client.send(prompt).await
+                        };
+                        match result {
                             Ok(timed) => {
                                 let usage = timed.response.usage.as_ref();
                                 let tokens = usage.map_or(0, |u| u.completion_tokens);
@@ -219,6 +256,7 @@ impl LoadTest {
                                     prompt_tokens,
                                     success: true,
                                     token_timestamps: Vec::new(),
+                                    brick_trace: timed.brick_trace,
                                 });
                             }
                             Err(_) => {
@@ -229,6 +267,7 @@ impl LoadTest {
                                     prompt_tokens: 0,
                                     success: false,
                                     token_timestamps: Vec::new(),
+                                    brick_trace: None,
                                 });
                             }
                         }
@@ -400,6 +439,9 @@ fn aggregate_results(
 
     let now = chrono::Utc::now().to_rfc3339();
 
+    // GH-114: Aggregate brick trace data across requests
+    let brick_trace_summary = aggregate_brick_traces(records);
+
     LoadTestResult {
         total_requests: total,
         successful,
@@ -431,7 +473,60 @@ fn aggregate_results(
         error_rate,
         prompt_tokens_total: total_prompt_tokens,
         completion_tokens_total: total_tokens,
+        brick_trace_summary,
     }
+}
+
+/// Aggregate BrickProfiler traces across requests (GH-114).
+fn aggregate_brick_traces(records: &[RequestRecord]) -> Option<Vec<BrickTraceOpSummary>> {
+    let traces: Vec<&BrickTrace> = records
+        .iter()
+        .filter(|r| r.success)
+        .filter_map(|r| r.brick_trace.as_ref())
+        .collect();
+
+    if traces.is_empty() {
+        return None;
+    }
+
+    // Collect per-operation times across all requests
+    let mut op_times: HashMap<String, Vec<f64>> = HashMap::new();
+    let mut total_time_sum: f64 = 0.0;
+
+    for trace in &traces {
+        total_time_sum += trace.total_time_us as f64;
+        for op in &trace.breakdown {
+            op_times
+                .entry(op.name.clone())
+                .or_default()
+                .push(op.time_us as f64);
+        }
+    }
+
+    let avg_total = total_time_sum / traces.len() as f64;
+    let mut summaries: Vec<BrickTraceOpSummary> = op_times
+        .into_iter()
+        .map(|(name, times)| {
+            let n = times.len();
+            let sum: f64 = times.iter().sum();
+            let mean = sum / n as f64;
+            let min = times.iter().copied().fold(f64::INFINITY, f64::min);
+            let max = times.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+            let pct = if avg_total > 0.0 { (mean / avg_total) * 100.0 } else { 0.0 };
+            BrickTraceOpSummary {
+                name,
+                mean_us: mean,
+                min_us: min,
+                max_us: max,
+                pct_of_total: pct,
+                samples: n,
+            }
+        })
+        .collect();
+
+    // Sort by percentage descending (hottest first)
+    summaries.sort_by(|a, b| b.pct_of_total.partial_cmp(&a.pct_of_total).unwrap_or(std::cmp::Ordering::Equal));
+    Some(summaries)
 }
 
 /// Compute a percentile from a sorted slice. Returns 0.0 for empty slices.
@@ -516,6 +611,7 @@ mod tests {
                 prompt_tokens: 10,
                 success: true,
                 token_timestamps: Vec::new(),
+                brick_trace: None,
             })
             .collect();
         let result = aggregate_results(&records, 10.0, "realizar", 2);
@@ -554,6 +650,7 @@ mod tests {
                 prompt_tokens: 5,
                 success: true,
                 token_timestamps: Vec::new(),
+                brick_trace: None,
             },
             RequestRecord {
                 latency: Duration::from_millis(0),
@@ -562,6 +659,7 @@ mod tests {
                 prompt_tokens: 0,
                 success: false,
                 token_timestamps: Vec::new(),
+                brick_trace: None,
             },
         ];
         let result = aggregate_results(&records, 5.0, "ollama", 1);
@@ -620,6 +718,7 @@ mod tests {
             error_rate: 0.05,
             prompt_tokens_total: 950,
             completion_tokens_total: 1425,
+            brick_trace_summary: None,
         };
         let json = serde_json::to_string(&result).unwrap();
         let back: LoadTestResult = serde_json::from_str(&json).unwrap();
@@ -679,6 +778,7 @@ mod tests {
             prompt_tokens: 10,
             success: true,
             token_timestamps: Vec::new(),
+            brick_trace: None,
         }];
         let result = aggregate_results(&records, 1.0, "test", 1);
         assert!((result.itl_p50_ms - 10.0).abs() < 0.1);
@@ -699,6 +799,7 @@ mod tests {
             prompt_tokens: 10,
             success: true,
             token_timestamps: Vec::new(),
+            brick_trace: None,
         }];
         let result = aggregate_results(&records, 1.0, "test", 1);
         assert!((result.itl_p50_ms - 100.0).abs() < 0.1);
@@ -716,6 +817,7 @@ mod tests {
             prompt_tokens: 10,
             success: true,
             token_timestamps: Vec::new(),
+            brick_trace: None,
         }];
         let result = aggregate_results(&records, 1.0, "test", 1);
         assert_eq!(result.itl_p50_ms, 0.0);
@@ -732,6 +834,7 @@ mod tests {
             prompt_tokens: 5,
             success: true,
             token_timestamps: Vec::new(),
+            brick_trace: None,
         }];
         let result = aggregate_results(&records, 0.0, "test", 1);
         assert_eq!(result.throughput_rps, 0.0);
@@ -759,6 +862,7 @@ mod tests {
             prompt_tokens: 10,
             success: true,
             token_timestamps: Vec::new(),
+            brick_trace: None,
         }];
         let result = aggregate_results(&records, 1.0, "test", 1);
         assert!((result.tpot_p50_ms - 10.0).abs() < 0.1);
@@ -774,6 +878,7 @@ mod tests {
                 prompt_tokens: 5,
                 success: true,
                 token_timestamps: Vec::new(),
+                brick_trace: None,
             },
             RequestRecord {
                 latency: Duration::from_millis(300),
@@ -782,6 +887,7 @@ mod tests {
                 prompt_tokens: 5,
                 success: true,
                 token_timestamps: Vec::new(),
+                brick_trace: None,
             },
         ];
         let result = aggregate_results(&records, 1.0, "test", 1);
@@ -800,6 +906,7 @@ mod tests {
                 prompt_tokens: 20,
                 success: true,
                 token_timestamps: Vec::new(),
+                brick_trace: None,
             },
             RequestRecord {
                 latency: Duration::from_millis(100),
@@ -808,6 +915,7 @@ mod tests {
                 prompt_tokens: 25,
                 success: true,
                 token_timestamps: Vec::new(),
+                brick_trace: None,
             },
         ];
         let result = aggregate_results(&records, 1.0, "test", 1);
@@ -833,6 +941,7 @@ mod tests {
                 Duration::from_millis(80),
                 Duration::from_millis(90),
             ],
+            brick_trace: None,
         }];
         let result = aggregate_results(&records, 1.0, "test", 1);
         // Real TPOT from timestamps: mean of [10, 10, 10, 10] = 10ms
@@ -859,6 +968,7 @@ mod tests {
                     Duration::from_millis(90),
                     Duration::from_millis(110),
                 ],
+                brick_trace: None,
             },
             RequestRecord {
                 latency: Duration::from_millis(100),
@@ -867,6 +977,7 @@ mod tests {
                 prompt_tokens: 10,
                 success: true,
                 token_timestamps: Vec::new(), // non-streaming request
+                brick_trace: None,
             },
         ];
         let result = aggregate_results(&records, 1.0, "test", 1);

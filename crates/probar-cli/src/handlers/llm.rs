@@ -230,6 +230,7 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
         runtime_name: args.runtime_name.clone(),
         warmup_duration: warmup,
         stream: args.stream,
+        trace_level: None,
     };
 
     let load_test = jugar_probar::llm::LoadTest::new(client, config);
@@ -323,6 +324,7 @@ pub async fn execute_llm_bench(args: &LlmBenchArgs) -> CliResult<()> {
         baseline,
         fail_on_regression: args.fail_on_regression,
         stream: args.stream,
+        trace_level: args.trace_level.clone(),
     };
 
     let mut benchmark = jugar_probar::llm::benchmark::Benchmark::new(config);
@@ -378,6 +380,23 @@ fn print_bench_report(report: &jugar_probar::llm::benchmark::BenchmarkReport) {
     print_stat("Tokens/sec", &report.aggregate.tokens_per_sec);
     print_stat("TTFT P50 (ms)", &report.aggregate.ttft_p50);
     print_stat("TPOT P50 (ms)", &report.aggregate.tpot_p50);
+
+    // GH-114: Print brick trace summary if available
+    if let Some(trace) = report.runs.last().and_then(|r| r.brick_trace_summary.as_ref()) {
+        println!("\n--- BrickProfiler Trace ({} ops, {} samples) ---",
+            trace.len(),
+            trace.first().map_or(0, |t| t.samples),
+        );
+        for op in trace {
+            if op.name == "throughput" {
+                continue; // Skip meta-op
+            }
+            println!(
+                "  {:24} {:8.0}µs avg  ({:5.1}%)",
+                op.name, op.mean_us, op.pct_of_total,
+            );
+        }
+    }
 
     if !report.regressions.is_empty() {
         println!("\n--- Regressions ---");

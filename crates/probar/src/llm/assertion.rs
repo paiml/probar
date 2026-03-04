@@ -357,9 +357,11 @@ mod tests {
                     completion_tokens: 20,
                     total_tokens: 30,
                 }),
+                brick_trace: None,
             },
             latency: Duration::from_millis(latency_ms),
             ttfb: Duration::from_millis(latency_ms / 2),
+            brick_trace: None,
         }
     }
 
@@ -378,6 +380,7 @@ mod tests {
                 finish_reason: None,
             }],
             usage: None,
+            brick_trace: None,
         }
     }
 
@@ -569,6 +572,7 @@ mod tests {
             model: "m".to_string(),
             choices: vec![],
             usage: None,
+            brick_trace: None,
         };
         assert_eq!(first_content(&resp), "");
     }

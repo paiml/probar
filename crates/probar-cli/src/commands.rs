@@ -542,6 +542,10 @@ pub struct LlmBenchArgs {
     /// Use SSE streaming for per-token TPOT measurement (GH-24)
     #[arg(long)]
     pub stream: bool,
+
+    /// Trace level for BrickProfiler data (GH-114): brick, step, layer
+    #[arg(long)]
+    pub trace_level: Option<String>,
 }
 
 /// Arguments for `probador llm report`
