@@ -234,6 +234,11 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
         slo_ttft_ms: None,
         slo_tpot_ms: None,
         slo_latency_ms: None,
+        rate: match args.rate {
+            Some(r) if args.rate_distribution == "constant" => jugar_probar::llm::RequestRate::Constant(r),
+            Some(r) => jugar_probar::llm::RequestRate::Poisson(r),
+            None => jugar_probar::llm::RequestRate::Max,
+        },
     };
 
     let load_test = jugar_probar::llm::LoadTest::new(client, config);

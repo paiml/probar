@@ -6,7 +6,23 @@
 use super::client::{BrickTrace, ChatMessage, ChatRequest, LlmClient, LlmClientError, Role};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+/// Request scheduling mode for load generation (GH-25).
+#[derive(Debug, Clone, Default)]
+pub enum RequestRate {
+    /// Closed-loop: each worker sends the next request immediately after receiving a response.
+    /// Maximizes throughput but doesn't model realistic workloads.
+    #[default]
+    Max,
+    /// Poisson arrival rate: requests arrive at the specified rate with exponentially distributed
+    /// inter-arrival times. Models realistic web traffic.
+    Poisson(f64),
+    /// Constant rate: requests arrive at fixed intervals (1/rate seconds apart).
+    Constant(f64),
+}
 
 /// Configuration for a load test run.
 #[derive(Debug, Clone)]
@@ -31,6 +47,8 @@ pub struct LoadTestConfig {
     pub slo_tpot_ms: Option<f64>,
     /// End-to-end latency SLO threshold in ms.
     pub slo_latency_ms: Option<f64>,
+    /// Request scheduling mode (GH-25). Default: Max (closed-loop).
+    pub rate: RequestRate,
 }
 
 impl Default for LoadTestConfig {
@@ -46,6 +64,7 @@ impl Default for LoadTestConfig {
             slo_ttft_ms: None,
             slo_tpot_ms: None,
             slo_latency_ms: None,
+            rate: RequestRate::Max,
         }
     }
 }
@@ -244,6 +263,15 @@ impl LoadTest {
 
     /// Run a single phase (warmup or measurement) for the given duration.
     async fn run_phase(&self, duration: Duration) -> Result<Vec<RequestRecord>, LlmClientError> {
+        match self.config.rate {
+            RequestRate::Max => self.run_phase_max(duration).await,
+            RequestRate::Poisson(rate) => self.run_phase_rate(duration, rate, true).await,
+            RequestRate::Constant(rate) => self.run_phase_rate(duration, rate, false).await,
+        }
+    }
+
+    /// Closed-loop: N workers each send back-to-back requests.
+    async fn run_phase_max(&self, duration: Duration) -> Result<Vec<RequestRecord>, LlmClientError> {
         let deadline = Instant::now() + duration;
         let mut handles = Vec::new();
         let use_stream = self.config.stream;
@@ -260,95 +288,171 @@ impl LoadTest {
 
                 while Instant::now() < deadline {
                     let prompt = &prompts[prompt_idx % prompts.len()];
-                    if use_stream {
-                        match client.chat_completion_stream(prompt).await {
-                            Ok(streamed) => {
-                                let token_count = streamed.token_timestamps.len() as u32;
-                                let usage_tokens = streamed.usage.as_ref().map_or(token_count, |u| u.completion_tokens);
-                                // Estimate prompt tokens from message content when server doesn't report usage
-                                let prompt_tokens = streamed.usage.as_ref().map_or_else(
-                                    || estimate_prompt_tokens(&prompt.messages),
-                                    |u| u.prompt_tokens,
-                                );
-                                records.push(RequestRecord {
-                                    latency: streamed.latency,
-                                    ttfb: streamed.ttft,
-                                    tokens: usage_tokens,
-                                    prompt_tokens,
-                                    success: true,
-                                    token_timestamps: streamed.token_timestamps,
-                                    brick_trace: None,
-                                    finish_reason: streamed.finish_reason,
-                                });
-                            }
-                            Err(_) => {
-                                records.push(RequestRecord {
-                                    latency: Duration::from_millis(0),
-                                    ttfb: Duration::from_millis(0),
-                                    tokens: 0,
-                                    prompt_tokens: 0,
-                                    success: false,
-                                    token_timestamps: Vec::new(),
-                                    brick_trace: None,
-                                    finish_reason: None,
-                                });
-                            }
-                        }
-                    } else {
-                        // GH-114: Use send_with_trace when trace_level is set
-                        let result = if let Some(ref tl) = trace_level {
-                            client.send_with_trace(prompt, tl).await
-                        } else {
-                            client.send(prompt).await
-                        };
-                        match result {
-                            Ok(timed) => {
-                                let usage = timed.response.usage.as_ref();
-                                let tokens = usage.map_or(0, |u| u.completion_tokens);
-                                let prompt_tokens = usage.map_or(0, |u| u.prompt_tokens);
-                                let finish_reason = timed.response.choices.first()
-                                    .and_then(|c| c.finish_reason.clone());
-                                records.push(RequestRecord {
-                                    latency: timed.latency,
-                                    ttfb: timed.ttfb,
-                                    tokens,
-                                    prompt_tokens,
-                                    success: true,
-                                    token_timestamps: Vec::new(),
-                                    brick_trace: timed.brick_trace,
-                                    finish_reason,
-                                });
-                            }
-                            Err(_) => {
-                                records.push(RequestRecord {
-                                    latency: Duration::from_millis(0),
-                                    ttfb: Duration::from_millis(0),
-                                    tokens: 0,
-                                    prompt_tokens: 0,
-                                    success: false,
-                                    token_timestamps: Vec::new(),
-                                    brick_trace: None,
-                                    finish_reason: None,
-                                });
-                            }
-                        }
-                    }
+                    records.push(send_one_request(&client, prompt, use_stream, trace_level.as_deref()).await);
                     prompt_idx += 1;
                 }
                 records
             }));
         }
 
-        // Collect all records
-        let mut all_records = Vec::new();
-        for handle in handles {
-            if let Ok(records) = handle.await {
-                all_records.extend(records);
-            }
+        collect_handles(handles).await
+    }
+
+    /// Open-loop: scheduler dispatches requests at the configured rate,
+    /// with a bounded concurrency pool. Poisson uses exponential inter-arrival;
+    /// constant uses fixed intervals.
+    async fn run_phase_rate(
+        &self,
+        duration: Duration,
+        rate: f64,
+        poisson: bool,
+    ) -> Result<Vec<RequestRecord>, LlmClientError> {
+        let deadline = Instant::now() + duration;
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.concurrency));
+        let results: Arc<tokio::sync::Mutex<Vec<RequestRecord>>> =
+            Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let prompt_idx = Arc::new(AtomicUsize::new(0));
+
+        let mut rng_state: u64 = Instant::now().elapsed().as_nanos() as u64;
+
+        while Instant::now() < deadline {
+            // Wait for a concurrency slot
+            let permit = match semaphore.clone().acquire_owned().await {
+                Ok(p) if Instant::now() < deadline => p,
+                _ => break,
+            };
+
+            let idx = prompt_idx.fetch_add(1, Ordering::Relaxed);
+            let prompt = self.config.prompts[idx % self.config.prompts.len()].clone();
+            let client = self.client.clone();
+            let use_stream = self.config.stream;
+            let trace_level = self.config.trace_level.clone();
+            let results = results.clone();
+
+            tokio::spawn(async move {
+                let record = send_one_request(&client, &prompt, use_stream, trace_level.as_deref()).await;
+                results.lock().await.push(record);
+                drop(permit);
+            });
+
+            // Inter-arrival delay
+            let delay = if poisson {
+                // Exponential distribution: -ln(U)/rate, where U ~ Uniform(0,1)
+                rng_state = xorshift64(rng_state);
+                let u = (rng_state as f64) / (u64::MAX as f64);
+                let u = u.max(1e-10); // avoid ln(0)
+                Duration::from_secs_f64(-u.ln() / rate)
+            } else {
+                Duration::from_secs_f64(1.0 / rate)
+            };
+            tokio::time::sleep(delay).await;
         }
 
-        Ok(all_records)
+        // Wait for in-flight requests (with timeout)
+        let drain_deadline = Instant::now() + Duration::from_secs(30);
+        while semaphore.available_permits() < self.config.concurrency
+            && Instant::now() < drain_deadline
+        {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        let records = Arc::try_unwrap(results)
+            .map(|mutex| mutex.into_inner())
+            .unwrap_or_else(|arc| {
+                // Fallback: clone if other refs still exist
+                arc.blocking_lock().clone()
+            });
+        Ok(records)
     }
+}
+
+/// Send a single request (streaming or non-streaming) and return a RequestRecord.
+async fn send_one_request(
+    client: &LlmClient,
+    prompt: &ChatRequest,
+    use_stream: bool,
+    trace_level: Option<&str>,
+) -> RequestRecord {
+    if use_stream {
+        match client.chat_completion_stream(prompt).await {
+            Ok(streamed) => {
+                let token_count = streamed.token_timestamps.len() as u32;
+                let usage_tokens = streamed.usage.as_ref().map_or(token_count, |u| u.completion_tokens);
+                let prompt_tokens = streamed.usage.as_ref().map_or_else(
+                    || estimate_prompt_tokens(&prompt.messages),
+                    |u| u.prompt_tokens,
+                );
+                RequestRecord {
+                    latency: streamed.latency,
+                    ttfb: streamed.ttft,
+                    tokens: usage_tokens,
+                    prompt_tokens,
+                    success: true,
+                    token_timestamps: streamed.token_timestamps,
+                    brick_trace: None,
+                    finish_reason: streamed.finish_reason,
+                }
+            }
+            Err(_) => failed_record(),
+        }
+    } else {
+        let result = if let Some(tl) = trace_level {
+            client.send_with_trace(prompt, tl).await
+        } else {
+            client.send(prompt).await
+        };
+        match result {
+            Ok(timed) => {
+                let usage = timed.response.usage.as_ref();
+                let tokens = usage.map_or(0, |u| u.completion_tokens);
+                let prompt_tokens = usage.map_or(0, |u| u.prompt_tokens);
+                let finish_reason = timed.response.choices.first()
+                    .and_then(|c| c.finish_reason.clone());
+                RequestRecord {
+                    latency: timed.latency,
+                    ttfb: timed.ttfb,
+                    tokens,
+                    prompt_tokens,
+                    success: true,
+                    token_timestamps: Vec::new(),
+                    brick_trace: timed.brick_trace,
+                    finish_reason,
+                }
+            }
+            Err(_) => failed_record(),
+        }
+    }
+}
+
+fn failed_record() -> RequestRecord {
+    RequestRecord {
+        latency: Duration::from_millis(0),
+        ttfb: Duration::from_millis(0),
+        tokens: 0,
+        prompt_tokens: 0,
+        success: false,
+        token_timestamps: Vec::new(),
+        brick_trace: None,
+        finish_reason: None,
+    }
+}
+
+async fn collect_handles(handles: Vec<tokio::task::JoinHandle<Vec<RequestRecord>>>) -> Result<Vec<RequestRecord>, LlmClientError> {
+    let mut all_records = Vec::new();
+    for handle in handles {
+        if let Ok(records) = handle.await {
+            all_records.extend(records);
+        }
+    }
+    Ok(all_records)
+}
+
+/// Fast xorshift64 PRNG for Poisson inter-arrival times.
+fn xorshift64(mut state: u64) -> u64 {
+    state ^= state << 13;
+    state ^= state >> 7;
+    state ^= state << 17;
+    state
 }
 
 /// Aggregate individual request records into summary statistics.

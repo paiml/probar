@@ -475,6 +475,14 @@ pub struct LlmLoadArgs {
     /// Use --stream false to disable.
     #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
     pub stream: bool,
+
+    /// Target request rate (req/s). Omit for max throughput (closed-loop).
+    #[arg(long)]
+    pub rate: Option<f64>,
+
+    /// Rate distribution: poisson (default) or constant. Only used with --rate.
+    #[arg(long, default_value = "poisson")]
+    pub rate_distribution: String,
 }
 
 /// Arguments for `probador llm bench` (full benchmark lifecycle)

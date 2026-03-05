@@ -164,6 +164,7 @@ impl Benchmark {
                 slo_ttft_ms: None,
                 slo_tpot_ms: None,
                 slo_latency_ms: None,
+                rate: super::loadtest::RequestRate::Max,
             };
             let warmup_test = LoadTest::new(client.clone(), warmup_config);
             let _ = warmup_test.run().await;
@@ -189,6 +190,7 @@ impl Benchmark {
                 slo_ttft_ms: None,
                 slo_tpot_ms: None,
                 slo_latency_ms: None,
+                rate: super::loadtest::RequestRate::Max,
             };
             let load_test = LoadTest::new(client.clone(), measure_config);
             let result = load_test.run().await?;

@@ -26,7 +26,7 @@ pub use client::{
 #[cfg(feature = "llm")]
 pub use client::{LlmClient, LlmClientError};
 #[cfg(feature = "llm")]
-pub use loadtest::{BrickTraceOpSummary, LoadTest, LoadTestConfig, LoadTestResult, RequestDetail};
+pub use loadtest::{BrickTraceOpSummary, LoadTest, LoadTestConfig, LoadTestResult, RequestDetail, RequestRate};
 #[cfg(feature = "llm")]
 pub use prompts::{load_from_file as load_prompts_from_file, load_profile, PromptProfile};
 #[cfg(feature = "llm")]
