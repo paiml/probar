@@ -250,9 +250,12 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
     println!("TTFT P50:     {:.1} ms", result.ttft_p50_ms);
     println!("Tokens/sec:   {:.1}", result.tokens_per_sec);
     println!("Avg tok/req:  {:.1}", result.avg_tok_per_req);
+    if result.prefill_tok_per_sec > 0.0 {
+        println!("Prefill tok/s:{:.1}", result.prefill_tok_per_sec);
+    }
     if result.decode_tok_per_sec > 0.0 {
-        println!("ITL P50:      {:.1} ms", result.itl_p50_ms);
         println!("Decode tok/s: {:.1}", result.decode_tok_per_sec);
+        println!("ITL P50:      {:.1} ms", result.itl_p50_ms);
     }
     if result.tpot_p50_ms > 0.0 {
         println!("TPOT P50:     {:.1} ms", result.tpot_p50_ms);

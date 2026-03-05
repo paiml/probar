@@ -330,6 +330,7 @@ mod tests {
             avg_tok_per_req: 20.0,
             itl_p50_ms: 5.0,
             decode_tok_per_sec: 200.0,
+            prefill_tok_per_sec: 0.0,
             timestamp: "2026-03-03T00:00:00Z".to_string(),
             runtime_name: "test".to_string(),
             elapsed_secs: 60.0,
@@ -348,6 +349,7 @@ mod tests {
             prompt_tokens_total: 1000,
             completion_tokens_total: 2000,
             brick_trace_summary: None,
+            request_details: Vec::new(),
         }
     }
 

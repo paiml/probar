@@ -73,6 +73,9 @@ pub struct LoadTestResult {
     /// Decode throughput: 1000 / itl_p50_ms. True generation speed (GH-23).
     #[serde(default)]
     pub decode_tok_per_sec: f64,
+    /// Prefill throughput: prompt_tokens / ttft_seconds. Measures prompt processing speed.
+    #[serde(default)]
+    pub prefill_tok_per_sec: f64,
     /// ISO 8601 timestamp of the run.
     pub timestamp: String,
     /// Name of the runtime tested.
@@ -125,6 +128,25 @@ pub struct LoadTestResult {
     /// Present when --trace-level brick is used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub brick_trace_summary: Option<Vec<BrickTraceOpSummary>>,
+    /// Per-request raw timing data for distribution analysis.
+    /// Each entry: [latency_ms, ttft_ms, completion_tokens, itl_ms].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub request_details: Vec<RequestDetail>,
+}
+
+/// Per-request timing for distribution analysis and debugging.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestDetail {
+    /// Total request latency (ms).
+    pub latency_ms: f64,
+    /// Time to first token (ms).
+    pub ttft_ms: f64,
+    /// Completion tokens generated.
+    pub completion_tokens: u32,
+    /// Prompt tokens (if reported by server).
+    pub prompt_tokens: u32,
+    /// Mean inter-token latency for this request (ms). 0 if < 2 tokens.
+    pub itl_ms: f64,
 }
 
 /// Aggregated BrickProfiler operation timing across benchmark requests.
@@ -361,15 +383,18 @@ fn aggregate_results(
         });
 
     let mut itls: Vec<f64> = if has_streaming_timestamps {
-        // GH-24: Real per-token ITL from SSE timestamps
+        // Per-request mean ITL from SSE timestamps: (last_ts - first_ts) / (n - 1).
+        // Robust to token batching (servers often send 2+ tokens per SSE chunk,
+        // which would make flat_map of individual deltas bimodal: [0, 113, 0, 113...]).
         multi_token_records
             .iter()
             .filter(|r| r.token_timestamps.len() >= 2)
-            .flat_map(|r| {
-                r.token_timestamps
-                    .windows(2)
-                    .map(|w| (w[1] - w[0]).as_secs_f64() * 1000.0)
-                    .collect::<Vec<_>>()
+            .map(|r| {
+                let first = r.token_timestamps.first().unwrap();
+                let last = r.token_timestamps.last().unwrap();
+                let decode_ms = (*last - *first).as_secs_f64() * 1000.0;
+                let n_intervals = (r.token_timestamps.len() - 1) as f64;
+                decode_ms / n_intervals
             })
             .collect()
     } else if is_streaming {
@@ -400,21 +425,23 @@ fn aggregate_results(
 
     // TPOT: Time per output token
     // GH-24: When streaming timestamps available, use mean of per-token deltas per request.
-    // Otherwise: (latency - TTFB) / (tokens - 1).
+    // When streaming without timestamps: (latency - TTFB) / (tokens - 1).
+    // Non-streaming: TTFB ≈ latency so (latency - TTFB) ≈ 0 — use latency/tokens as proxy.
     let mut tpots: Vec<f64> = if has_streaming_timestamps {
+        // Per-request mean TPOT: (last_ts - first_ts) / (n - 1).
+        // Same as ITL when using timestamps — robust to token batching.
         multi_token_records
             .iter()
             .filter(|r| r.token_timestamps.len() >= 2)
             .map(|r| {
-                let deltas: Vec<f64> = r
-                    .token_timestamps
-                    .windows(2)
-                    .map(|w| (w[1] - w[0]).as_secs_f64() * 1000.0)
-                    .collect();
-                deltas.iter().sum::<f64>() / deltas.len() as f64
+                let first = r.token_timestamps.first().unwrap();
+                let last = r.token_timestamps.last().unwrap();
+                let decode_ms = (*last - *first).as_secs_f64() * 1000.0;
+                let n_intervals = (r.token_timestamps.len() - 1) as f64;
+                decode_ms / n_intervals
             })
             .collect()
-    } else {
+    } else if is_streaming {
         multi_token_records
             .iter()
             .map(|r| {
@@ -423,8 +450,23 @@ fn aggregate_results(
                 decode_ms / (r.tokens as f64 - 1.0)
             })
             .collect()
+    } else {
+        // Non-streaming: per-request throughput as TPOT proxy (same as ITL fallback)
+        multi_token_records
+            .iter()
+            .map(|r| r.latency.as_secs_f64() * 1000.0 / r.tokens as f64)
+            .collect()
     };
     tpots.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Prefill throughput: prompt_tokens / ttft_seconds for each request, then median
+    let mut prefill_rates: Vec<f64> = records
+        .iter()
+        .filter(|r| r.success && r.prompt_tokens > 0 && r.ttfb > Duration::ZERO)
+        .map(|r| r.prompt_tokens as f64 / r.ttfb.as_secs_f64())
+        .collect();
+    prefill_rates.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let prefill_tok_per_sec = percentile(&prefill_rates, 0.50);
 
     // Latency statistics
     let latency_min_ms = latencies.first().copied().unwrap_or(0.0);
@@ -442,6 +484,32 @@ fn aggregate_results(
     // GH-114: Aggregate brick trace data across requests
     let brick_trace_summary = aggregate_brick_traces(records);
 
+    // Per-request raw data for distribution analysis
+    let request_details: Vec<RequestDetail> = records
+        .iter()
+        .filter(|r| r.success)
+        .map(|r| {
+            let itl_ms = if r.token_timestamps.len() >= 2 {
+                let first = r.token_timestamps.first().unwrap();
+                let last = r.token_timestamps.last().unwrap();
+                let decode_ms = (*last - *first).as_secs_f64() * 1000.0;
+                decode_ms / (r.token_timestamps.len() - 1) as f64
+            } else if r.tokens >= 2 {
+                let decode_ms = (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;
+                decode_ms / (r.tokens as f64 - 1.0)
+            } else {
+                0.0
+            };
+            RequestDetail {
+                latency_ms: r.latency.as_secs_f64() * 1000.0,
+                ttft_ms: r.ttfb.as_secs_f64() * 1000.0,
+                completion_tokens: r.tokens,
+                prompt_tokens: r.prompt_tokens,
+                itl_ms,
+            }
+        })
+        .collect();
+
     LoadTestResult {
         total_requests: total,
         successful,
@@ -455,6 +523,7 @@ fn aggregate_results(
         avg_tok_per_req,
         itl_p50_ms,
         decode_tok_per_sec,
+        prefill_tok_per_sec,
         timestamp: now,
         runtime_name: runtime_name.to_string(),
         elapsed_secs,
@@ -474,6 +543,7 @@ fn aggregate_results(
         prompt_tokens_total: total_prompt_tokens,
         completion_tokens_total: total_tokens,
         brick_trace_summary,
+        request_details,
     }
 }
 
@@ -701,6 +771,7 @@ mod tests {
             avg_tok_per_req: 15.0,
             itl_p50_ms: 5.0,
             decode_tok_per_sec: 200.0,
+            prefill_tok_per_sec: 0.0,
             timestamp: "2026-03-01T00:00:00Z".to_string(),
             runtime_name: "realizar".to_string(),
             elapsed_secs: 10.0,
@@ -719,6 +790,7 @@ mod tests {
             prompt_tokens_total: 950,
             completion_tokens_total: 1425,
             brick_trace_summary: None,
+            request_details: Vec::new(),
         };
         let json = serde_json::to_string(&result).unwrap();
         let back: LoadTestResult = serde_json::from_str(&json).unwrap();
@@ -990,5 +1062,77 @@ mod tests {
     fn test_stream_config_default() {
         let config = LoadTestConfig::default();
         assert!(!config.stream);
+    }
+
+    #[test]
+    fn test_tpot_non_streaming_uses_latency_per_token() {
+        // Non-streaming: ttfb ≈ latency → TPOT should use latency/tokens (not near-zero).
+        // Before fix: TPOT = (latency - ttfb)/(tokens-1) = (1600-1599)/15 = 0.067ms (WRONG)
+        // After fix: TPOT = latency/tokens = 1600/16 = 100ms (correct, matches ITL)
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(1600),
+            ttfb: Duration::from_millis(1599),
+            tokens: 16,
+            prompt_tokens: 10,
+            success: true,
+            token_timestamps: Vec::new(),
+            brick_trace: None,
+        }];
+        let result = aggregate_results(&records, 1.0, "test", 1);
+        // Both TPOT and ITL should be latency/tokens = 100ms
+        assert!((result.tpot_p50_ms - 100.0).abs() < 0.1, "tpot={}", result.tpot_p50_ms);
+        assert!((result.itl_p50_ms - 100.0).abs() < 0.1, "itl={}", result.itl_p50_ms);
+    }
+
+    #[test]
+    fn test_itl_robust_to_token_batching() {
+        // Server sends tokens in pairs (batch=2): timestamps are [100, 100, 200, 200, 300]
+        // Old code (flat_map): deltas = [0, 100, 0, 100] → P50 = 50ms (bimodal, fragile)
+        // New code (per-request mean): (300-100)/4 = 50ms (robust)
+        // With batch=3: timestamps = [100, 100, 100, 300, 300, 300]
+        // Old code: deltas = [0, 0, 200, 0, 0] → P50 = 0ms (WRONG)
+        // New code: (300-100)/5 = 40ms (correct)
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(350),
+            ttfb: Duration::from_millis(100),
+            tokens: 6,
+            prompt_tokens: 10,
+            success: true,
+            token_timestamps: vec![
+                Duration::from_millis(100), // batch 1
+                Duration::from_millis(100),
+                Duration::from_millis(100),
+                Duration::from_millis(300), // batch 2
+                Duration::from_millis(300),
+                Duration::from_millis(300),
+            ],
+            brick_trace: None,
+        }];
+        let result = aggregate_results(&records, 1.0, "test", 1);
+        // Per-request mean: (300-100)/5 = 40ms
+        assert!((result.itl_p50_ms - 40.0).abs() < 0.1, "itl={}", result.itl_p50_ms);
+        assert!((result.tpot_p50_ms - 40.0).abs() < 0.1, "tpot={}", result.tpot_p50_ms);
+        assert!((result.decode_tok_per_sec - 25.0).abs() < 0.5, "decode={}", result.decode_tok_per_sec);
+    }
+
+    #[test]
+    fn test_request_details_populated() {
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(200),
+            ttfb: Duration::from_millis(50),
+            tokens: 16,
+            prompt_tokens: 10,
+            success: true,
+            token_timestamps: Vec::new(),
+            brick_trace: None,
+        }];
+        let result = aggregate_results(&records, 1.0, "test", 1);
+        assert_eq!(result.request_details.len(), 1);
+        let detail = &result.request_details[0];
+        assert!((detail.latency_ms - 200.0).abs() < 0.1);
+        assert!((detail.ttft_ms - 50.0).abs() < 0.1);
+        assert_eq!(detail.completion_tokens, 16);
+        assert_eq!(detail.prompt_tokens, 10);
+        assert!(detail.itl_ms > 0.0);
     }
 }

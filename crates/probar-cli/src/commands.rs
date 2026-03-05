@@ -471,8 +471,9 @@ pub struct LlmLoadArgs {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
-    /// Use SSE streaming for per-token TPOT measurement (GH-24)
-    #[arg(long)]
+    /// Use SSE streaming for real per-token timing (TTFT, TPOT, ITL).
+    /// Use --stream false to disable.
+    #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
     pub stream: bool,
 }
 
@@ -539,8 +540,9 @@ pub struct LlmBenchArgs {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
-    /// Use SSE streaming for per-token TPOT measurement (GH-24)
-    #[arg(long)]
+    /// Use SSE streaming for real per-token timing (TTFT, TPOT, ITL).
+    /// Use --stream false to disable.
+    #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
     pub stream: bool,
 
     /// Trace level for BrickProfiler data (GH-114): brick, step, layer

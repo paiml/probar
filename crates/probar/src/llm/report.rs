@@ -34,8 +34,13 @@ pub fn to_markdown_row(result: &LoadTestResult) -> String {
     } else {
         "0%".to_string()
     };
+    let prefill = if result.prefill_tok_per_sec > 0.0 {
+        format!("{:.1}", result.prefill_tok_per_sec)
+    } else {
+        "-".to_string()
+    };
     format!(
-        "| {} | {} | {} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {} | {} | {} | {} | {} |",
+        "| {} | {} | {} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {} | {} | {} | {} | {} | {} |",
         result.timestamp.split('T').next().unwrap_or(&result.timestamp),
         result.runtime_name,
         result.concurrency,
@@ -48,6 +53,7 @@ pub fn to_markdown_row(result: &LoadTestResult) -> String {
         result.avg_tok_per_req,
         itl,
         decode,
+        prefill,
         tpot,
         err_rate,
         result.total_requests,
@@ -56,8 +62,8 @@ pub fn to_markdown_row(result: &LoadTestResult) -> String {
 
 /// Header for the performance Markdown table.
 const TABLE_HEADER: &str = "\
-| Date | Runtime | Concurrency | RPS | P50 (ms) | P95 (ms) | P99 (ms) | TTFT P50 (ms) | Tok/s | Avg tok/req | ITL P50 (ms) | Decode tok/s | TPOT P50 (ms) | Err% | Requests |
-|------|---------|-------------|-----|----------|----------|----------|---------------|-------|-------------|--------------|--------------|---------------|------|----------|";
+| Date | Runtime | Concurrency | RPS | P50 (ms) | P95 (ms) | P99 (ms) | TTFT P50 (ms) | Tok/s | Avg tok/req | ITL P50 (ms) | Decode tok/s | Prefill tok/s | TPOT P50 (ms) | Err% | Requests |
+|------|---------|-------------|-----|----------|----------|----------|---------------|-------|-------------|--------------|--------------|---------------|---------------|------|----------|";
 
 /// Generate a complete Markdown table from multiple results.
 pub fn to_markdown_table(results: &[LoadTestResult]) -> String {
@@ -244,6 +250,7 @@ mod tests {
             avg_tok_per_req: 15.0,
             itl_p50_ms: 5.0,
             decode_tok_per_sec: 200.0,
+            prefill_tok_per_sec: 0.0,
             timestamp: "2026-03-01T04:00:00Z".to_string(),
             runtime_name: runtime.to_string(),
             elapsed_secs: 10.0,
@@ -262,6 +269,7 @@ mod tests {
             prompt_tokens_total: 950,
             completion_tokens_total: 1425,
             brick_trace_summary: None,
+            request_details: Vec::new(),
         }
     }
 

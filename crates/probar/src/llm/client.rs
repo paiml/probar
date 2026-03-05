@@ -431,31 +431,49 @@ impl LlmClient {
         let mut ttft = None;
         let mut final_usage = None;
 
-        // Read the response as bytes stream and parse SSE events
-        let bytes = resp.bytes().await?;
-        let text = String::from_utf8_lossy(&bytes);
+        // Read the response incrementally via chunk() for real per-token timestamps.
+        // Each chunk() call returns data as it arrives from the server, so timestamps
+        // reflect actual token delivery times rather than full-response download time.
+        let mut resp = resp;
+        let mut buffer = String::new();
+        let mut done = false;
 
-        for line in text.lines() {
-            let line = line.trim();
-            if line == "data: [DONE]" {
-                break;
+        while !done {
+            match resp.chunk().await? {
+                Some(chunk_bytes) => {
+                    buffer.push_str(&String::from_utf8_lossy(&chunk_bytes));
+                }
+                None => {
+                    done = true;
+                }
             }
-            if let Some(json_str) = line.strip_prefix("data: ") {
-                if let Ok(chunk) = serde_json::from_str::<StreamChunk>(json_str) {
-                    if let Some(choice) = chunk.choices.first() {
-                        if let Some(ref c) = choice.delta.content {
-                            if !c.is_empty() {
-                                let now = start.elapsed();
-                                if ttft.is_none() {
-                                    ttft = Some(now);
+
+            // Process complete lines from buffer
+            while let Some(newline_pos) = buffer.find('\n') {
+                let line: String = buffer[..newline_pos].trim().to_string();
+                buffer = buffer[newline_pos + 1..].to_string();
+
+                if line == "data: [DONE]" {
+                    done = true;
+                    break;
+                }
+                if let Some(json_str) = line.strip_prefix("data: ") {
+                    if let Ok(sse_chunk) = serde_json::from_str::<StreamChunk>(json_str) {
+                        if let Some(choice) = sse_chunk.choices.first() {
+                            if let Some(ref c) = choice.delta.content {
+                                if !c.is_empty() {
+                                    let now = start.elapsed();
+                                    if ttft.is_none() {
+                                        ttft = Some(now);
+                                    }
+                                    token_timestamps.push(now);
+                                    content.push_str(c);
                                 }
-                                token_timestamps.push(now);
-                                content.push_str(c);
                             }
                         }
-                    }
-                    if chunk.usage.is_some() {
-                        final_usage = chunk.usage;
+                        if sse_chunk.usage.is_some() {
+                            final_usage = sse_chunk.usage;
+                        }
                     }
                 }
             }
