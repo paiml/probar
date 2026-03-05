@@ -25,6 +25,12 @@ pub struct LoadTestConfig {
     pub stream: bool,
     /// Trace level for BrickProfiler data collection. Default: None.
     pub trace_level: Option<String>,
+    /// TTFT SLO threshold in ms. Requests exceeding this are SLO violations.
+    pub slo_ttft_ms: Option<f64>,
+    /// TPOT SLO threshold in ms. Requests exceeding this are SLO violations.
+    pub slo_tpot_ms: Option<f64>,
+    /// End-to-end latency SLO threshold in ms.
+    pub slo_latency_ms: Option<f64>,
 }
 
 impl Default for LoadTestConfig {
@@ -37,6 +43,9 @@ impl Default for LoadTestConfig {
             warmup_duration: Duration::ZERO,
             stream: false,
             trace_level: None,
+            slo_ttft_ms: None,
+            slo_tpot_ms: None,
+            slo_latency_ms: None,
         }
     }
 }
@@ -124,6 +133,18 @@ pub struct LoadTestResult {
     /// Total completion (output) tokens across all requests.
     #[serde(default)]
     pub completion_tokens_total: u64,
+    /// Percentage of requests truncated by max_tokens (finish_reason="length").
+    #[serde(default)]
+    pub truncated_pct: f64,
+    /// Mean SSE chunks per completion token (1.0 = no batching, <1.0 = server batches tokens).
+    #[serde(default)]
+    pub sse_batch_ratio: f64,
+    /// Goodput: percentage of requests meeting all configured SLOs.
+    #[serde(default)]
+    pub goodput_pct: f64,
+    /// Output token count distribution: [min, p50, p90, max].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens_dist: Option<[f64; 4]>,
     /// Aggregated BrickProfiler per-operation timing (GH-114).
     /// Present when --trace-level brick is used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -147,6 +168,9 @@ pub struct RequestDetail {
     pub prompt_tokens: u32,
     /// Mean inter-token latency for this request (ms). 0 if < 2 tokens.
     pub itl_ms: f64,
+    /// Why generation stopped: "stop" (natural) or "length" (truncated by max_tokens).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
 }
 
 /// Aggregated BrickProfiler operation timing across benchmark requests.
@@ -185,6 +209,8 @@ struct RequestRecord {
     token_timestamps: Vec<Duration>,
     /// Brick trace data from response (when trace_level was set).
     brick_trace: Option<BrickTrace>,
+    /// Why generation stopped (e.g., "stop", "length").
+    finish_reason: Option<String>,
 }
 
 impl LoadTest {
@@ -210,6 +236,9 @@ impl LoadTest {
             elapsed,
             &self.config.runtime_name,
             self.config.concurrency,
+            self.config.slo_ttft_ms,
+            self.config.slo_tpot_ms,
+            self.config.slo_latency_ms,
         ))
     }
 
@@ -236,7 +265,11 @@ impl LoadTest {
                             Ok(streamed) => {
                                 let token_count = streamed.token_timestamps.len() as u32;
                                 let usage_tokens = streamed.usage.as_ref().map_or(token_count, |u| u.completion_tokens);
-                                let prompt_tokens = streamed.usage.as_ref().map_or(0, |u| u.prompt_tokens);
+                                // Estimate prompt tokens from message content when server doesn't report usage
+                                let prompt_tokens = streamed.usage.as_ref().map_or_else(
+                                    || estimate_prompt_tokens(&prompt.messages),
+                                    |u| u.prompt_tokens,
+                                );
                                 records.push(RequestRecord {
                                     latency: streamed.latency,
                                     ttfb: streamed.ttft,
@@ -245,6 +278,7 @@ impl LoadTest {
                                     success: true,
                                     token_timestamps: streamed.token_timestamps,
                                     brick_trace: None,
+                                    finish_reason: streamed.finish_reason,
                                 });
                             }
                             Err(_) => {
@@ -256,6 +290,7 @@ impl LoadTest {
                                     success: false,
                                     token_timestamps: Vec::new(),
                                     brick_trace: None,
+                                    finish_reason: None,
                                 });
                             }
                         }
@@ -271,6 +306,8 @@ impl LoadTest {
                                 let usage = timed.response.usage.as_ref();
                                 let tokens = usage.map_or(0, |u| u.completion_tokens);
                                 let prompt_tokens = usage.map_or(0, |u| u.prompt_tokens);
+                                let finish_reason = timed.response.choices.first()
+                                    .and_then(|c| c.finish_reason.clone());
                                 records.push(RequestRecord {
                                     latency: timed.latency,
                                     ttfb: timed.ttfb,
@@ -279,6 +316,7 @@ impl LoadTest {
                                     success: true,
                                     token_timestamps: Vec::new(),
                                     brick_trace: timed.brick_trace,
+                                    finish_reason,
                                 });
                             }
                             Err(_) => {
@@ -290,6 +328,7 @@ impl LoadTest {
                                     success: false,
                                     token_timestamps: Vec::new(),
                                     brick_trace: None,
+                                    finish_reason: None,
                                 });
                             }
                         }
@@ -318,6 +357,9 @@ fn aggregate_results(
     elapsed_secs: f64,
     runtime_name: &str,
     concurrency: usize,
+    slo_ttft_ms: Option<f64>,
+    slo_tpot_ms: Option<f64>,
+    slo_latency_ms: Option<f64>,
 ) -> LoadTestResult {
     let total = records.len() as u64;
     let successful = records.iter().filter(|r| r.success).count() as u64;
@@ -364,14 +406,11 @@ fn aggregate_results(
     };
 
     // Inter-token latency and decode throughput.
-    // GH-24: When streaming token_timestamps are available, compute real per-token ITL.
-    // Otherwise fall back to request-level approximation.
     let multi_token_records: Vec<&RequestRecord> = records
         .iter()
         .filter(|r| r.success && r.tokens >= 2)
         .collect();
 
-    // Check if we have real streaming timestamps
     let has_streaming_timestamps = multi_token_records
         .iter()
         .any(|r| r.token_timestamps.len() >= 2);
@@ -382,38 +421,7 @@ fn aggregate_results(
             ratio < 0.95
         });
 
-    let mut itls: Vec<f64> = if has_streaming_timestamps {
-        // Per-request mean ITL from SSE timestamps: (last_ts - first_ts) / (n - 1).
-        // Robust to token batching (servers often send 2+ tokens per SSE chunk,
-        // which would make flat_map of individual deltas bimodal: [0, 113, 0, 113...]).
-        multi_token_records
-            .iter()
-            .filter(|r| r.token_timestamps.len() >= 2)
-            .map(|r| {
-                let first = r.token_timestamps.first().unwrap();
-                let last = r.token_timestamps.last().unwrap();
-                let decode_ms = (*last - *first).as_secs_f64() * 1000.0;
-                let n_intervals = (r.token_timestamps.len() - 1) as f64;
-                decode_ms / n_intervals
-            })
-            .collect()
-    } else if is_streaming {
-        // Streaming without timestamps: ITL from decode phase
-        multi_token_records
-            .iter()
-            .map(|r| {
-                let decode_ms =
-                    (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;
-                decode_ms / (r.tokens as f64 - 1.0)
-            })
-            .collect()
-    } else {
-        // Non-streaming: per-request throughput as ITL proxy
-        multi_token_records
-            .iter()
-            .map(|r| r.latency.as_secs_f64() * 1000.0 / r.tokens as f64)
-            .collect()
-    };
+    let mut itls = compute_per_token_latencies(&multi_token_records, has_streaming_timestamps, is_streaming);
     itls.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     let itl_p50_ms = percentile(&itls, 0.50);
@@ -423,40 +431,8 @@ fn aggregate_results(
         0.0
     };
 
-    // TPOT: Time per output token
-    // GH-24: When streaming timestamps available, use mean of per-token deltas per request.
-    // When streaming without timestamps: (latency - TTFB) / (tokens - 1).
-    // Non-streaming: TTFB ≈ latency so (latency - TTFB) ≈ 0 — use latency/tokens as proxy.
-    let mut tpots: Vec<f64> = if has_streaming_timestamps {
-        // Per-request mean TPOT: (last_ts - first_ts) / (n - 1).
-        // Same as ITL when using timestamps — robust to token batching.
-        multi_token_records
-            .iter()
-            .filter(|r| r.token_timestamps.len() >= 2)
-            .map(|r| {
-                let first = r.token_timestamps.first().unwrap();
-                let last = r.token_timestamps.last().unwrap();
-                let decode_ms = (*last - *first).as_secs_f64() * 1000.0;
-                let n_intervals = (r.token_timestamps.len() - 1) as f64;
-                decode_ms / n_intervals
-            })
-            .collect()
-    } else if is_streaming {
-        multi_token_records
-            .iter()
-            .map(|r| {
-                let decode_ms =
-                    (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;
-                decode_ms / (r.tokens as f64 - 1.0)
-            })
-            .collect()
-    } else {
-        // Non-streaming: per-request throughput as TPOT proxy (same as ITL fallback)
-        multi_token_records
-            .iter()
-            .map(|r| r.latency.as_secs_f64() * 1000.0 / r.tokens as f64)
-            .collect()
-    };
+    // TPOT uses same computation as ITL (identical for streaming timestamps, same fallback).
+    let mut tpots = compute_per_token_latencies(&multi_token_records, has_streaming_timestamps, is_streaming);
     tpots.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     // Prefill throughput: prompt_tokens / ttft_seconds for each request, then median
@@ -481,34 +457,53 @@ fn aggregate_results(
 
     let now = chrono::Utc::now().to_rfc3339();
 
+    // Truncation rate: finish_reason="length" means max_tokens hit
+    let success_records: Vec<&RequestRecord> = records.iter().filter(|r| r.success).collect();
+    let truncated = success_records.iter()
+        .filter(|r| r.finish_reason.as_deref() == Some("length"))
+        .count();
+    let truncated_pct = if !success_records.is_empty() {
+        truncated as f64 / success_records.len() as f64 * 100.0
+    } else {
+        0.0
+    };
+
+    // Output token distribution
+    let mut tok_counts: Vec<f64> = success_records.iter()
+        .map(|r| r.tokens as f64)
+        .collect();
+    tok_counts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let output_tokens_dist = if !tok_counts.is_empty() {
+        Some([
+            tok_counts[0],
+            percentile(&tok_counts, 0.50),
+            percentile(&tok_counts, 0.90),
+            tok_counts[tok_counts.len() - 1],
+        ])
+    } else {
+        None
+    };
+
+    // SSE batch ratio: chunks/tokens. <0.8 means server batches tokens.
+    let sse_batch_ratio = if has_streaming_timestamps {
+        let total_chunks: usize = multi_token_records.iter()
+            .filter(|r| !r.token_timestamps.is_empty())
+            .map(|r| r.token_timestamps.len())
+            .sum();
+        let total_toks: u64 = multi_token_records.iter()
+            .filter(|r| !r.token_timestamps.is_empty())
+            .map(|r| u64::from(r.tokens))
+            .sum();
+        if total_toks > 0 { total_chunks as f64 / total_toks as f64 } else { 0.0 }
+    } else {
+        0.0
+    };
+
     // GH-114: Aggregate brick trace data across requests
     let brick_trace_summary = aggregate_brick_traces(records);
 
-    // Per-request raw data for distribution analysis
-    let request_details: Vec<RequestDetail> = records
-        .iter()
-        .filter(|r| r.success)
-        .map(|r| {
-            let itl_ms = if r.token_timestamps.len() >= 2 {
-                let first = r.token_timestamps.first().unwrap();
-                let last = r.token_timestamps.last().unwrap();
-                let decode_ms = (*last - *first).as_secs_f64() * 1000.0;
-                decode_ms / (r.token_timestamps.len() - 1) as f64
-            } else if r.tokens >= 2 {
-                let decode_ms = (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;
-                decode_ms / (r.tokens as f64 - 1.0)
-            } else {
-                0.0
-            };
-            RequestDetail {
-                latency_ms: r.latency.as_secs_f64() * 1000.0,
-                ttft_ms: r.ttfb.as_secs_f64() * 1000.0,
-                completion_tokens: r.tokens,
-                prompt_tokens: r.prompt_tokens,
-                itl_ms,
-            }
-        })
-        .collect();
+    let request_details = build_request_details(records);
+    let goodput_pct = compute_goodput(&request_details, slo_ttft_ms, slo_tpot_ms, slo_latency_ms);
 
     LoadTestResult {
         total_requests: total,
@@ -542,12 +537,105 @@ fn aggregate_results(
         error_rate,
         prompt_tokens_total: total_prompt_tokens,
         completion_tokens_total: total_tokens,
+        truncated_pct,
+        sse_batch_ratio,
+        goodput_pct,
+        output_tokens_dist,
         brick_trace_summary,
         request_details,
     }
 }
 
 /// Aggregate BrickProfiler traces across requests (GH-114).
+/// Compute per-token latencies (ITL/TPOT) from request records.
+/// Uses real SSE timestamps when available, falls back to request-level approximation.
+fn compute_per_token_latencies(
+    multi_token_records: &[&RequestRecord],
+    has_streaming_timestamps: bool,
+    is_streaming: bool,
+) -> Vec<f64> {
+    if has_streaming_timestamps {
+        // Per-request mean from SSE timestamps: (last_ts - first_ts) / (n - 1).
+        // Robust to token batching (servers often send 2+ tokens per SSE chunk).
+        multi_token_records
+            .iter()
+            .filter(|r| r.token_timestamps.len() >= 2)
+            .map(|r| {
+                let first = &r.token_timestamps[0];
+                let last = &r.token_timestamps[r.token_timestamps.len() - 1];
+                let decode_ms = (*last - *first).as_secs_f64() * 1000.0;
+                decode_ms / (r.token_timestamps.len() - 1) as f64
+            })
+            .collect()
+    } else if is_streaming {
+        // Streaming without timestamps: ITL from decode phase
+        multi_token_records
+            .iter()
+            .map(|r| {
+                let decode_ms = (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;
+                decode_ms / (r.tokens as f64 - 1.0)
+            })
+            .collect()
+    } else {
+        // Non-streaming: per-request throughput as proxy
+        multi_token_records
+            .iter()
+            .map(|r| r.latency.as_secs_f64() * 1000.0 / r.tokens as f64)
+            .collect()
+    }
+}
+
+/// Build per-request detail records for distribution analysis and SLO evaluation.
+fn build_request_details(records: &[RequestRecord]) -> Vec<RequestDetail> {
+    records
+        .iter()
+        .filter(|r| r.success)
+        .map(|r| {
+            let itl_ms = if r.token_timestamps.len() >= 2 {
+                let first = &r.token_timestamps[0];
+                let last = &r.token_timestamps[r.token_timestamps.len() - 1];
+                let decode_ms = (*last - *first).as_secs_f64() * 1000.0;
+                decode_ms / (r.token_timestamps.len() - 1) as f64
+            } else if r.tokens >= 2 {
+                let decode_ms = (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;
+                decode_ms / (r.tokens as f64 - 1.0)
+            } else {
+                0.0
+            };
+            RequestDetail {
+                latency_ms: r.latency.as_secs_f64() * 1000.0,
+                ttft_ms: r.ttfb.as_secs_f64() * 1000.0,
+                completion_tokens: r.tokens,
+                prompt_tokens: r.prompt_tokens,
+                itl_ms,
+                finish_reason: r.finish_reason.clone(),
+            }
+        })
+        .collect()
+}
+
+/// Compute goodput: percentage of requests meeting all configured SLO thresholds.
+fn compute_goodput(
+    details: &[RequestDetail],
+    slo_ttft_ms: Option<f64>,
+    slo_tpot_ms: Option<f64>,
+    slo_latency_ms: Option<f64>,
+) -> f64 {
+    if slo_ttft_ms.is_none() && slo_tpot_ms.is_none() && slo_latency_ms.is_none() {
+        return 0.0;
+    }
+    if details.is_empty() {
+        return 0.0;
+    }
+    let passing = details.iter().filter(|d| {
+        let ttft_ok = slo_ttft_ms.map_or(true, |t| d.ttft_ms <= t);
+        let tpot_ok = slo_tpot_ms.map_or(true, |t| d.itl_ms <= t || d.itl_ms == 0.0);
+        let lat_ok = slo_latency_ms.map_or(true, |t| d.latency_ms <= t);
+        ttft_ok && tpot_ok && lat_ok
+    }).count();
+    passing as f64 / details.len() as f64 * 100.0
+}
+
 fn aggregate_brick_traces(records: &[RequestRecord]) -> Option<Vec<BrickTraceOpSummary>> {
     let traces: Vec<&BrickTrace> = records
         .iter()
@@ -599,13 +687,20 @@ fn aggregate_brick_traces(records: &[RequestRecord]) -> Option<Vec<BrickTraceOpS
     Some(summaries)
 }
 
-/// Compute a percentile from a sorted slice. Returns 0.0 for empty slices.
+/// Compute a percentile from a sorted slice using linear interpolation.
+/// Standard method matching numpy/R default. Returns 0.0 for empty slices.
 fn percentile(sorted: &[f64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
     }
-    let idx = ((sorted.len() as f64 - 1.0) * p).round() as usize;
-    sorted[idx.min(sorted.len() - 1)]
+    if sorted.len() == 1 {
+        return sorted[0];
+    }
+    let idx = (sorted.len() as f64 - 1.0) * p;
+    let lo = idx.floor() as usize;
+    let hi = (lo + 1).min(sorted.len() - 1);
+    let frac = idx - lo as f64;
+    sorted[lo] * (1.0 - frac) + sorted[hi] * frac
 }
 
 /// Compute standard deviation of a slice of f64 values.
@@ -617,6 +712,15 @@ fn stddev(values: &[f64]) -> f64 {
     let mean = values.iter().sum::<f64>() / n;
     let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n - 1.0);
     variance.sqrt()
+}
+
+/// Estimate prompt tokens from message content when server doesn't report usage.
+/// Uses words × 1.3 heuristic (approximation for GPT-2/BPE tokenizers).
+fn estimate_prompt_tokens(messages: &[ChatMessage]) -> u32 {
+    let total_words: usize = messages.iter()
+        .map(|m| m.content.split_whitespace().count() + 4) // +4 for role/delimiter tokens
+        .sum();
+    (total_words as f64 * 1.3) as u32
 }
 
 /// Default prompt for load testing.
@@ -652,15 +756,18 @@ mod tests {
     #[test]
     fn test_percentile_multiple() {
         let data: Vec<f64> = (1..=100).map(|x| x as f64).collect();
-        // p50 of [1..100]: index = round(99 * 0.50) = 50 → value 51
-        assert_eq!(percentile(&data, 0.50), 51.0);
-        assert_eq!(percentile(&data, 0.95), 95.0);
-        assert_eq!(percentile(&data, 0.99), 99.0);
+        // Linear interpolation: idx = 99 * p, lerp between floor and ceil
+        // p50: idx=49.5, lerp(50, 51, 0.5) = 50.5
+        assert!((percentile(&data, 0.50) - 50.5).abs() < 0.01);
+        // p95: idx=94.05, lerp(95, 96, 0.05) = 95.05
+        assert!((percentile(&data, 0.95) - 95.05).abs() < 0.01);
+        // p99: idx=98.01, lerp(99, 100, 0.01) = 99.01
+        assert!((percentile(&data, 0.99) - 99.01).abs() < 0.01);
     }
 
     #[test]
     fn test_aggregate_empty() {
-        let result = aggregate_results(&[], 10.0, "test", 1);
+        let result = aggregate_results(&[], 10.0, "test", 1, None, None, None);
         assert_eq!(result.total_requests, 0);
         assert_eq!(result.successful, 0);
         assert_eq!(result.failed, 0);
@@ -682,9 +789,10 @@ mod tests {
                 success: true,
                 token_timestamps: Vec::new(),
                 brick_trace: None,
+                finish_reason: None,
             })
             .collect();
-        let result = aggregate_results(&records, 10.0, "realizar", 2);
+        let result = aggregate_results(&records, 10.0, "realizar", 2, None, None, None);
         assert_eq!(result.total_requests, 10);
         assert_eq!(result.successful, 10);
         assert_eq!(result.failed, 0);
@@ -721,6 +829,7 @@ mod tests {
                 success: true,
                 token_timestamps: Vec::new(),
                 brick_trace: None,
+                finish_reason: None,
             },
             RequestRecord {
                 latency: Duration::from_millis(0),
@@ -730,9 +839,10 @@ mod tests {
                 success: false,
                 token_timestamps: Vec::new(),
                 brick_trace: None,
+                finish_reason: None,
             },
         ];
-        let result = aggregate_results(&records, 5.0, "ollama", 1);
+        let result = aggregate_results(&records, 5.0, "ollama", 1, None, None, None);
         assert_eq!(result.total_requests, 2);
         assert_eq!(result.successful, 1);
         assert_eq!(result.failed, 1);
@@ -789,6 +899,9 @@ mod tests {
             error_rate: 0.05,
             prompt_tokens_total: 950,
             completion_tokens_total: 1425,
+            truncated_pct: 0.0,
+            sse_batch_ratio: 0.0,
+            output_tokens_dist: None,
             brick_trace_summary: None,
             request_details: Vec::new(),
         };
@@ -851,8 +964,9 @@ mod tests {
             success: true,
             token_timestamps: Vec::new(),
             brick_trace: None,
+            finish_reason: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
         assert!((result.itl_p50_ms - 10.0).abs() < 0.1);
         assert!((result.decode_tok_per_sec - 100.0).abs() < 1.0);
         assert!((result.avg_tok_per_req - 16.0).abs() < f64::EPSILON);
@@ -872,8 +986,9 @@ mod tests {
             success: true,
             token_timestamps: Vec::new(),
             brick_trace: None,
+            finish_reason: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
         assert!((result.itl_p50_ms - 100.0).abs() < 0.1);
         assert!((result.decode_tok_per_sec - 10.0).abs() < 0.1);
     }
@@ -890,8 +1005,9 @@ mod tests {
             success: true,
             token_timestamps: Vec::new(),
             brick_trace: None,
+            finish_reason: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
         assert_eq!(result.itl_p50_ms, 0.0);
         assert_eq!(result.decode_tok_per_sec, 0.0);
         assert!((result.avg_tok_per_req - 1.0).abs() < f64::EPSILON);
@@ -907,8 +1023,9 @@ mod tests {
             success: true,
             token_timestamps: Vec::new(),
             brick_trace: None,
+            finish_reason: None,
         }];
-        let result = aggregate_results(&records, 0.0, "test", 1);
+        let result = aggregate_results(&records, 0.0, "test", 1, None, None, None);
         assert_eq!(result.throughput_rps, 0.0);
         assert_eq!(result.tokens_per_sec, 0.0);
     }
@@ -935,8 +1052,9 @@ mod tests {
             success: true,
             token_timestamps: Vec::new(),
             brick_trace: None,
+            finish_reason: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
         assert!((result.tpot_p50_ms - 10.0).abs() < 0.1);
     }
 
@@ -951,6 +1069,7 @@ mod tests {
                 success: true,
                 token_timestamps: Vec::new(),
                 brick_trace: None,
+                finish_reason: None,
             },
             RequestRecord {
                 latency: Duration::from_millis(300),
@@ -960,9 +1079,10 @@ mod tests {
                 success: true,
                 token_timestamps: Vec::new(),
                 brick_trace: None,
+                finish_reason: None,
             },
         ];
-        let result = aggregate_results(&records, 1.0, "test", 1);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
         assert!((result.latency_min_ms - 100.0).abs() < 0.1);
         assert!((result.latency_max_ms - 300.0).abs() < 0.1);
         assert!(result.latency_stddev_ms > 0.0);
@@ -979,6 +1099,7 @@ mod tests {
                 success: true,
                 token_timestamps: Vec::new(),
                 brick_trace: None,
+                finish_reason: None,
             },
             RequestRecord {
                 latency: Duration::from_millis(100),
@@ -988,9 +1109,10 @@ mod tests {
                 success: true,
                 token_timestamps: Vec::new(),
                 brick_trace: None,
+                finish_reason: None,
             },
         ];
-        let result = aggregate_results(&records, 1.0, "test", 1);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
         assert_eq!(result.prompt_tokens_total, 45);
         assert_eq!(result.completion_tokens_total, 25);
     }
@@ -1014,8 +1136,9 @@ mod tests {
                 Duration::from_millis(90),
             ],
             brick_trace: None,
+            finish_reason: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
         // Real TPOT from timestamps: mean of [10, 10, 10, 10] = 10ms
         assert!((result.tpot_p50_ms - 10.0).abs() < 0.1);
         // ITL also uses real timestamps
@@ -1041,6 +1164,7 @@ mod tests {
                     Duration::from_millis(110),
                 ],
                 brick_trace: None,
+                finish_reason: None,
             },
             RequestRecord {
                 latency: Duration::from_millis(100),
@@ -1050,9 +1174,10 @@ mod tests {
                 success: true,
                 token_timestamps: Vec::new(), // non-streaming request
                 brick_trace: None,
+                finish_reason: None,
             },
         ];
-        let result = aggregate_results(&records, 1.0, "test", 1);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
         // Only the first record with timestamps is used for TPOT
         // Deltas: [20, 20, 20] → mean TPOT = 20ms
         assert!((result.tpot_p50_ms - 20.0).abs() < 0.1);
@@ -1077,8 +1202,9 @@ mod tests {
             success: true,
             token_timestamps: Vec::new(),
             brick_trace: None,
+            finish_reason: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
         // Both TPOT and ITL should be latency/tokens = 100ms
         assert!((result.tpot_p50_ms - 100.0).abs() < 0.1, "tpot={}", result.tpot_p50_ms);
         assert!((result.itl_p50_ms - 100.0).abs() < 0.1, "itl={}", result.itl_p50_ms);
@@ -1107,8 +1233,9 @@ mod tests {
                 Duration::from_millis(300),
             ],
             brick_trace: None,
+            finish_reason: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
         // Per-request mean: (300-100)/5 = 40ms
         assert!((result.itl_p50_ms - 40.0).abs() < 0.1, "itl={}", result.itl_p50_ms);
         assert!((result.tpot_p50_ms - 40.0).abs() < 0.1, "tpot={}", result.tpot_p50_ms);
@@ -1125,8 +1252,9 @@ mod tests {
             success: true,
             token_timestamps: Vec::new(),
             brick_trace: None,
+            finish_reason: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
         assert_eq!(result.request_details.len(), 1);
         let detail = &result.request_details[0];
         assert!((detail.latency_ms - 200.0).abs() < 0.1);

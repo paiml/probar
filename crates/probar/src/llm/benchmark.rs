@@ -161,6 +161,9 @@ impl Benchmark {
                 warmup_duration: Duration::ZERO,
                 stream: self.config.stream,
                 trace_level: None, // No tracing during warmup
+                slo_ttft_ms: None,
+                slo_tpot_ms: None,
+                slo_latency_ms: None,
             };
             let warmup_test = LoadTest::new(client.clone(), warmup_config);
             let _ = warmup_test.run().await;
@@ -183,6 +186,9 @@ impl Benchmark {
                 warmup_duration: Duration::ZERO,
                 stream: self.config.stream,
                 trace_level: self.config.trace_level.clone(),
+                slo_ttft_ms: None,
+                slo_tpot_ms: None,
+                slo_latency_ms: None,
             };
             let load_test = LoadTest::new(client.clone(), measure_config);
             let result = load_test.run().await?;
@@ -348,6 +354,9 @@ mod tests {
             error_rate: 0.0,
             prompt_tokens_total: 1000,
             completion_tokens_total: 2000,
+            truncated_pct: 0.0,
+            sse_batch_ratio: 0.0,
+            output_tokens_dist: None,
             brick_trace_summary: None,
             request_details: Vec::new(),
         }

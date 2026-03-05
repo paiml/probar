@@ -545,7 +545,7 @@ pub struct LlmBenchArgs {
     #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
     pub stream: bool,
 
-    /// Trace level for BrickProfiler data (GH-114): brick, step, layer
+    /// Trace level for brick profiler data (GH-114): brick, step, layer
     #[arg(long)]
     pub trace_level: Option<String>,
 }

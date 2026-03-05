@@ -46,6 +46,8 @@ pub struct StreamedChatResponse {
     pub token_timestamps: Vec<Duration>,
     /// Token usage (if reported by server).
     pub usage: Option<Usage>,
+    /// Why generation stopped (e.g., "stop", "length").
+    pub finish_reason: Option<String>,
 }
 
 /// Chat message role.
@@ -430,6 +432,7 @@ impl LlmClient {
         let mut token_timestamps = Vec::new();
         let mut ttft = None;
         let mut final_usage = None;
+        let mut finish_reason = None;
 
         // Read the response incrementally via chunk() for real per-token timestamps.
         // Each chunk() call returns data as it arrives from the server, so timestamps
@@ -470,6 +473,9 @@ impl LlmClient {
                                     content.push_str(c);
                                 }
                             }
+                            if choice.finish_reason.is_some() {
+                                finish_reason = choice.finish_reason.clone();
+                            }
                         }
                         if sse_chunk.usage.is_some() {
                             final_usage = sse_chunk.usage;
@@ -487,6 +493,7 @@ impl LlmClient {
             ttft: ttft.unwrap_or(latency),
             token_timestamps,
             usage: final_usage,
+            finish_reason,
         })
     }
 

@@ -231,6 +231,9 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
         warmup_duration: warmup,
         stream: args.stream,
         trace_level: None,
+        slo_ttft_ms: None,
+        slo_tpot_ms: None,
+        slo_latency_ms: None,
     };
 
     let load_test = jugar_probar::llm::LoadTest::new(client, config);
@@ -262,6 +265,16 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
     }
     if result.error_rate > 0.0 {
         println!("Error rate:   {:.1}%", result.error_rate * 100.0);
+    }
+    if let Some(dist) = &result.output_tokens_dist {
+        println!("Output tok:   [{:.0}, {:.0}, {:.0}, {:.0}] (min/p50/p90/max)", dist[0], dist[1], dist[2], dist[3]);
+    }
+    if result.truncated_pct > 10.0 {
+        eprintln!("Warning: {:.0}% of responses truncated by max_tokens — increase max_tokens or use longer prompts", result.truncated_pct);
+    }
+    if result.sse_batch_ratio > 0.0 && result.sse_batch_ratio < 0.8 {
+        eprintln!("Warning: SSE batch ratio {:.2} — server batches {:.0} tokens/chunk, per-token variance unreliable",
+            result.sse_batch_ratio, 1.0 / result.sse_batch_ratio);
     }
 
     if let Some(ref output_path) = args.output {

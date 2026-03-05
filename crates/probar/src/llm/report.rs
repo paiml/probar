@@ -268,6 +268,9 @@ mod tests {
             error_rate: 0.05,
             prompt_tokens_total: 950,
             completion_tokens_total: 1425,
+            truncated_pct: 0.0,
+            sse_batch_ratio: 0.0,
+            output_tokens_dist: None,
             brick_trace_summary: None,
             request_details: Vec::new(),
         }
