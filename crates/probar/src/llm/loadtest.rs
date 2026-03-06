@@ -49,6 +49,10 @@ pub struct LoadTestConfig {
     pub slo_latency_ms: Option<f64>,
     /// Request scheduling mode (GH-25). Default: Max (closed-loop).
     pub rate: RequestRate,
+    /// Number of transformer layers in the model (e.g. 28 for Qwen 1.5B).
+    /// When set, computes per-layer decode time for cross-runtime comparison.
+    /// Per-layer time is overhead-free (derived from wall-clock TPOT, not per-brick sync).
+    pub num_layers: Option<u32>,
 }
 
 impl Default for LoadTestConfig {
@@ -65,6 +69,7 @@ impl Default for LoadTestConfig {
             slo_tpot_ms: None,
             slo_latency_ms: None,
             rate: RequestRate::Max,
+            num_layers: None,
         }
     }
 }
@@ -164,6 +169,14 @@ pub struct LoadTestResult {
     /// Output token count distribution: [min, p50, p90, max].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_tokens_dist: Option<[f64; 4]>,
+    /// Per-layer decode time in microseconds: TPOT_us / num_layers.
+    /// Overhead-free (derived from wall-clock ITL, not per-brick sync).
+    /// Comparable across all runtimes regardless of internal profiling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decode_us_per_layer: Option<f64>,
+    /// Number of transformer layers used to compute per-layer time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_layers: Option<u32>,
     /// Aggregated BrickProfiler per-operation timing (GH-114).
     /// Present when --trace-level brick is used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -258,6 +271,7 @@ impl LoadTest {
             self.config.slo_ttft_ms,
             self.config.slo_tpot_ms,
             self.config.slo_latency_ms,
+            self.config.num_layers,
         ))
     }
 
@@ -464,6 +478,7 @@ fn aggregate_results(
     slo_ttft_ms: Option<f64>,
     slo_tpot_ms: Option<f64>,
     slo_latency_ms: Option<f64>,
+    num_layers: Option<u32>,
 ) -> LoadTestResult {
     let total = records.len() as u64;
     let successful = records.iter().filter(|r| r.success).count() as u64;
@@ -609,6 +624,17 @@ fn aggregate_results(
     let request_details = build_request_details(records);
     let goodput_pct = compute_goodput(&request_details, slo_ttft_ms, slo_tpot_ms, slo_latency_ms);
 
+    // Per-layer decode time: TPOT_us / num_layers.
+    // Derived from wall-clock ITL — no per-brick sync overhead.
+    // Same metric for all runtimes (realizr, llama.cpp, ollama).
+    let decode_us_per_layer = num_layers.and_then(|n| {
+        if n > 0 && itl_p50_ms > 0.0 {
+            Some(itl_p50_ms * 1000.0 / f64::from(n))
+        } else {
+            None
+        }
+    });
+
     LoadTestResult {
         total_requests: total,
         successful,
@@ -644,6 +670,8 @@ fn aggregate_results(
         truncated_pct,
         sse_batch_ratio,
         goodput_pct,
+        decode_us_per_layer,
+        num_layers,
         output_tokens_dist,
         brick_trace_summary,
         request_details,

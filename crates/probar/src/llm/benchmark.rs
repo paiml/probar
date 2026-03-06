@@ -41,6 +41,8 @@ pub struct BenchmarkConfig {
     pub stream: bool,
     /// Trace level for BrickProfiler data collection (GH-114).
     pub trace_level: Option<String>,
+    /// Number of transformer layers for per-layer decode time computation.
+    pub num_layers: Option<u32>,
 }
 
 /// Complete benchmark report with per-run results and cross-run statistics.
@@ -164,6 +166,7 @@ impl Benchmark {
                 slo_ttft_ms: None,
                 slo_tpot_ms: None,
                 slo_latency_ms: None,
+                num_layers: self.config.num_layers,
                 rate: super::loadtest::RequestRate::Max,
             };
             let warmup_test = LoadTest::new(client.clone(), warmup_config);
@@ -191,6 +194,7 @@ impl Benchmark {
                 slo_tpot_ms: None,
                 slo_latency_ms: None,
                 rate: super::loadtest::RequestRate::Max,
+                num_layers: self.config.num_layers,
             };
             let load_test = LoadTest::new(client.clone(), measure_config);
             let result = load_test.run().await?;

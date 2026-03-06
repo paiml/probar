@@ -483,6 +483,11 @@ pub struct LlmLoadArgs {
     /// Rate distribution: poisson (default) or constant. Only used with --rate.
     #[arg(long, default_value = "poisson")]
     pub rate_distribution: String,
+
+    /// Number of transformer layers in the model (e.g., 28 for Qwen 1.5B).
+    /// Computes per-layer decode time for cross-runtime comparison.
+    #[arg(long)]
+    pub num_layers: Option<u32>,
 }
 
 /// Arguments for `probador llm bench` (full benchmark lifecycle)
@@ -556,6 +561,11 @@ pub struct LlmBenchArgs {
     /// Trace level for brick profiler data (GH-114): brick, step, layer
     #[arg(long)]
     pub trace_level: Option<String>,
+
+    /// Number of transformer layers in the model (e.g., 28 for Qwen 1.5B).
+    /// Computes per-layer decode time for cross-runtime comparison.
+    #[arg(long)]
+    pub num_layers: Option<u32>,
 }
 
 /// Arguments for `probador llm report`

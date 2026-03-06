@@ -239,6 +239,7 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
             Some(r) => jugar_probar::llm::RequestRate::Poisson(r),
             None => jugar_probar::llm::RequestRate::Max,
         },
+        num_layers: args.num_layers,
     };
 
     let load_test = jugar_probar::llm::LoadTest::new(client, config);
@@ -264,6 +265,9 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
     if result.decode_tok_per_sec > 0.0 {
         println!("Decode tok/s: {:.1}", result.decode_tok_per_sec);
         println!("ITL P50:      {:.1} ms", result.itl_p50_ms);
+        if let (Some(us_per_layer), Some(n)) = (result.decode_us_per_layer, result.num_layers) {
+            println!("µs/layer:     {:.1} ({n} layers)", us_per_layer);
+        }
     }
     if result.tpot_p50_ms > 0.0 {
         println!("TPOT P50:     {:.1} ms", result.tpot_p50_ms);
@@ -346,6 +350,7 @@ pub async fn execute_llm_bench(args: &LlmBenchArgs) -> CliResult<()> {
         fail_on_regression: args.fail_on_regression,
         stream: args.stream,
         trace_level: args.trace_level.clone(),
+        num_layers: args.num_layers,
     };
 
     let mut benchmark = jugar_probar::llm::benchmark::Benchmark::new(config);
