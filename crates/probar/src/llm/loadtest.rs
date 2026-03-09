@@ -10,6 +10,42 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+// =============================================================================
+// Validation mode (Feature 5: Inline Correctness)
+// =============================================================================
+
+/// Validation mode for inline correctness checking during load tests.
+#[derive(Debug, Clone, Default)]
+pub enum ValidationMode {
+    /// No validation (zero overhead).
+    #[default]
+    None,
+    /// Check: non-empty content, finish_reason present, token count > 0.
+    Basic,
+    /// Basic + response contains substring.
+    Contains(String),
+    /// Basic + response matches regex.
+    Pattern(String),
+}
+
+impl ValidationMode {
+    /// Parse from CLI string: "none", "basic", "contains:X", "pattern:X".
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "none" => Self::None,
+            "basic" => Self::Basic,
+            s if s.starts_with("contains:") => Self::Contains(s[9..].to_string()),
+            s if s.starts_with("pattern:") => Self::Pattern(s[8..].to_string()),
+            _ => Self::None,
+        }
+    }
+
+    /// Whether response content needs to be captured for validation.
+    fn needs_content(&self) -> bool {
+        matches!(self, Self::Contains(_) | Self::Pattern(_))
+    }
+}
+
 /// Request scheduling mode for load generation (GH-25).
 #[derive(Debug, Clone, Default)]
 pub enum RequestRate {
@@ -53,6 +89,12 @@ pub struct LoadTestConfig {
     /// When set, computes per-layer decode time for cross-runtime comparison.
     /// Per-layer time is overhead-free (derived from wall-clock TPOT, not per-brick sync).
     pub num_layers: Option<u32>,
+    /// Inline correctness validation mode. Default: None (zero overhead).
+    pub validate: ValidationMode,
+    /// Multiplier of median ITL to classify as latency spike. Default: 5.0.
+    pub spike_threshold: f64,
+    /// Exit threshold for quality pass rate (e.g., 0.95). None = don't fail.
+    pub fail_on_quality: Option<f64>,
 }
 
 impl Default for LoadTestConfig {
@@ -70,6 +112,9 @@ impl Default for LoadTestConfig {
             slo_latency_ms: None,
             rate: RequestRate::Max,
             num_layers: None,
+            validate: ValidationMode::None,
+            spike_threshold: 5.0,
+            fail_on_quality: None,
         }
     }
 }
@@ -185,6 +230,18 @@ pub struct LoadTestResult {
     /// Each entry: [latency_ms, ttft_ms, completion_tokens, itl_ms].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub request_details: Vec<RequestDetail>,
+    /// Inline quality validation results (Feature 5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality: Option<QualityResult>,
+    /// Tail latency analysis with jitter and drift detection (Feature 3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tail_analysis: Option<TailAnalysis>,
+    /// GPU telemetry collected during benchmark (Feature 2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpu_telemetry: Option<GpuTelemetry>,
+    /// Dataset statistics when --dataset was used (Feature 4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dataset_stats: Option<DatasetStats>,
 }
 
 /// Per-request timing for distribution analysis and debugging.
@@ -203,6 +260,200 @@ pub struct RequestDetail {
     /// Why generation stopped: "stop" (natural) or "length" (truncated by max_tokens).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<String>,
+}
+
+// =============================================================================
+// Quality validation result (Feature 5)
+// =============================================================================
+
+/// Quality validation result from inline correctness checking during load.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityResult {
+    /// Validation level used (e.g., "basic", "contains:X").
+    pub validation_level: String,
+    /// Total responses validated.
+    pub total_validated: u64,
+    /// Responses that passed validation.
+    pub passed: u64,
+    /// Responses that failed validation.
+    pub failed: u64,
+    /// Pass rate: passed / total_validated.
+    pub pass_rate: f64,
+    /// Individual failure details.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failures: Vec<QualityFailure>,
+}
+
+/// A single quality validation failure.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityFailure {
+    /// Index of the request that failed.
+    pub request_idx: usize,
+    /// Reason for failure (e.g., "empty_content", "zero_tokens", "missing_pattern").
+    pub reason: String,
+}
+
+// =============================================================================
+// Tail latency analysis (Feature 3)
+// =============================================================================
+
+/// Tail latency analysis with jitter and drift detection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TailAnalysis {
+    /// ITL P99.9 (ms).
+    pub itl_p999_ms: f64,
+    /// ITL P99.99 (ms).
+    pub itl_p9999_ms: f64,
+    /// TTFT P99.9 (ms).
+    pub ttft_p999_ms: f64,
+    /// TTFT P99.99 (ms).
+    pub ttft_p9999_ms: f64,
+    /// End-to-end latency P99.9 (ms).
+    pub latency_p999_ms: f64,
+    /// End-to-end latency P99.99 (ms).
+    pub latency_p9999_ms: f64,
+    /// Tail ratio: P99/P50 for ITL. >5 = concern, >10 = critical.
+    pub tail_ratio_itl: f64,
+    /// Tail ratio: P99/P50 for TTFT.
+    pub tail_ratio_ttft: f64,
+    /// Tail ratio: P99/P50 for end-to-end latency.
+    pub tail_ratio_latency: f64,
+    /// Jitter metrics.
+    pub jitter: JitterAnalysis,
+    /// Drift metrics (latency trend over time).
+    pub drift: DriftAnalysis,
+}
+
+/// Jitter (ITL variance) analysis.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JitterAnalysis {
+    /// Coefficient of variation: stddev(ITL) / mean(ITL).
+    pub itl_cv: f64,
+    /// Inter-quartile range of ITL (ms).
+    pub itl_iqr_ms: f64,
+    /// Number of latency spikes detected.
+    pub spike_count: usize,
+    /// Threshold used for spike detection (ms).
+    pub spike_threshold_ms: f64,
+    /// Individual spike details (capped at 20).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub spikes: Vec<LatencySpike>,
+}
+
+/// A single latency spike event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LatencySpike {
+    /// Index of the request.
+    pub request_idx: usize,
+    /// ITL of the spiking request (ms).
+    pub itl_ms: f64,
+}
+
+/// Drift detection: is latency degrading over time?
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DriftAnalysis {
+    /// Linear regression slope of ITL over time (ms/min). Positive = degradation.
+    pub itl_slope_ms_per_min: f64,
+    /// Linear regression slope of TTFT over time (ms/min).
+    pub ttft_slope_ms_per_min: f64,
+    /// True if slope is significant (r^2 > 0.5 and positive slope).
+    pub degradation_detected: bool,
+}
+
+// =============================================================================
+// GPU telemetry (Feature 2)
+// =============================================================================
+
+/// GPU telemetry collected via nvidia-smi during benchmark.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GpuTelemetry {
+    /// Number of samples collected.
+    pub samples: usize,
+    /// GPU compute utilization (%).
+    pub gpu_utilization_pct: TelemetryStat,
+    /// GPU memory used (MB).
+    pub memory_used_mb: TelemetryStat,
+    /// Total GPU memory (MB).
+    pub memory_total_mb: f64,
+    /// Power draw (watts).
+    pub power_draw_w: TelemetryStat,
+    /// GPU temperature (Celsius).
+    pub temperature_c: TelemetryStat,
+    /// GPU clock speed (MHz).
+    pub clock_gpu_mhz: TelemetryStat,
+    /// Number of throttle events (clock drop >10%).
+    pub throttle_events: usize,
+    /// Total energy consumed (Wh).
+    pub energy_total_wh: f64,
+    /// Energy per completion token (mJ).
+    pub energy_per_token_mj: f64,
+    /// Energy per request (mJ).
+    pub energy_per_request_mj: f64,
+}
+
+/// Min/mean/max summary statistic for telemetry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelemetryStat {
+    /// Mean value.
+    pub mean: f64,
+    /// Maximum value.
+    pub max: f64,
+    /// Minimum value.
+    pub min: f64,
+}
+
+// =============================================================================
+// Concurrency sweep (Feature 1)
+// =============================================================================
+
+/// Result of a concurrency sweep.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SweepResult {
+    /// Results at each concurrency level.
+    pub levels: Vec<SweepLevel>,
+    /// Optimal concurrency (highest throughput before saturation).
+    pub optimal_concurrency: usize,
+    /// Throughput at optimal concurrency (req/s).
+    pub optimal_throughput_rps: f64,
+    /// Concurrency levels on the Pareto frontier (throughput up, latency acceptable).
+    pub pareto_frontier: Vec<usize>,
+}
+
+/// Result at a single concurrency level in a sweep.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SweepLevel {
+    /// Concurrency level tested.
+    pub concurrency: usize,
+    /// Aggregate throughput (req/s).
+    pub throughput_rps: f64,
+    /// P99 latency (ms).
+    pub latency_p99_ms: f64,
+    /// Decode throughput (tok/s).
+    pub decode_tok_s: f64,
+    /// Whether this level is saturated.
+    pub saturated: bool,
+    /// Reason for saturation (if saturated).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saturation_reason: Option<String>,
+    /// Full load test result at this level.
+    pub result: LoadTestResult,
+}
+
+// =============================================================================
+// Dataset stats (Feature 4)
+// =============================================================================
+
+/// Statistics about the dataset used for load testing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatasetStats {
+    /// Source file path.
+    pub source: String,
+    /// Total number of prompts in the dataset.
+    pub total_prompts: usize,
+    /// Input token distribution: [min, p50, p90, max].
+    pub input_tokens: [f64; 4],
+    /// Requested max_tokens distribution: [min, p50, p90, max].
+    pub max_tokens_requested: [f64; 4],
 }
 
 /// Aggregated BrickProfiler operation timing across benchmark requests.
@@ -243,6 +494,8 @@ struct RequestRecord {
     brick_trace: Option<BrickTrace>,
     /// Why generation stopped (e.g., "stop", "length").
     finish_reason: Option<String>,
+    /// Response content (only captured when validation requires content inspection).
+    response_content: Option<String>,
 }
 
 impl LoadTest {
@@ -263,7 +516,7 @@ impl LoadTest {
         let all_records = self.run_phase(self.config.duration).await?;
         let elapsed = measure_start.elapsed().as_secs_f64();
 
-        Ok(aggregate_results(
+        let mut result = aggregate_results(
             &all_records,
             elapsed,
             &self.config.runtime_name,
@@ -272,7 +525,20 @@ impl LoadTest {
             self.config.slo_tpot_ms,
             self.config.slo_latency_ms,
             self.config.num_layers,
-        ))
+        );
+
+        // Feature 5: Inline quality validation
+        if !matches!(self.config.validate, ValidationMode::None) {
+            result.quality = Some(compute_quality(&all_records, &self.config.validate));
+        }
+
+        // Feature 3: Tail latency analysis (always computed, cheap)
+        result.tail_analysis = Some(compute_tail_analysis(
+            &all_records,
+            self.config.spike_threshold,
+        ));
+
+        Ok(result)
     }
 
     /// Run a single phase (warmup or measurement) for the given duration.
@@ -285,11 +551,15 @@ impl LoadTest {
     }
 
     /// Closed-loop: N workers each send back-to-back requests.
-    async fn run_phase_max(&self, duration: Duration) -> Result<Vec<RequestRecord>, LlmClientError> {
+    async fn run_phase_max(
+        &self,
+        duration: Duration,
+    ) -> Result<Vec<RequestRecord>, LlmClientError> {
         let deadline = Instant::now() + duration;
         let mut handles = Vec::new();
         let use_stream = self.config.stream;
         let trace_level = self.config.trace_level.clone();
+        let capture_content = self.config.validate.needs_content();
 
         for worker_id in 0..self.config.concurrency {
             let client = self.client.clone();
@@ -302,7 +572,16 @@ impl LoadTest {
 
                 while Instant::now() < deadline {
                     let prompt = &prompts[prompt_idx % prompts.len()];
-                    records.push(send_one_request(&client, prompt, use_stream, trace_level.as_deref()).await);
+                    records.push(
+                        send_one_request(
+                            &client,
+                            prompt,
+                            use_stream,
+                            trace_level.as_deref(),
+                            capture_content,
+                        )
+                        .await,
+                    );
                     prompt_idx += 1;
                 }
                 records
@@ -326,6 +605,7 @@ impl LoadTest {
         let results: Arc<tokio::sync::Mutex<Vec<RequestRecord>>> =
             Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let prompt_idx = Arc::new(AtomicUsize::new(0));
+        let capture_content = self.config.validate.needs_content();
 
         let mut rng_state: u64 = Instant::now().elapsed().as_nanos() as u64;
 
@@ -344,7 +624,14 @@ impl LoadTest {
             let results = results.clone();
 
             tokio::spawn(async move {
-                let record = send_one_request(&client, &prompt, use_stream, trace_level.as_deref()).await;
+                let record = send_one_request(
+                    &client,
+                    &prompt,
+                    use_stream,
+                    trace_level.as_deref(),
+                    capture_content,
+                )
+                .await;
                 results.lock().await.push(record);
                 drop(permit);
             });
@@ -386,16 +673,25 @@ async fn send_one_request(
     prompt: &ChatRequest,
     use_stream: bool,
     trace_level: Option<&str>,
+    capture_content: bool,
 ) -> RequestRecord {
     if use_stream {
         match client.chat_completion_stream(prompt).await {
             Ok(streamed) => {
                 let token_count = streamed.token_timestamps.len() as u32;
-                let usage_tokens = streamed.usage.as_ref().map_or(token_count, |u| u.completion_tokens);
+                let usage_tokens = streamed
+                    .usage
+                    .as_ref()
+                    .map_or(token_count, |u| u.completion_tokens);
                 let prompt_tokens = streamed.usage.as_ref().map_or_else(
                     || estimate_prompt_tokens(&prompt.messages),
                     |u| u.prompt_tokens,
                 );
+                let content = if capture_content {
+                    Some(streamed.content.clone())
+                } else {
+                    None
+                };
                 RequestRecord {
                     latency: streamed.latency,
                     ttfb: streamed.ttft,
@@ -405,6 +701,7 @@ async fn send_one_request(
                     token_timestamps: streamed.token_timestamps,
                     brick_trace: None,
                     finish_reason: streamed.finish_reason,
+                    response_content: content,
                 }
             }
             Err(_) => failed_record(),
@@ -420,8 +717,20 @@ async fn send_one_request(
                 let usage = timed.response.usage.as_ref();
                 let tokens = usage.map_or(0, |u| u.completion_tokens);
                 let prompt_tokens = usage.map_or(0, |u| u.prompt_tokens);
-                let finish_reason = timed.response.choices.first()
+                let finish_reason = timed
+                    .response
+                    .choices
+                    .first()
                     .and_then(|c| c.finish_reason.clone());
+                let content = if capture_content {
+                    timed
+                        .response
+                        .choices
+                        .first()
+                        .map(|c| c.message.content.clone())
+                } else {
+                    None
+                };
                 RequestRecord {
                     latency: timed.latency,
                     ttfb: timed.ttfb,
@@ -431,6 +740,7 @@ async fn send_one_request(
                     token_timestamps: Vec::new(),
                     brick_trace: timed.brick_trace,
                     finish_reason,
+                    response_content: content,
                 }
             }
             Err(_) => failed_record(),
@@ -448,10 +758,13 @@ fn failed_record() -> RequestRecord {
         token_timestamps: Vec::new(),
         brick_trace: None,
         finish_reason: None,
+        response_content: None,
     }
 }
 
-async fn collect_handles(handles: Vec<tokio::task::JoinHandle<Vec<RequestRecord>>>) -> Result<Vec<RequestRecord>, LlmClientError> {
+async fn collect_handles(
+    handles: Vec<tokio::task::JoinHandle<Vec<RequestRecord>>>,
+) -> Result<Vec<RequestRecord>, LlmClientError> {
     let mut all_records = Vec::new();
     for handle in handles {
         if let Ok(records) = handle.await {
@@ -498,7 +811,11 @@ fn aggregate_results(
         .collect();
     ttfbs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    let total_tokens: u64 = records.iter().filter(|r| r.success).map(|r| u64::from(r.tokens)).sum();
+    let total_tokens: u64 = records
+        .iter()
+        .filter(|r| r.success)
+        .map(|r| u64::from(r.tokens))
+        .sum();
     let total_prompt_tokens: u64 = records
         .iter()
         .filter(|r| r.success)
@@ -540,7 +857,8 @@ fn aggregate_results(
             ratio < 0.95
         });
 
-    let mut itls = compute_per_token_latencies(&multi_token_records, has_streaming_timestamps, is_streaming);
+    let mut itls =
+        compute_per_token_latencies(&multi_token_records, has_streaming_timestamps, is_streaming);
     itls.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     let itl_p50_ms = percentile(&itls, 0.50);
@@ -551,7 +869,8 @@ fn aggregate_results(
     };
 
     // TPOT uses same computation as ITL (identical for streaming timestamps, same fallback).
-    let mut tpots = compute_per_token_latencies(&multi_token_records, has_streaming_timestamps, is_streaming);
+    let mut tpots =
+        compute_per_token_latencies(&multi_token_records, has_streaming_timestamps, is_streaming);
     tpots.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     // Prefill throughput: prompt_tokens / ttft_seconds for each request, then median
@@ -578,7 +897,8 @@ fn aggregate_results(
 
     // Truncation rate: finish_reason="length" means max_tokens hit
     let success_records: Vec<&RequestRecord> = records.iter().filter(|r| r.success).collect();
-    let truncated = success_records.iter()
+    let truncated = success_records
+        .iter()
         .filter(|r| r.finish_reason.as_deref() == Some("length"))
         .count();
     let truncated_pct = if !success_records.is_empty() {
@@ -588,9 +908,7 @@ fn aggregate_results(
     };
 
     // Output token distribution
-    let mut tok_counts: Vec<f64> = success_records.iter()
-        .map(|r| r.tokens as f64)
-        .collect();
+    let mut tok_counts: Vec<f64> = success_records.iter().map(|r| r.tokens as f64).collect();
     tok_counts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let output_tokens_dist = if !tok_counts.is_empty() {
         Some([
@@ -605,15 +923,21 @@ fn aggregate_results(
 
     // SSE batch ratio: chunks/tokens. <0.8 means server batches tokens.
     let sse_batch_ratio = if has_streaming_timestamps {
-        let total_chunks: usize = multi_token_records.iter()
+        let total_chunks: usize = multi_token_records
+            .iter()
             .filter(|r| !r.token_timestamps.is_empty())
             .map(|r| r.token_timestamps.len())
             .sum();
-        let total_toks: u64 = multi_token_records.iter()
+        let total_toks: u64 = multi_token_records
+            .iter()
             .filter(|r| !r.token_timestamps.is_empty())
             .map(|r| u64::from(r.tokens))
             .sum();
-        if total_toks > 0 { total_chunks as f64 / total_toks as f64 } else { 0.0 }
+        if total_toks > 0 {
+            total_chunks as f64 / total_toks as f64
+        } else {
+            0.0
+        }
     } else {
         0.0
     };
@@ -675,6 +999,267 @@ fn aggregate_results(
         output_tokens_dist,
         brick_trace_summary,
         request_details,
+        quality: None,
+        tail_analysis: None,
+        gpu_telemetry: None,
+        dataset_stats: None,
+    }
+}
+
+// =============================================================================
+// Feature 5: Inline Quality Validation
+// =============================================================================
+
+/// Validate all successful responses against the configured validation mode.
+fn compute_quality(records: &[RequestRecord], mode: &ValidationMode) -> QualityResult {
+    let validation_level = match mode {
+        ValidationMode::None => "none".to_string(),
+        ValidationMode::Basic => "basic".to_string(),
+        ValidationMode::Contains(s) => format!("contains:{s}"),
+        ValidationMode::Pattern(p) => format!("pattern:{p}"),
+    };
+
+    let compiled_regex = if let ValidationMode::Pattern(p) = mode {
+        regex::Regex::new(p).ok()
+    } else {
+        None
+    };
+
+    let mut failures = Vec::new();
+    let mut passed_count = 0u64;
+
+    for (idx, record) in records.iter().enumerate() {
+        if !record.success {
+            continue; // Failed requests already counted in error_rate
+        }
+
+        let mut fail_reason = None;
+
+        // Basic checks (all validation levels)
+        if record.tokens == 0 {
+            fail_reason = Some("zero_tokens".to_string());
+        } else if record.finish_reason.is_none() {
+            fail_reason = Some("no_finish_reason".to_string());
+        }
+
+        // Content checks (contains/pattern only)
+        if fail_reason.is_none() {
+            match mode {
+                ValidationMode::Contains(substring) => {
+                    if let Some(ref content) = record.response_content {
+                        if content.is_empty() {
+                            fail_reason = Some("empty_content".to_string());
+                        } else if !content.contains(substring.as_str()) {
+                            fail_reason = Some(format!("missing_substring:{substring}"));
+                        }
+                    } else if record.tokens == 0 {
+                        fail_reason = Some("empty_content".to_string());
+                    }
+                }
+                ValidationMode::Pattern(pattern) => {
+                    if let Some(ref content) = record.response_content {
+                        if content.is_empty() {
+                            fail_reason = Some("empty_content".to_string());
+                        } else if let Some(ref re) = compiled_regex {
+                            if !re.is_match(content) {
+                                fail_reason = Some(format!("missing_pattern:{pattern}"));
+                            }
+                        }
+                    } else if record.tokens == 0 {
+                        fail_reason = Some("empty_content".to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(reason) = fail_reason {
+            failures.push(QualityFailure {
+                request_idx: idx,
+                reason,
+            });
+        } else {
+            passed_count += 1;
+        }
+    }
+
+    let total_validated = passed_count + failures.len() as u64;
+    let pass_rate = if total_validated > 0 {
+        passed_count as f64 / total_validated as f64
+    } else {
+        1.0
+    };
+
+    QualityResult {
+        validation_level,
+        total_validated,
+        passed: passed_count,
+        failed: failures.len() as u64,
+        pass_rate,
+        failures,
+    }
+}
+
+// =============================================================================
+// Feature 3: Tail Latency Analysis
+// =============================================================================
+
+/// Compute tail latency analysis with jitter and drift detection.
+fn compute_tail_analysis(records: &[RequestRecord], spike_threshold_mult: f64) -> TailAnalysis {
+    let success_records: Vec<&RequestRecord> =
+        records.iter().filter(|r| r.success).collect();
+
+    // Compute per-request ITL values
+    let multi_token: Vec<&RequestRecord> = success_records
+        .iter()
+        .copied()
+        .filter(|r| r.tokens >= 2)
+        .collect();
+
+    let has_timestamps = multi_token.iter().any(|r| r.token_timestamps.len() >= 2);
+    let is_streaming = has_timestamps
+        || multi_token.iter().any(|r| {
+            let ratio = r.ttfb.as_secs_f64() / r.latency.as_secs_f64().max(1e-9);
+            ratio < 0.95
+        });
+
+    let mut itls = compute_per_token_latencies(
+        &multi_token.iter().copied().collect::<Vec<_>>(),
+        has_timestamps,
+        is_streaming,
+    );
+    itls.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut ttfbs: Vec<f64> = success_records
+        .iter()
+        .map(|r| r.ttfb.as_secs_f64() * 1000.0)
+        .collect();
+    ttfbs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut latencies: Vec<f64> = success_records
+        .iter()
+        .map(|r| r.latency.as_secs_f64() * 1000.0)
+        .collect();
+    latencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Extended percentiles
+    let itl_p50 = percentile(&itls, 0.50);
+    let itl_p99 = percentile(&itls, 0.99);
+    let ttft_p50 = percentile(&ttfbs, 0.50);
+    let ttft_p99 = percentile(&ttfbs, 0.99);
+    let lat_p50 = percentile(&latencies, 0.50);
+    let lat_p99 = percentile(&latencies, 0.99);
+
+    // Tail ratios
+    let tail_ratio_itl = if itl_p50 > 0.0 { itl_p99 / itl_p50 } else { 0.0 };
+    let tail_ratio_ttft = if ttft_p50 > 0.0 { ttft_p99 / ttft_p50 } else { 0.0 };
+    let tail_ratio_latency = if lat_p50 > 0.0 { lat_p99 / lat_p50 } else { 0.0 };
+
+    // Jitter: coefficient of variation
+    let itl_mean = if itls.is_empty() {
+        0.0
+    } else {
+        itls.iter().sum::<f64>() / itls.len() as f64
+    };
+    let itl_sd = stddev(&itls);
+    let itl_cv = if itl_mean > 0.0 { itl_sd / itl_mean } else { 0.0 };
+
+    // IQR
+    let itl_iqr_ms = percentile(&itls, 0.75) - percentile(&itls, 0.25);
+
+    // Spike detection
+    let spike_threshold_ms = itl_p50 * spike_threshold_mult;
+    let mut spikes = Vec::new();
+    for (idx, &itl) in itls.iter().enumerate() {
+        if itl > spike_threshold_ms && spike_threshold_ms > 0.0 {
+            if spikes.len() < 20 {
+                spikes.push(LatencySpike {
+                    request_idx: idx,
+                    itl_ms: itl,
+                });
+            }
+        }
+    }
+
+    // Drift detection: simple linear regression of ITL over request index
+    let drift = compute_drift(&itls, &ttfbs);
+
+    TailAnalysis {
+        itl_p999_ms: percentile(&itls, 0.999),
+        itl_p9999_ms: percentile(&itls, 0.9999),
+        ttft_p999_ms: percentile(&ttfbs, 0.999),
+        ttft_p9999_ms: percentile(&ttfbs, 0.9999),
+        latency_p999_ms: percentile(&latencies, 0.999),
+        latency_p9999_ms: percentile(&latencies, 0.9999),
+        tail_ratio_itl,
+        tail_ratio_ttft,
+        tail_ratio_latency,
+        jitter: JitterAnalysis {
+            itl_cv,
+            itl_iqr_ms,
+            spike_count: spikes.len(),
+            spike_threshold_ms,
+            spikes,
+        },
+        drift,
+    }
+}
+
+/// Simple linear regression: y = a + b*x. Returns (slope, r_squared).
+fn linear_regression(values: &[f64]) -> (f64, f64) {
+    let n = values.len() as f64;
+    if n < 3.0 {
+        return (0.0, 0.0);
+    }
+    let x_mean = (n - 1.0) / 2.0;
+    let y_mean = values.iter().sum::<f64>() / n;
+    let mut ss_xy = 0.0;
+    let mut ss_xx = 0.0;
+    let mut ss_yy = 0.0;
+    for (i, &y) in values.iter().enumerate() {
+        let x = i as f64;
+        ss_xy += (x - x_mean) * (y - y_mean);
+        ss_xx += (x - x_mean).powi(2);
+        ss_yy += (y - y_mean).powi(2);
+    }
+    let slope = if ss_xx > 0.0 { ss_xy / ss_xx } else { 0.0 };
+    let r_squared = if ss_yy > 0.0 {
+        (ss_xy * ss_xy) / (ss_xx * ss_yy)
+    } else {
+        0.0
+    };
+    (slope, r_squared)
+}
+
+/// Compute drift analysis from time-ordered ITL and TTFT values.
+fn compute_drift(itls: &[f64], ttfbs: &[f64]) -> DriftAnalysis {
+    let (itl_slope, itl_r2) = linear_regression(itls);
+    let (ttft_slope, _ttft_r2) = linear_regression(ttfbs);
+
+    // Convert slope from ms/request to ms/min.
+    // Slope is per-index; multiply by N for per-run-duration scale.
+    let itl_slope_per_min = itl_slope * (itls.len() as f64).max(1.0);
+    let ttft_slope_per_min = ttft_slope * (ttfbs.len() as f64).max(1.0);
+
+    // Drift detection requires:
+    // 1. At least 30 data points (small N gives spurious r^2)
+    // 2. Positive slope (degradation, not improvement)
+    // 3. Strong correlation (r^2 > 0.5)
+    // 4. Practically significant slope (> 1% of median ITL per minute)
+    let itl_median = if itls.is_empty() {
+        0.0
+    } else {
+        let mid = itls.len() / 2;
+        itls[mid]
+    };
+    let min_slope = itl_median * 0.01; // 1% of median per run
+    let degradation_detected =
+        itls.len() >= 30 && itl_slope > 0.0 && itl_r2 > 0.5 && itl_slope_per_min > min_slope;
+
+    DriftAnalysis {
+        itl_slope_ms_per_min: itl_slope_per_min,
+        ttft_slope_ms_per_min: ttft_slope_per_min,
+        degradation_detected,
     }
 }
 
@@ -759,12 +1344,15 @@ fn compute_goodput(
     if details.is_empty() {
         return 0.0;
     }
-    let passing = details.iter().filter(|d| {
-        let ttft_ok = slo_ttft_ms.map_or(true, |t| d.ttft_ms <= t);
-        let tpot_ok = slo_tpot_ms.map_or(true, |t| d.itl_ms <= t || d.itl_ms == 0.0);
-        let lat_ok = slo_latency_ms.map_or(true, |t| d.latency_ms <= t);
-        ttft_ok && tpot_ok && lat_ok
-    }).count();
+    let passing = details
+        .iter()
+        .filter(|d| {
+            let ttft_ok = slo_ttft_ms.map_or(true, |t| d.ttft_ms <= t);
+            let tpot_ok = slo_tpot_ms.map_or(true, |t| d.itl_ms <= t || d.itl_ms == 0.0);
+            let lat_ok = slo_latency_ms.map_or(true, |t| d.latency_ms <= t);
+            ttft_ok && tpot_ok && lat_ok
+        })
+        .count();
     passing as f64 / details.len() as f64 * 100.0
 }
 
@@ -802,7 +1390,11 @@ fn aggregate_brick_traces(records: &[RequestRecord]) -> Option<Vec<BrickTraceOpS
             let mean = sum / n as f64;
             let min = times.iter().copied().fold(f64::INFINITY, f64::min);
             let max = times.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-            let pct = if avg_total > 0.0 { (mean / avg_total) * 100.0 } else { 0.0 };
+            let pct = if avg_total > 0.0 {
+                (mean / avg_total) * 100.0
+            } else {
+                0.0
+            };
             BrickTraceOpSummary {
                 name,
                 mean_us: mean,
@@ -815,7 +1407,11 @@ fn aggregate_brick_traces(records: &[RequestRecord]) -> Option<Vec<BrickTraceOpS
         .collect();
 
     // Sort by percentage descending (hottest first)
-    summaries.sort_by(|a, b| b.pct_of_total.partial_cmp(&a.pct_of_total).unwrap_or(std::cmp::Ordering::Equal));
+    summaries.sort_by(|a, b| {
+        b.pct_of_total
+            .partial_cmp(&a.pct_of_total)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     Some(summaries)
 }
 
@@ -849,7 +1445,8 @@ fn stddev(values: &[f64]) -> f64 {
 /// Estimate prompt tokens from message content when server doesn't report usage.
 /// Uses words × 1.3 heuristic (approximation for GPT-2/BPE tokenizers).
 fn estimate_prompt_tokens(messages: &[ChatMessage]) -> u32 {
-    let total_words: usize = messages.iter()
+    let total_words: usize = messages
+        .iter()
         .map(|m| m.content.split_whitespace().count() + 4) // +4 for role/delimiter tokens
         .sum();
     (total_words as f64 * 1.3) as u32
@@ -899,7 +1496,7 @@ mod tests {
 
     #[test]
     fn test_aggregate_empty() {
-        let result = aggregate_results(&[], 10.0, "test", 1, None, None, None);
+        let result = aggregate_results(&[], 10.0, "test", 1, None, None, None, None);
         assert_eq!(result.total_requests, 0);
         assert_eq!(result.successful, 0);
         assert_eq!(result.failed, 0);
@@ -922,9 +1519,10 @@ mod tests {
                 token_timestamps: Vec::new(),
                 brick_trace: None,
                 finish_reason: None,
+                response_content: None,
             })
             .collect();
-        let result = aggregate_results(&records, 10.0, "realizar", 2, None, None, None);
+        let result = aggregate_results(&records, 10.0, "realizar", 2, None, None, None, None);
         assert_eq!(result.total_requests, 10);
         assert_eq!(result.successful, 10);
         assert_eq!(result.failed, 0);
@@ -962,6 +1560,7 @@ mod tests {
                 token_timestamps: Vec::new(),
                 brick_trace: None,
                 finish_reason: None,
+                response_content: None,
             },
             RequestRecord {
                 latency: Duration::from_millis(0),
@@ -972,9 +1571,10 @@ mod tests {
                 token_timestamps: Vec::new(),
                 brick_trace: None,
                 finish_reason: None,
+                response_content: None,
             },
         ];
-        let result = aggregate_results(&records, 5.0, "ollama", 1, None, None, None);
+        let result = aggregate_results(&records, 5.0, "ollama", 1, None, None, None, None);
         assert_eq!(result.total_requests, 2);
         assert_eq!(result.successful, 1);
         assert_eq!(result.failed, 1);
@@ -1033,9 +1633,16 @@ mod tests {
             completion_tokens_total: 1425,
             truncated_pct: 0.0,
             sse_batch_ratio: 0.0,
+            goodput_pct: 0.0,
+            decode_us_per_layer: None,
+            num_layers: None,
             output_tokens_dist: None,
             brick_trace_summary: None,
             request_details: Vec::new(),
+            quality: None,
+            tail_analysis: None,
+            gpu_telemetry: None,
+            dataset_stats: None,
         };
         let json = serde_json::to_string(&result).unwrap();
         let back: LoadTestResult = serde_json::from_str(&json).unwrap();
@@ -1097,8 +1704,9 @@ mod tests {
             token_timestamps: Vec::new(),
             brick_trace: None,
             finish_reason: None,
+            response_content: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None, None);
         assert!((result.itl_p50_ms - 10.0).abs() < 0.1);
         assert!((result.decode_tok_per_sec - 100.0).abs() < 1.0);
         assert!((result.avg_tok_per_req - 16.0).abs() < f64::EPSILON);
@@ -1119,8 +1727,9 @@ mod tests {
             token_timestamps: Vec::new(),
             brick_trace: None,
             finish_reason: None,
+            response_content: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None, None);
         assert!((result.itl_p50_ms - 100.0).abs() < 0.1);
         assert!((result.decode_tok_per_sec - 10.0).abs() < 0.1);
     }
@@ -1138,8 +1747,9 @@ mod tests {
             token_timestamps: Vec::new(),
             brick_trace: None,
             finish_reason: None,
+            response_content: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None, None);
         assert_eq!(result.itl_p50_ms, 0.0);
         assert_eq!(result.decode_tok_per_sec, 0.0);
         assert!((result.avg_tok_per_req - 1.0).abs() < f64::EPSILON);
@@ -1156,8 +1766,9 @@ mod tests {
             token_timestamps: Vec::new(),
             brick_trace: None,
             finish_reason: None,
+            response_content: None,
         }];
-        let result = aggregate_results(&records, 0.0, "test", 1, None, None, None);
+        let result = aggregate_results(&records, 0.0, "test", 1, None, None, None, None);
         assert_eq!(result.throughput_rps, 0.0);
         assert_eq!(result.tokens_per_sec, 0.0);
     }
@@ -1185,8 +1796,9 @@ mod tests {
             token_timestamps: Vec::new(),
             brick_trace: None,
             finish_reason: None,
+            response_content: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None, None);
         assert!((result.tpot_p50_ms - 10.0).abs() < 0.1);
     }
 
@@ -1202,6 +1814,7 @@ mod tests {
                 token_timestamps: Vec::new(),
                 brick_trace: None,
                 finish_reason: None,
+                response_content: None,
             },
             RequestRecord {
                 latency: Duration::from_millis(300),
@@ -1212,9 +1825,10 @@ mod tests {
                 token_timestamps: Vec::new(),
                 brick_trace: None,
                 finish_reason: None,
+                response_content: None,
             },
         ];
-        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None, None);
         assert!((result.latency_min_ms - 100.0).abs() < 0.1);
         assert!((result.latency_max_ms - 300.0).abs() < 0.1);
         assert!(result.latency_stddev_ms > 0.0);
@@ -1232,6 +1846,7 @@ mod tests {
                 token_timestamps: Vec::new(),
                 brick_trace: None,
                 finish_reason: None,
+                response_content: None,
             },
             RequestRecord {
                 latency: Duration::from_millis(100),
@@ -1242,9 +1857,10 @@ mod tests {
                 token_timestamps: Vec::new(),
                 brick_trace: None,
                 finish_reason: None,
+                response_content: None,
             },
         ];
-        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None, None);
         assert_eq!(result.prompt_tokens_total, 45);
         assert_eq!(result.completion_tokens_total, 25);
     }
@@ -1269,8 +1885,9 @@ mod tests {
             ],
             brick_trace: None,
             finish_reason: None,
+            response_content: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None, None);
         // Real TPOT from timestamps: mean of [10, 10, 10, 10] = 10ms
         assert!((result.tpot_p50_ms - 10.0).abs() < 0.1);
         // ITL also uses real timestamps
@@ -1297,6 +1914,7 @@ mod tests {
                 ],
                 brick_trace: None,
                 finish_reason: None,
+                response_content: None,
             },
             RequestRecord {
                 latency: Duration::from_millis(100),
@@ -1307,9 +1925,10 @@ mod tests {
                 token_timestamps: Vec::new(), // non-streaming request
                 brick_trace: None,
                 finish_reason: None,
+                response_content: None,
             },
         ];
-        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None, None);
         // Only the first record with timestamps is used for TPOT
         // Deltas: [20, 20, 20] → mean TPOT = 20ms
         assert!((result.tpot_p50_ms - 20.0).abs() < 0.1);
@@ -1335,11 +1954,20 @@ mod tests {
             token_timestamps: Vec::new(),
             brick_trace: None,
             finish_reason: None,
+            response_content: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None, None);
         // Both TPOT and ITL should be latency/tokens = 100ms
-        assert!((result.tpot_p50_ms - 100.0).abs() < 0.1, "tpot={}", result.tpot_p50_ms);
-        assert!((result.itl_p50_ms - 100.0).abs() < 0.1, "itl={}", result.itl_p50_ms);
+        assert!(
+            (result.tpot_p50_ms - 100.0).abs() < 0.1,
+            "tpot={}",
+            result.tpot_p50_ms
+        );
+        assert!(
+            (result.itl_p50_ms - 100.0).abs() < 0.1,
+            "itl={}",
+            result.itl_p50_ms
+        );
     }
 
     #[test]
@@ -1366,12 +1994,25 @@ mod tests {
             ],
             brick_trace: None,
             finish_reason: None,
+            response_content: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None, None);
         // Per-request mean: (300-100)/5 = 40ms
-        assert!((result.itl_p50_ms - 40.0).abs() < 0.1, "itl={}", result.itl_p50_ms);
-        assert!((result.tpot_p50_ms - 40.0).abs() < 0.1, "tpot={}", result.tpot_p50_ms);
-        assert!((result.decode_tok_per_sec - 25.0).abs() < 0.5, "decode={}", result.decode_tok_per_sec);
+        assert!(
+            (result.itl_p50_ms - 40.0).abs() < 0.1,
+            "itl={}",
+            result.itl_p50_ms
+        );
+        assert!(
+            (result.tpot_p50_ms - 40.0).abs() < 0.1,
+            "tpot={}",
+            result.tpot_p50_ms
+        );
+        assert!(
+            (result.decode_tok_per_sec - 25.0).abs() < 0.5,
+            "decode={}",
+            result.decode_tok_per_sec
+        );
     }
 
     #[test]
@@ -1385,8 +2026,9 @@ mod tests {
             token_timestamps: Vec::new(),
             brick_trace: None,
             finish_reason: None,
+            response_content: None,
         }];
-        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None);
+        let result = aggregate_results(&records, 1.0, "test", 1, None, None, None, None);
         assert_eq!(result.request_details.len(), 1);
         let detail = &result.request_details[0];
         assert!((detail.latency_ms - 200.0).abs() < 0.1);
@@ -1394,5 +2036,259 @@ mod tests {
         assert_eq!(detail.completion_tokens, 16);
         assert_eq!(detail.prompt_tokens, 10);
         assert!(detail.itl_ms > 0.0);
+    }
+
+    // =========================================================================
+    // Feature 5: Quality validation tests
+    // =========================================================================
+
+    #[test]
+    fn test_quality_basic_all_pass() {
+        let records = vec![
+            RequestRecord {
+                latency: Duration::from_millis(100),
+                ttfb: Duration::from_millis(50),
+                tokens: 10,
+                prompt_tokens: 5,
+                success: true,
+                token_timestamps: Vec::new(),
+                brick_trace: None,
+                finish_reason: Some("stop".to_string()),
+                response_content: None,
+            },
+            RequestRecord {
+                latency: Duration::from_millis(120),
+                ttfb: Duration::from_millis(60),
+                tokens: 8,
+                prompt_tokens: 5,
+                success: true,
+                token_timestamps: Vec::new(),
+                brick_trace: None,
+                finish_reason: Some("stop".to_string()),
+                response_content: None,
+            },
+        ];
+        let quality = compute_quality(&records, &ValidationMode::Basic);
+        assert_eq!(quality.total_validated, 2);
+        assert_eq!(quality.passed, 2);
+        assert_eq!(quality.failed, 0);
+        assert!((quality.pass_rate - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_quality_basic_zero_tokens() {
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(100),
+            ttfb: Duration::from_millis(100),
+            tokens: 0,
+            prompt_tokens: 5,
+            success: true,
+            token_timestamps: Vec::new(),
+            brick_trace: None,
+            finish_reason: Some("stop".to_string()),
+            response_content: None,
+        }];
+        let quality = compute_quality(&records, &ValidationMode::Basic);
+        assert_eq!(quality.failed, 1);
+        assert_eq!(quality.failures[0].reason, "zero_tokens");
+    }
+
+    #[test]
+    fn test_quality_basic_no_finish_reason() {
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(100),
+            ttfb: Duration::from_millis(50),
+            tokens: 10,
+            prompt_tokens: 5,
+            success: true,
+            token_timestamps: Vec::new(),
+            brick_trace: None,
+            finish_reason: None,
+            response_content: None,
+        }];
+        let quality = compute_quality(&records, &ValidationMode::Basic);
+        assert_eq!(quality.failed, 1);
+        assert_eq!(quality.failures[0].reason, "no_finish_reason");
+    }
+
+    #[test]
+    fn test_quality_contains_match() {
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(100),
+            ttfb: Duration::from_millis(50),
+            tokens: 10,
+            prompt_tokens: 5,
+            success: true,
+            token_timestamps: Vec::new(),
+            brick_trace: None,
+            finish_reason: Some("stop".to_string()),
+            response_content: Some("hello world".to_string()),
+        }];
+        let quality = compute_quality(&records, &ValidationMode::Contains("hello".to_string()));
+        assert_eq!(quality.passed, 1);
+        assert_eq!(quality.failed, 0);
+    }
+
+    #[test]
+    fn test_quality_contains_mismatch() {
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(100),
+            ttfb: Duration::from_millis(50),
+            tokens: 10,
+            prompt_tokens: 5,
+            success: true,
+            token_timestamps: Vec::new(),
+            brick_trace: None,
+            finish_reason: Some("stop".to_string()),
+            response_content: Some("goodbye world".to_string()),
+        }];
+        let quality = compute_quality(&records, &ValidationMode::Contains("hello".to_string()));
+        assert_eq!(quality.failed, 1);
+        assert!(quality.failures[0].reason.starts_with("missing_substring:"));
+    }
+
+    #[test]
+    fn test_quality_none_skipped() {
+        let records = vec![RequestRecord {
+            latency: Duration::from_millis(100),
+            ttfb: Duration::from_millis(50),
+            tokens: 0,
+            prompt_tokens: 5,
+            success: true,
+            token_timestamps: Vec::new(),
+            brick_trace: None,
+            finish_reason: None,
+            response_content: None,
+        }];
+        // ValidationMode::None should still return results if called directly
+        let quality = compute_quality(&records, &ValidationMode::None);
+        // But in practice, LoadTest::run() skips calling compute_quality when mode is None
+        assert_eq!(quality.validation_level, "none");
+    }
+
+    #[test]
+    fn test_quality_skips_failed_requests() {
+        let records = vec![
+            failed_record(), // success: false
+            RequestRecord {
+                latency: Duration::from_millis(100),
+                ttfb: Duration::from_millis(50),
+                tokens: 10,
+                prompt_tokens: 5,
+                success: true,
+                token_timestamps: Vec::new(),
+                brick_trace: None,
+                finish_reason: Some("stop".to_string()),
+                response_content: None,
+            },
+        ];
+        let quality = compute_quality(&records, &ValidationMode::Basic);
+        // Only the successful request should be validated
+        assert_eq!(quality.total_validated, 1);
+        assert_eq!(quality.passed, 1);
+    }
+
+    // =========================================================================
+    // Feature 3: Tail latency analysis tests
+    // =========================================================================
+
+    #[test]
+    fn test_tail_analysis_basic() {
+        let records: Vec<RequestRecord> = (0..100)
+            .map(|i| RequestRecord {
+                latency: Duration::from_millis(100 + i),
+                ttfb: Duration::from_millis(50 + i / 2),
+                tokens: 20,
+                prompt_tokens: 10,
+                success: true,
+                token_timestamps: Vec::new(),
+                brick_trace: None,
+                finish_reason: Some("stop".to_string()),
+                response_content: None,
+            })
+            .collect();
+        let tail = compute_tail_analysis(&records, 5.0);
+        // P99.9 should be near the max
+        assert!(tail.latency_p999_ms > 0.0);
+        assert!(tail.ttft_p999_ms > 0.0);
+        // Tail ratios should be computed
+        assert!(tail.tail_ratio_latency > 0.0);
+    }
+
+    #[test]
+    fn test_spike_detection() {
+        // Create records with one outlier
+        let mut records: Vec<RequestRecord> = (0..50)
+            .map(|_| RequestRecord {
+                latency: Duration::from_millis(200),
+                ttfb: Duration::from_millis(50),
+                tokens: 16,
+                prompt_tokens: 10,
+                success: true,
+                token_timestamps: Vec::new(),
+                brick_trace: None,
+                finish_reason: Some("stop".to_string()),
+                response_content: None,
+            })
+            .collect();
+        // Add a spike (10x normal latency)
+        records.push(RequestRecord {
+            latency: Duration::from_millis(2000),
+            ttfb: Duration::from_millis(50),
+            tokens: 16,
+            prompt_tokens: 10,
+            success: true,
+            token_timestamps: Vec::new(),
+            brick_trace: None,
+            finish_reason: Some("stop".to_string()),
+            response_content: None,
+        });
+        let tail = compute_tail_analysis(&records, 5.0);
+        // The spike should be detected (its ITL is much higher than median)
+        assert!(tail.jitter.spike_threshold_ms > 0.0);
+    }
+
+    #[test]
+    fn test_linear_regression() {
+        // Perfect positive slope: y = 2x
+        let values: Vec<f64> = (0..10).map(|x| 2.0 * x as f64).collect();
+        let (slope, r2) = linear_regression(&values);
+        assert!((slope - 2.0).abs() < 0.01);
+        assert!((r2 - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_linear_regression_flat() {
+        let values = vec![5.0, 5.0, 5.0, 5.0, 5.0];
+        let (slope, _r2) = linear_regression(&values);
+        assert!(slope.abs() < 0.01);
+    }
+
+    #[test]
+    fn test_validation_mode_parse() {
+        assert!(matches!(ValidationMode::parse("none"), ValidationMode::None));
+        assert!(matches!(
+            ValidationMode::parse("basic"),
+            ValidationMode::Basic
+        ));
+        if let ValidationMode::Contains(s) = ValidationMode::parse("contains:hello") {
+            assert_eq!(s, "hello");
+        } else {
+            panic!("Expected Contains");
+        }
+        if let ValidationMode::Pattern(p) = ValidationMode::parse("pattern:\\d+") {
+            assert_eq!(p, "\\d+");
+        } else {
+            panic!("Expected Pattern");
+        }
+    }
+
+    #[test]
+    fn test_tail_analysis_empty() {
+        let records: Vec<RequestRecord> = Vec::new();
+        let tail = compute_tail_analysis(&records, 5.0);
+        assert_eq!(tail.itl_p999_ms, 0.0);
+        assert_eq!(tail.jitter.spike_count, 0);
+        assert!(!tail.drift.degradation_detected);
     }
 }

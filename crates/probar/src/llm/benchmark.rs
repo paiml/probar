@@ -147,10 +147,7 @@ impl Benchmark {
         let ready_time = client
             .wait_ready(self.config.health_timeout, Duration::from_secs(2))
             .await?;
-        eprintln!(
-            "Server ready in {:.1}s",
-            ready_time.as_secs_f64()
-        );
+        eprintln!("Server ready in {:.1}s", ready_time.as_secs_f64());
 
         // Phase 2: Warmup (excluded from metrics)
         if self.config.warmup > Duration::ZERO {
@@ -168,6 +165,9 @@ impl Benchmark {
                 slo_latency_ms: None,
                 num_layers: self.config.num_layers,
                 rate: super::loadtest::RequestRate::Max,
+                validate: super::loadtest::ValidationMode::None,
+                spike_threshold: 5.0,
+                fail_on_quality: None,
             };
             let warmup_test = LoadTest::new(client.clone(), warmup_config);
             let _ = warmup_test.run().await;
@@ -195,6 +195,9 @@ impl Benchmark {
                 slo_latency_ms: None,
                 rate: super::loadtest::RequestRate::Max,
                 num_layers: self.config.num_layers,
+                validate: super::loadtest::ValidationMode::None,
+                spike_threshold: 5.0,
+                fail_on_quality: None,
             };
             let load_test = LoadTest::new(client.clone(), measure_config);
             let result = load_test.run().await?;
@@ -210,11 +213,7 @@ impl Benchmark {
         let aggregate = compute_aggregate(&run_results);
         let regressions = if let Some(ref baseline) = self.config.baseline {
             let threshold = self.config.fail_on_regression.unwrap_or(10.0);
-            super::report::compare_to_baseline(
-                &aggregate,
-                baseline,
-                threshold,
-            )
+            super::report::compare_to_baseline(&aggregate, baseline, threshold)
         } else {
             Vec::new()
         };
@@ -362,9 +361,16 @@ mod tests {
             completion_tokens_total: 2000,
             truncated_pct: 0.0,
             sse_batch_ratio: 0.0,
+            goodput_pct: 0.0,
+            decode_us_per_layer: None,
+            num_layers: None,
             output_tokens_dist: None,
             brick_trace_summary: None,
             request_details: Vec::new(),
+            quality: None,
+            tail_analysis: None,
+            gpu_telemetry: None,
+            dataset_stats: None,
         }
     }
 

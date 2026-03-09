@@ -11,23 +11,34 @@ pub mod assertion;
 #[cfg(feature = "llm")]
 pub mod benchmark;
 pub mod client;
+pub mod experiment;
+#[cfg(feature = "llm")]
+pub mod gpu_telemetry;
 #[cfg(feature = "llm")]
 pub mod loadtest;
-#[cfg(feature = "llm")]
 pub mod prompts;
 #[cfg(feature = "llm")]
 pub mod report;
 
 pub use assertion::{LlmAssertion, LlmAssertionError, LlmAssertionResult};
 pub use client::{
-    BrickTrace, BrickTraceOp, ChatMessage, ChatRequest, ChatResponse, ChatResponseChoice,
-    Role, StreamChunk, StreamedChatResponse, TimedChatResponse, Usage,
+    BrickTrace, BrickTraceOp, ChatMessage, ChatRequest, ChatResponse, ChatResponseChoice, Role,
+    StreamChunk, StreamedChatResponse, TimedChatResponse, Usage,
 };
 #[cfg(feature = "llm")]
 pub use client::{LlmClient, LlmClientError};
+pub use experiment::{
+    BudgetConfig, DataAuditResult, EarlyStoppingConfig, Experiment, ExperimentRun, ExperimentStatus,
+    KillCriterion, MetricSnapshot,
+};
 #[cfg(feature = "llm")]
-pub use loadtest::{BrickTraceOpSummary, LoadTest, LoadTestConfig, LoadTestResult, RequestDetail, RequestRate};
+pub use gpu_telemetry::{extract_host_from_url, GpuTelemetryCollector};
 #[cfg(feature = "llm")]
+pub use loadtest::{
+    BrickTraceOpSummary, DatasetStats, DriftAnalysis, GpuTelemetry, JitterAnalysis, LatencySpike,
+    LoadTest, LoadTestConfig, LoadTestResult, QualityFailure, QualityResult, RequestDetail,
+    RequestRate, SweepLevel, SweepResult, TailAnalysis, TelemetryStat, ValidationMode,
+};
 pub use prompts::{load_from_file as load_prompts_from_file, load_profile, PromptProfile};
 #[cfg(feature = "llm")]
 pub use report::{to_json, to_markdown_row, to_markdown_table, update_performance_md};

@@ -4,9 +4,13 @@
 //! for OpenAI-compatible LLM inference endpoints.
 
 use crate::error::{CliError, CliResult};
+use crate::DataAuditArgs;
+use crate::ExperimentArgs;
 use crate::LlmBenchArgs;
+use crate::LlmGenDatasetArgs;
 use crate::LlmLoadArgs;
 use crate::LlmReportArgs;
+use crate::LlmSweepArgs;
 use crate::LlmTestArgs;
 use std::path::Path;
 use std::time::Duration;
@@ -93,7 +97,10 @@ pub async fn execute_llm_test(args: &LlmTestArgs) -> CliResult<()> {
     match client.health_check().await {
         Ok(true) => println!("Health check passed: {}", args.url),
         Ok(false) | Err(_) => {
-            eprintln!("Warning: health check failed for {}, proceeding anyway", args.url);
+            eprintln!(
+                "Warning: health check failed for {}, proceeding anyway",
+                args.url
+            );
         }
     }
 
@@ -184,8 +191,8 @@ pub async fn execute_llm_test(args: &LlmTestArgs) -> CliResult<()> {
     };
 
     if let Some(ref output_path) = args.output {
-        let json = serde_json::to_string_pretty(&report)
-            .map_err(|e| CliError::Generic(e.to_string()))?;
+        let json =
+            serde_json::to_string_pretty(&report).map_err(|e| CliError::Generic(e.to_string()))?;
         std::fs::write(output_path, json).map_err(|e| CliError::Generic(e.to_string()))?;
         println!("Results written to {}", output_path.display());
     }
@@ -203,8 +210,15 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
     let warmup = parse_duration(&args.warmup)?;
     let client = jugar_probar::llm::LlmClient::new(&args.url, &args.model);
 
-    // Load prompts from profile or file
-    let prompts = resolve_prompts(args.prompt_profile.as_deref(), args.prompt_file.as_deref())?;
+    // Load prompts: dataset > prompt-file > prompt-profile > default
+    let (prompts, dataset_stats) = if let Some(ref dataset_path) = args.dataset {
+        let (prompts, stats) = load_dataset(dataset_path)?;
+        (prompts, Some(stats))
+    } else {
+        let prompts =
+            resolve_prompts(args.prompt_profile.as_deref(), args.prompt_file.as_deref())?;
+        (prompts, None)
+    };
 
     println!(
         "Load testing {} (concurrency={}, duration={:.0}s, warmup={:.0}s, runtime={})",
@@ -214,6 +228,11 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
         warmup.as_secs_f64(),
         args.runtime_name,
     );
+
+    let validate = jugar_probar::llm::ValidationMode::parse(&args.validate);
+    if !matches!(validate, jugar_probar::llm::ValidationMode::None) {
+        println!("Validation:   {}", args.validate);
+    }
 
     // Health check
     match client.health_check().await {
@@ -235,23 +254,65 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
         slo_tpot_ms: None,
         slo_latency_ms: None,
         rate: match args.rate {
-            Some(r) if args.rate_distribution == "constant" => jugar_probar::llm::RequestRate::Constant(r),
+            Some(r) if args.rate_distribution == "constant" => {
+                jugar_probar::llm::RequestRate::Constant(r)
+            }
             Some(r) => jugar_probar::llm::RequestRate::Poisson(r),
             None => jugar_probar::llm::RequestRate::Max,
         },
         num_layers: args.num_layers,
+        validate,
+        spike_threshold: args.spike_threshold,
+        fail_on_quality: args.fail_on_quality,
+    };
+
+    // GPU telemetry: start collection before benchmark (GH-34: auto-detect remote host)
+    let mut gpu_collector = if args.gpu_telemetry {
+        let poll_interval = parse_duration(&args.gpu_poll_interval)?;
+        let gpu_host = jugar_probar::llm::extract_host_from_url(&args.url);
+        let mut collector = jugar_probar::llm::GpuTelemetryCollector::new(
+            poll_interval.as_secs().max(1),
+            args.expected_clock_mhz,
+        )
+        .with_host(gpu_host.clone());
+        match collector.start().await {
+            Ok(()) => {
+                if let Some(ref host) = gpu_host {
+                    println!("GPU telemetry: collecting from {host}");
+                } else {
+                    println!("GPU telemetry: collecting (local)");
+                }
+            }
+            Err(e) => eprintln!("Warning: GPU telemetry failed to start: {e}"),
+        }
+        Some(collector)
+    } else {
+        None
     };
 
     let load_test = jugar_probar::llm::LoadTest::new(client, config);
-    let result = load_test
+    let mut result = load_test
         .run()
         .await
         .map_err(|e| CliError::Generic(e.to_string()))?;
 
+    // GPU telemetry: stop and attach to result
+    if let Some(ref mut collector) = gpu_collector {
+        result.gpu_telemetry = collector
+            .stop(result.completion_tokens_total, result.total_requests)
+            .await;
+    }
+
+    // Dataset stats: attach if we loaded from dataset
+    result.dataset_stats = dataset_stats;
+
     // Print summary
     println!("\n--- Load Test Results ---");
     println!("Runtime:      {}", result.runtime_name);
-    println!("Requests:     {} ({} ok, {} failed)", result.total_requests, result.successful, result.failed);
+    println!(
+        "Requests:     {} ({} ok, {} failed)",
+        result.total_requests, result.successful, result.failed
+    );
     println!("Throughput:   {:.1} req/s", result.throughput_rps);
     println!("Latency P50:  {:.1} ms", result.latency_p50_ms);
     println!("Latency P95:  {:.1} ms", result.latency_p95_ms);
@@ -276,8 +337,100 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
         println!("Error rate:   {:.1}%", result.error_rate * 100.0);
     }
     if let Some(dist) = &result.output_tokens_dist {
-        println!("Output tok:   [{:.0}, {:.0}, {:.0}, {:.0}] (min/p50/p90/max)", dist[0], dist[1], dist[2], dist[3]);
+        println!(
+            "Output tok:   [{:.0}, {:.0}, {:.0}, {:.0}] (min/p50/p90/max)",
+            dist[0], dist[1], dist[2], dist[3]
+        );
     }
+
+    // Feature 3: Tail analysis
+    if let Some(ref tail) = result.tail_analysis {
+        println!("\n--- Tail Latency Analysis ---");
+        println!(
+            "ITL P99.9:    {:.1} ms  (tail ratio: {:.1}x)",
+            tail.itl_p999_ms, tail.tail_ratio_itl
+        );
+        println!(
+            "TTFT P99.9:   {:.1} ms  (tail ratio: {:.1}x)",
+            tail.ttft_p999_ms, tail.tail_ratio_ttft
+        );
+        println!(
+            "Lat P99.9:    {:.1} ms  (tail ratio: {:.1}x)",
+            tail.latency_p999_ms, tail.tail_ratio_latency
+        );
+        if tail.jitter.spike_count > 0 {
+            println!(
+                "Spikes:       {} (threshold: {:.1}ms)",
+                tail.jitter.spike_count, tail.jitter.spike_threshold_ms
+            );
+        }
+        if tail.jitter.itl_cv > 0.0 {
+            println!("ITL CV:       {:.2}", tail.jitter.itl_cv);
+        }
+        if tail.drift.degradation_detected {
+            eprintln!(
+                "Warning: Latency drift detected (ITL slope: {:.2} ms/min)",
+                tail.drift.itl_slope_ms_per_min
+            );
+        }
+    }
+
+    // Feature 5: Quality validation
+    if let Some(ref quality) = result.quality {
+        println!("\n--- Quality Validation ({}) ---", quality.validation_level);
+        println!(
+            "Validated:    {} ({} pass, {} fail, {:.1}% pass rate)",
+            quality.total_validated,
+            quality.passed,
+            quality.failed,
+            quality.pass_rate * 100.0
+        );
+        for failure in quality.failures.iter().take(10) {
+            eprintln!(
+                "  FAIL request #{}: {}",
+                failure.request_idx, failure.reason
+            );
+        }
+        if quality.failures.len() > 10 {
+            eprintln!("  ... and {} more failures", quality.failures.len() - 10);
+        }
+    }
+
+    // Feature 2: GPU telemetry
+    if let Some(ref gpu) = result.gpu_telemetry {
+        println!("\n--- GPU Telemetry ({} samples) ---", gpu.samples);
+        println!(
+            "GPU util:     {:.0}% avg ({:.0}% max)",
+            gpu.gpu_utilization_pct.mean, gpu.gpu_utilization_pct.max
+        );
+        println!(
+            "Memory:       {:.0} / {:.0} MB",
+            gpu.memory_used_mb.mean, gpu.memory_total_mb
+        );
+        println!(
+            "Power:        {:.1}W avg ({:.1}W max)",
+            gpu.power_draw_w.mean, gpu.power_draw_w.max
+        );
+        println!(
+            "Temperature:  {:.0}°C avg ({:.0}°C max)",
+            gpu.temperature_c.mean, gpu.temperature_c.max
+        );
+        println!(
+            "Clock:        {:.0} MHz avg ({:.0} MHz min)",
+            gpu.clock_gpu_mhz.mean, gpu.clock_gpu_mhz.min
+        );
+        if gpu.throttle_events > 0 {
+            eprintln!("Warning: {} throttle events detected", gpu.throttle_events);
+        }
+        if gpu.energy_per_token_mj > 0.0 {
+            println!(
+                "Energy:       {:.2} mJ/token, {:.2} Wh total",
+                gpu.energy_per_token_mj, gpu.energy_total_wh
+            );
+        }
+    }
+
+    // Warnings
     if result.truncated_pct > 10.0 {
         eprintln!("Warning: {:.0}% of responses truncated by max_tokens — increase max_tokens or use longer prompts", result.truncated_pct);
     }
@@ -290,6 +443,17 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
         let json = jugar_probar::llm::report::to_json(&result);
         std::fs::write(output_path, json).map_err(|e| CliError::Generic(e.to_string()))?;
         println!("\nResults written to {}", output_path.display());
+    }
+
+    // Feature 5: fail on quality threshold
+    if let (Some(threshold), Some(ref quality)) = (args.fail_on_quality, &result.quality) {
+        if quality.pass_rate < threshold {
+            return Err(CliError::Generic(format!(
+                "Quality pass rate {:.1}% below threshold {:.1}%",
+                quality.pass_rate * 100.0,
+                threshold * 100.0,
+            )));
+        }
     }
 
     Ok(())
@@ -330,8 +494,12 @@ pub async fn execute_llm_bench(args: &LlmBenchArgs) -> CliResult<()> {
 
     println!(
         "Benchmark: {} (runs={}, duration={:.0}s, warmup={:.0}s, concurrency={}, runtime={})",
-        args.url, args.runs, duration.as_secs_f64(), warmup.as_secs_f64(),
-        args.concurrency, args.runtime_name,
+        args.url,
+        args.runs,
+        duration.as_secs_f64(),
+        warmup.as_secs_f64(),
+        args.concurrency,
+        args.runtime_name,
     );
 
     let config = jugar_probar::llm::benchmark::BenchmarkConfig {
@@ -379,7 +547,9 @@ fn load_baseline(path: Option<&Path>) -> CliResult<Option<jugar_probar::llm::Loa
     };
     let content = std::fs::read_to_string(baseline_path)
         .map_err(|e| CliError::Generic(format!("Failed to read baseline: {e}")))?;
-    if let Ok(report) = serde_json::from_str::<jugar_probar::llm::benchmark::BenchmarkReport>(&content) {
+    if let Ok(report) =
+        serde_json::from_str::<jugar_probar::llm::benchmark::BenchmarkReport>(&content)
+    {
         return Ok(report.runs.first().cloned());
     }
     let result: jugar_probar::llm::LoadTestResult = serde_json::from_str(&content)
@@ -408,8 +578,13 @@ fn print_bench_report(report: &jugar_probar::llm::benchmark::BenchmarkReport) {
     print_stat("TPOT P50 (ms)", &report.aggregate.tpot_p50);
 
     // GH-114: Print brick trace summary if available
-    if let Some(trace) = report.runs.last().and_then(|r| r.brick_trace_summary.as_ref()) {
-        println!("\n--- BrickProfiler Trace ({} ops, {} samples) ---",
+    if let Some(trace) = report
+        .runs
+        .last()
+        .and_then(|r| r.brick_trace_summary.as_ref())
+    {
+        println!(
+            "\n--- BrickProfiler Trace ({} ops, {} samples) ---",
             trace.len(),
             trace.first().map_or(0, |t| t.samples),
         );
@@ -451,8 +626,8 @@ fn write_bench_output(
     let Some(path) = output_path else {
         return Ok(());
     };
-    let json = serde_json::to_string_pretty(report)
-        .map_err(|e| CliError::Generic(e.to_string()))?;
+    let json =
+        serde_json::to_string_pretty(report).map_err(|e| CliError::Generic(e.to_string()))?;
     std::fs::write(path, json).map_err(|e| CliError::Generic(e.to_string()))?;
     println!("\nResults written to {}", path.display());
     Ok(())
@@ -464,33 +639,36 @@ fn resolve_prompts(
     prompt_file: Option<&Path>,
 ) -> CliResult<Vec<jugar_probar::llm::ChatRequest>> {
     if let Some(file_path) = prompt_file {
-        jugar_probar::llm::load_prompts_from_file(file_path)
-            .map_err(CliError::Generic)
+        jugar_probar::llm::load_prompts_from_file(file_path).map_err(CliError::Generic)
     } else if let Some(name) = profile_name {
-        let profile = jugar_probar::llm::PromptProfile::from_name(name)
-            .ok_or_else(|| CliError::Generic(format!(
+        let profile = jugar_probar::llm::PromptProfile::from_name(name).ok_or_else(|| {
+            CliError::Generic(format!(
                 "Unknown prompt profile: {name}. Use: micro, short, medium, long"
-            )))?;
+            ))
+        })?;
         Ok(jugar_probar::llm::load_profile(profile))
     } else {
         // Default: use the medium profile
-        Ok(jugar_probar::llm::load_profile(jugar_probar::llm::PromptProfile::Medium))
+        Ok(jugar_probar::llm::load_profile(
+            jugar_probar::llm::PromptProfile::Medium,
+        ))
     }
 }
 
 /// Load all JSON result files from a directory.
-fn load_results_from_dir(
-    dir: &Path,
-) -> CliResult<Vec<jugar_probar::llm::LoadTestResult>> {
+fn load_results_from_dir(dir: &Path) -> CliResult<Vec<jugar_probar::llm::LoadTestResult>> {
     let mut results = Vec::new();
-    let entries =
-        std::fs::read_dir(dir).map_err(|e| CliError::Generic(format!("Cannot read {}: {e}", dir.display())))?;
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| CliError::Generic(format!("Cannot read {}: {e}", dir.display())))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| CliError::Generic(e.to_string()))?;
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("json")
-            && path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains("load"))
+            && path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.contains("load"))
         {
             let content =
                 std::fs::read_to_string(&path).map_err(|e| CliError::Generic(e.to_string()))?;
@@ -519,10 +697,7 @@ fn update_readme_section(path: &Path, table: &str) -> CliResult<()> {
     let content = if existing.contains(marker_start) && existing.contains(marker_end) {
         // Replace existing section
         let before = existing.split(marker_start).next().unwrap_or("");
-        let after = existing
-            .split(marker_end)
-            .nth(1)
-            .unwrap_or("");
+        let after = existing.split(marker_end).nth(1).unwrap_or("");
         format!("{before}{marker_start}\n{table}\n{marker_end}{after}")
     } else {
         // Append section
@@ -571,6 +746,491 @@ fn parse_duration(s: &str) -> CliResult<Duration> {
             .map_err(|_| CliError::Generic(format!("Invalid duration: {s}. Use 30s, 2m, or 1h")))?;
         Ok(Duration::from_secs(n))
     }
+}
+
+// =============================================================================
+// Feature 1: Concurrency Sweep
+// =============================================================================
+
+/// Execute `probador llm sweep`.
+pub async fn execute_llm_sweep(args: &LlmSweepArgs) -> CliResult<()> {
+    let duration = parse_duration(&args.duration)?;
+    let warmup = parse_duration(&args.warmup)?;
+    let prompts = resolve_prompts(args.prompt_profile.as_deref(), args.prompt_file.as_deref())?;
+
+    let levels: Vec<usize> = args
+        .concurrency_levels
+        .split(',')
+        .filter_map(|s| s.trim().parse().ok())
+        .collect();
+
+    if levels.is_empty() {
+        return Err(CliError::Generic(
+            "No valid concurrency levels specified".to_string(),
+        ));
+    }
+
+    println!(
+        "Sweep: {} (levels={:?}, duration={:.0}s, saturation={:.1}x)",
+        args.url, levels, duration.as_secs_f64(), args.saturation_threshold
+    );
+
+    let client = jugar_probar::llm::LlmClient::new(&args.url, &args.model);
+
+    // Health check
+    match client.health_check().await {
+        Ok(true) => println!("Health check passed"),
+        Ok(false) | Err(_) => {
+            eprintln!("Warning: health check failed, proceeding anyway");
+        }
+    }
+
+    let mut sweep_levels = Vec::new();
+    let mut baseline_p99: Option<f64> = None;
+    let mut best_throughput = 0.0f64;
+    let mut optimal_concurrency = levels[0];
+
+    for &c in &levels {
+        println!("\n--- c={c} ---");
+
+        let config = jugar_probar::llm::LoadTestConfig {
+            concurrency: c,
+            duration,
+            prompts: prompts.clone(),
+            runtime_name: args.runtime_name.clone(),
+            warmup_duration: warmup,
+            stream: args.stream,
+            trace_level: None,
+            slo_ttft_ms: None,
+            slo_tpot_ms: None,
+            slo_latency_ms: None,
+            rate: jugar_probar::llm::RequestRate::Max,
+            num_layers: args.num_layers,
+            validate: jugar_probar::llm::ValidationMode::None,
+            spike_threshold: 5.0,
+            fail_on_quality: None,
+        };
+
+        let load_test = jugar_probar::llm::LoadTest::new(client.clone(), config);
+        let result = load_test
+            .run()
+            .await
+            .map_err(|e| CliError::Generic(e.to_string()))?;
+
+        let p99 = result.latency_p99_ms;
+        let throughput = result.throughput_rps;
+        let decode = result.decode_tok_per_sec;
+
+        // Set baseline from first level
+        if baseline_p99.is_none() {
+            baseline_p99 = Some(p99);
+        }
+
+        // Saturation detection
+        let (saturated, saturation_reason) =
+            if let Some(base_p99) = baseline_p99 {
+                if base_p99 > 0.0 && p99 > args.saturation_threshold * base_p99 {
+                    (
+                        true,
+                        Some(format!(
+                            "latency_p99 {:.0}ms > {:.1}x baseline {:.0}ms",
+                            p99, args.saturation_threshold, base_p99
+                        )),
+                    )
+                } else {
+                    (false, None)
+                }
+            } else {
+                (false, None)
+            };
+
+        // GH-33: quality-aware optimal selection — disqualify zero-decode levels
+        let zero_quality = decode == 0.0;
+        if throughput > best_throughput && !saturated && !zero_quality {
+            best_throughput = throughput;
+            optimal_concurrency = c;
+        }
+
+        let status = if saturated {
+            " [SATURATED]"
+        } else if zero_quality {
+            " [ZERO QUALITY]"
+        } else {
+            ""
+        };
+        println!(
+            "  Throughput: {throughput:.1} req/s, P99: {p99:.1}ms, Decode: {decode:.1} tok/s{status}",
+        );
+
+        sweep_levels.push(jugar_probar::llm::SweepLevel {
+            concurrency: c,
+            throughput_rps: throughput,
+            latency_p99_ms: p99,
+            decode_tok_s: decode,
+            saturated,
+            saturation_reason,
+            result,
+        });
+
+        // Early stop
+        if args.early_stop && saturated {
+            println!("Early stop: saturation detected at c={c}");
+            break;
+        }
+    }
+
+    // GH-33: Pareto frontier excludes zero-quality and saturated levels
+    let pareto_frontier: Vec<usize> = {
+        let mut frontier = Vec::new();
+        let mut max_throughput = 0.0f64;
+        for level in &sweep_levels {
+            let zero_quality = level.decode_tok_s == 0.0;
+            if level.throughput_rps > max_throughput && !level.saturated && !zero_quality {
+                max_throughput = level.throughput_rps;
+                frontier.push(level.concurrency);
+            }
+        }
+        frontier
+    };
+
+    let sweep_result = jugar_probar::llm::SweepResult {
+        levels: sweep_levels,
+        optimal_concurrency,
+        optimal_throughput_rps: best_throughput,
+        pareto_frontier: pareto_frontier.clone(),
+    };
+
+    println!("\n--- Sweep Summary ---");
+    println!(
+        "Optimal:      c={} ({:.1} req/s)",
+        optimal_concurrency, best_throughput
+    );
+    println!("Pareto front: {:?}", pareto_frontier);
+
+    if let Some(ref output_path) = args.output {
+        let json = serde_json::to_string_pretty(&sweep_result)
+            .map_err(|e| CliError::Generic(e.to_string()))?;
+        std::fs::write(output_path, json).map_err(|e| CliError::Generic(e.to_string()))?;
+        println!("Results written to {}", output_path.display());
+    }
+
+    Ok(())
+}
+
+// =============================================================================
+// Feature 4: Dataset loading and generation
+// =============================================================================
+
+/// Load a JSONL dataset file into ChatRequest prompts and compute stats.
+fn load_dataset(
+    path: &Path,
+) -> CliResult<(
+    Vec<jugar_probar::llm::ChatRequest>,
+    jugar_probar::llm::DatasetStats,
+)> {
+    let content =
+        std::fs::read_to_string(path).map_err(|e| CliError::Generic(format!("Cannot read dataset: {e}")))?;
+
+    let mut prompts = Vec::new();
+    let mut input_lens = Vec::new();
+    let mut max_tokens_vals = Vec::new();
+
+    for (line_no, line) in content.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let entry: serde_json::Value = serde_json::from_str(line).map_err(|e| {
+            CliError::Generic(format!("Dataset line {}: parse error: {e}", line_no + 1))
+        })?;
+
+        let messages = entry
+            .get("messages")
+            .and_then(|m| m.as_array())
+            .ok_or_else(|| {
+                CliError::Generic(format!(
+                    "Dataset line {}: missing 'messages' array",
+                    line_no + 1
+                ))
+            })?;
+
+        let chat_messages: Vec<jugar_probar::llm::ChatMessage> = messages
+            .iter()
+            .filter_map(|m| {
+                let role_str = m.get("role")?.as_str()?;
+                let content = m.get("content")?.as_str()?;
+                let role = match role_str {
+                    "system" => jugar_probar::llm::Role::System,
+                    "assistant" => jugar_probar::llm::Role::Assistant,
+                    _ => jugar_probar::llm::Role::User,
+                };
+                Some(jugar_probar::llm::ChatMessage {
+                    role,
+                    content: content.to_string(),
+                })
+            })
+            .collect();
+
+        let max_tokens = entry
+            .get("max_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(128) as u32;
+
+        // Estimate input tokens (words * 1.3)
+        let input_tokens: usize = chat_messages
+            .iter()
+            .map(|m| m.content.split_whitespace().count() + 4)
+            .sum();
+        let estimated_tokens = (input_tokens as f64 * 1.3) as u32;
+
+        input_lens.push(estimated_tokens as f64);
+        max_tokens_vals.push(max_tokens as f64);
+
+        prompts.push(jugar_probar::llm::ChatRequest {
+            model: String::new(),
+            messages: chat_messages,
+            temperature: Some(0.0),
+            max_tokens: Some(max_tokens),
+            stream: Some(false),
+        });
+    }
+
+    if prompts.is_empty() {
+        return Err(CliError::Generic("Dataset is empty".to_string()));
+    }
+
+    input_lens.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    max_tokens_vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let stats = jugar_probar::llm::DatasetStats {
+        source: path.display().to_string(),
+        total_prompts: prompts.len(),
+        input_tokens: dist_summary(&input_lens),
+        max_tokens_requested: dist_summary(&max_tokens_vals),
+    };
+
+    println!(
+        "Dataset: {} ({} prompts, input [{:.0}-{:.0}] tokens)",
+        path.display(),
+        stats.total_prompts,
+        stats.input_tokens[0],
+        stats.input_tokens[3]
+    );
+
+    Ok((prompts, stats))
+}
+
+/// Compute [min, p50, p90, max] from sorted values.
+fn dist_summary(sorted: &[f64]) -> [f64; 4] {
+    if sorted.is_empty() {
+        return [0.0; 4];
+    }
+    let p = |pct: f64| -> f64 {
+        let idx = ((sorted.len() as f64 - 1.0) * pct).round() as usize;
+        sorted[idx.min(sorted.len() - 1)]
+    };
+    [sorted[0], p(0.5), p(0.9), sorted[sorted.len() - 1]]
+}
+
+/// Execute `probador llm gen-dataset`.
+pub fn execute_llm_gen_dataset(args: &LlmGenDatasetArgs) -> CliResult<()> {
+    use std::io::Write;
+
+    let mut file = std::fs::File::create(&args.output)
+        .map_err(|e| CliError::Generic(format!("Cannot create {}: {e}", args.output.display())))?;
+
+    // Simple lognormal-ish generation using Box-Muller from xorshift
+    let mut rng_state: u64 = 42;
+
+    for _ in 0..args.count {
+        // Generate lognormal-distributed input length
+        let input_len = sample_lognormal(
+            &mut rng_state,
+            args.input_mean,
+            args.input_stddev,
+        )
+        .max(4.0) as usize;
+
+        let output_len = sample_lognormal(
+            &mut rng_state,
+            args.output_mean,
+            args.output_stddev,
+        )
+        .max(4.0) as u32;
+
+        // Generate a prompt of approximately input_len tokens
+        let prompt = generate_synthetic_prompt(input_len);
+
+        let entry = serde_json::json!({
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": output_len
+        });
+
+        writeln!(file, "{}", serde_json::to_string(&entry).unwrap_or_default())
+            .map_err(|e| CliError::Generic(e.to_string()))?;
+    }
+
+    println!(
+        "Generated {} entries → {}",
+        args.count,
+        args.output.display()
+    );
+    Ok(())
+}
+
+/// Sample from a lognormal-ish distribution using Box-Muller.
+fn sample_lognormal(state: &mut u64, mean: f64, stddev: f64) -> f64 {
+    // Box-Muller transform
+    let u1 = next_uniform(state);
+    let u2 = next_uniform(state);
+    let z = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
+    (mean + stddev * z).max(1.0)
+}
+
+fn next_uniform(state: &mut u64) -> f64 {
+    *state ^= *state << 13;
+    *state ^= *state >> 7;
+    *state ^= *state << 17;
+    ((*state) as f64 / u64::MAX as f64).max(1e-10)
+}
+
+/// Generate a synthetic prompt string of approximately `target_tokens` tokens.
+fn generate_synthetic_prompt(target_tokens: usize) -> String {
+    // ~1.3 tokens per word, so target_words = target_tokens / 1.3
+    let target_words = (target_tokens as f64 / 1.3).max(1.0) as usize;
+    let words = [
+        "Explain", "the", "concept", "of", "data", "structures", "and",
+        "algorithms", "in", "computer", "science", "including", "arrays",
+        "linked", "lists", "trees", "graphs", "hash", "tables", "sorting",
+        "searching", "dynamic", "programming", "recursion", "iteration",
+        "complexity", "analysis", "optimization", "performance", "memory",
+    ];
+    let mut result = String::with_capacity(target_words * 6);
+    for i in 0..target_words {
+        if i > 0 {
+            result.push(' ');
+        }
+        result.push_str(words[i % words.len()]);
+    }
+    result
+}
+
+// =============================================================================
+// Experiment tracking (GH-32)
+// =============================================================================
+
+/// Execute `probador llm experiment` subcommands.
+pub fn execute_llm_experiment(args: &ExperimentArgs) -> CliResult<()> {
+    use crate::ExperimentSubcommand;
+    use jugar_probar::llm::experiment::{BudgetConfig, Experiment};
+
+    match &args.subcommand {
+        ExperimentSubcommand::Init(init_args) => {
+            let mut exp = Experiment::new(&init_args.name);
+            exp.description = init_args.description.clone();
+
+            if init_args.max_gpu_hours.is_some() || init_args.max_cost_usd.is_some() {
+                exp.budget = Some(BudgetConfig {
+                    max_gpu_hours: init_args.max_gpu_hours,
+                    max_cost_usd: init_args.max_cost_usd,
+                    cost_per_gpu_hour: init_args.cost_per_gpu_hour,
+                });
+            }
+
+            exp.save(&init_args.output)
+                .map_err(|e| CliError::Generic(format!("Failed to save experiment: {e}")))?;
+
+            eprintln!("Experiment '{}' initialized → {}", init_args.name, init_args.output.display());
+            if let Some(ref budget) = exp.budget {
+                if let Some(h) = budget.max_gpu_hours {
+                    eprintln!("  Budget: {h:.1} GPU-hours");
+                }
+                if let Some(c) = budget.max_cost_usd {
+                    eprintln!("  Budget: ${c:.2}");
+                }
+            }
+            Ok(())
+        }
+        ExperimentSubcommand::Status(status_args) => {
+            let exp = Experiment::load(&status_args.file)
+                .map_err(|e| CliError::Generic(format!("Failed to load experiment: {e}")))?;
+
+            println!("Experiment: {}", exp.name);
+            if let Some(ref desc) = exp.description {
+                println!("  Description: {desc}");
+            }
+            println!("  Created: {}", exp.created);
+            println!("  Runs: {}", exp.runs.len());
+            println!("  Total GPU-hours: {:.2}", exp.total_gpu_hours());
+            if let Some(cost) = exp.total_cost() {
+                println!("  Estimated cost: ${cost:.2}");
+            }
+
+            if let Some(ref audit) = exp.data_audit {
+                println!("  Data audit: {}", if audit.passed { "PASS" } else { "FAIL" });
+                for issue in &audit.issues {
+                    println!("    - {issue}");
+                }
+            }
+
+            for run in &exp.runs {
+                println!("  Run '{}': {:?} ({:.2} GPU-hours)", run.id, run.status, run.total_gpu_hours);
+                if let Some(ref reason) = run.stop_reason {
+                    println!("    Stop reason: {reason}");
+                }
+                if let Some(snap) = run.snapshots.last() {
+                    for (k, v) in &snap.metrics {
+                        println!("    {k}: {v:.4}");
+                    }
+                }
+            }
+            Ok(())
+        }
+        ExperimentSubcommand::Compare(cmp_args) => {
+            let exp = Experiment::load(&cmp_args.file)
+                .map_err(|e| CliError::Generic(format!("Failed to load experiment: {e}")))?;
+
+            match exp.compare_runs(&cmp_args.run_a, &cmp_args.run_b, &cmp_args.metric, cmp_args.lower_is_better) {
+                Some(cmp) => {
+                    println!("Comparison: {} vs {} on '{}'", cmp.run_a, cmp.run_b, cmp.metric);
+                    println!("  {}: {:.4}", cmp.run_a, cmp.value_a);
+                    println!("  {}: {:.4}", cmp.run_b, cmp.value_b);
+                    println!("  Diff: {:+.4} ({:+.1}%)", cmp.diff, cmp.diff_pct);
+                    Ok(())
+                }
+                None => Err(CliError::Generic(format!(
+                    "Cannot compare: run '{}' or '{}' not found, or metric '{}' missing",
+                    cmp_args.run_a, cmp_args.run_b, cmp_args.metric
+                ))),
+            }
+        }
+    }
+}
+
+/// Execute `probador llm data-audit` — pre-flight data quality check.
+pub fn execute_data_audit(args: &DataAuditArgs) -> CliResult<()> {
+    use jugar_probar::llm::experiment::audit_jsonl_file;
+
+    let result = audit_jsonl_file(&args.file, args.max_imbalance)
+        .map_err(|e| CliError::Generic(format!("Data audit failed: {e}")))?;
+
+    println!("Data Audit: {}", args.file.display());
+    println!("  Samples: {}", result.total_samples);
+    println!("  Classes: {}", result.label_distribution.len());
+    for (label, count) in &result.label_distribution {
+        println!("    {label}: {count}");
+    }
+    println!("  Imbalance ratio: {:.1}:1", result.imbalance_ratio);
+    println!("  Result: {}", if result.passed { "PASS" } else { "FAIL" });
+    for issue in &result.issues {
+        println!("  Issue: {issue}");
+    }
+
+    if !result.passed {
+        return Err(CliError::Generic("Data audit failed — fix issues before training".to_string()));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

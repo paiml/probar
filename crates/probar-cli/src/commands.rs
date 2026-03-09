@@ -406,6 +406,14 @@ pub enum LlmSubcommand {
     Bench(LlmBenchArgs),
     /// Generate reports from test results
     Report(LlmReportArgs),
+    /// ML experiment tracking with data audits, budget gates, and early stopping
+    Experiment(ExperimentArgs),
+    /// Pre-flight data quality audit for training data
+    DataAudit(DataAuditArgs),
+    /// Sweep concurrency levels to find optimal operating point
+    Sweep(LlmSweepArgs),
+    /// Generate synthetic JSONL dataset for workload-driven benchmarking
+    GenDataset(LlmGenDatasetArgs),
 }
 
 /// Arguments for `probador llm test`
@@ -488,6 +496,34 @@ pub struct LlmLoadArgs {
     /// Computes per-layer decode time for cross-runtime comparison.
     #[arg(long)]
     pub num_layers: Option<u32>,
+
+    /// Inline correctness validation: none, basic, contains:X, pattern:X
+    #[arg(long, default_value = "none")]
+    pub validate: String,
+
+    /// Exit non-zero if quality pass rate drops below this threshold (e.g., 0.95)
+    #[arg(long)]
+    pub fail_on_quality: Option<f64>,
+
+    /// Multiplier of median ITL for spike detection (default: 5.0)
+    #[arg(long, default_value = "5.0")]
+    pub spike_threshold: f64,
+
+    /// Enable GPU telemetry collection via nvidia-smi
+    #[arg(long)]
+    pub gpu_telemetry: bool,
+
+    /// GPU telemetry polling interval (e.g., 1s, 2s)
+    #[arg(long, default_value = "1s")]
+    pub gpu_poll_interval: String,
+
+    /// Expected GPU clock speed in MHz for throttle detection (auto-detect if omitted)
+    #[arg(long)]
+    pub expected_clock_mhz: Option<u32>,
+
+    /// Path to JSONL dataset file for workload-driven benchmarking
+    #[arg(long)]
+    pub dataset: Option<PathBuf>,
 }
 
 /// Arguments for `probador llm bench` (full benchmark lifecycle)
@@ -582,6 +618,181 @@ pub struct LlmReportArgs {
     /// Also update a README.md with the latest results
     #[arg(long)]
     pub update_readme: Option<PathBuf>,
+}
+
+/// Arguments for `probador llm experiment`
+#[derive(Parser, Debug)]
+pub struct ExperimentArgs {
+    /// Experiment subcommand
+    #[command(subcommand)]
+    pub subcommand: ExperimentSubcommand,
+}
+
+/// Experiment subcommands
+#[derive(Subcommand, Debug)]
+pub enum ExperimentSubcommand {
+    /// Initialize a new experiment
+    Init(ExperimentInitArgs),
+    /// Show experiment status
+    Status(ExperimentStatusArgs),
+    /// Compare two runs within an experiment
+    Compare(ExperimentCompareArgs),
+}
+
+/// Arguments for `probador llm experiment init`
+#[derive(Parser, Debug)]
+pub struct ExperimentInitArgs {
+    /// Experiment name
+    pub name: String,
+
+    /// Description of the experiment
+    #[arg(short, long)]
+    pub description: Option<String>,
+
+    /// Maximum GPU-hours budget
+    #[arg(long)]
+    pub max_gpu_hours: Option<f64>,
+
+    /// Maximum cost budget (USD)
+    #[arg(long)]
+    pub max_cost_usd: Option<f64>,
+
+    /// Cost per GPU-hour for budget calculation
+    #[arg(long, default_value = "3.50")]
+    pub cost_per_gpu_hour: f64,
+
+    /// Output file for experiment state
+    #[arg(short, long, default_value = "experiment.json")]
+    pub output: PathBuf,
+}
+
+/// Arguments for `probador llm experiment status`
+#[derive(Parser, Debug)]
+pub struct ExperimentStatusArgs {
+    /// Path to experiment JSON file
+    #[arg(short, long, default_value = "experiment.json")]
+    pub file: PathBuf,
+}
+
+/// Arguments for `probador llm experiment compare`
+#[derive(Parser, Debug)]
+pub struct ExperimentCompareArgs {
+    /// Path to experiment JSON file
+    #[arg(short = 'f', long, default_value = "experiment.json")]
+    pub file: PathBuf,
+
+    /// First run ID
+    pub run_a: String,
+
+    /// Second run ID
+    pub run_b: String,
+
+    /// Metric to compare (e.g., eval_accuracy, eval_loss)
+    #[arg(short, long, default_value = "eval_loss")]
+    pub metric: String,
+
+    /// Whether lower values are better (true for loss, false for accuracy)
+    #[arg(long)]
+    pub lower_is_better: bool,
+}
+
+/// Arguments for `probador llm data-audit`
+#[derive(Parser, Debug)]
+pub struct DataAuditArgs {
+    /// Path to JSONL training data file
+    pub file: PathBuf,
+
+    /// Maximum class imbalance ratio before failing (e.g., 3.0 = 3:1)
+    #[arg(long, default_value = "3.0")]
+    pub max_imbalance: f64,
+}
+
+/// Arguments for `probador llm sweep`
+#[derive(Parser, Debug)]
+pub struct LlmSweepArgs {
+    /// Base URL of the LLM API server
+    #[arg(short, long)]
+    pub url: String,
+
+    /// Model name to include in requests
+    #[arg(short, long, default_value = "default")]
+    pub model: String,
+
+    /// Concurrency levels to sweep (comma-separated)
+    #[arg(long, default_value = "1,2,4,8,16")]
+    pub concurrency_levels: String,
+
+    /// Per-level test duration (e.g., 30s)
+    #[arg(short, long, default_value = "30s")]
+    pub duration: String,
+
+    /// Warmup duration per level (e.g., 5s)
+    #[arg(long, default_value = "5s")]
+    pub warmup: String,
+
+    /// Use SSE streaming
+    #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+    pub stream: bool,
+
+    /// Runtime name for reporting
+    #[arg(long, default_value = "unknown")]
+    pub runtime_name: String,
+
+    /// P99 latency multiplier vs c=1 to declare saturated
+    #[arg(long, default_value = "2.0")]
+    pub saturation_threshold: f64,
+
+    /// Stop sweep early when saturated
+    #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+    pub early_stop: bool,
+
+    /// Prompt profile: micro, short, medium, long
+    #[arg(long)]
+    pub prompt_profile: Option<String>,
+
+    /// Path to YAML prompt file
+    #[arg(long)]
+    pub prompt_file: Option<PathBuf>,
+
+    /// Output file for sweep results JSON
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    /// Number of transformer layers
+    #[arg(long)]
+    pub num_layers: Option<u32>,
+}
+
+/// Arguments for `probador llm gen-dataset`
+#[derive(Parser, Debug)]
+pub struct LlmGenDatasetArgs {
+    /// Distribution type: uniform, lognormal
+    #[arg(long, default_value = "lognormal")]
+    pub distribution: String,
+
+    /// Mean input token count
+    #[arg(long, default_value = "128")]
+    pub input_mean: f64,
+
+    /// Stddev of input token count
+    #[arg(long, default_value = "64")]
+    pub input_stddev: f64,
+
+    /// Mean output (max_tokens) count
+    #[arg(long, default_value = "128")]
+    pub output_mean: f64,
+
+    /// Stddev of output (max_tokens) count
+    #[arg(long, default_value = "96")]
+    pub output_stddev: f64,
+
+    /// Number of entries to generate
+    #[arg(long, default_value = "1000")]
+    pub count: usize,
+
+    /// Output JSONL file path
+    #[arg(short, long, default_value = "dataset.jsonl")]
+    pub output: PathBuf,
 }
 
 /// Arguments for the test command
@@ -2093,8 +2304,7 @@ mod tests {
 
         #[test]
         fn test_parse_av_sync_check_detailed() {
-            let cli =
-                Cli::parse_from(["probar", "av-sync", "check", "video.mp4", "--detailed"]);
+            let cli = Cli::parse_from(["probar", "av-sync", "check", "video.mp4", "--detailed"]);
             if let Commands::AvSync(args) = cli.command {
                 if let AvSyncSubcommand::Check(check_args) = args.subcommand {
                     assert!(check_args.detailed);

@@ -233,8 +233,8 @@ fn check_regression_lower_better(
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use super::*;
     use super::super::benchmark::StatSummary;
+    use super::*;
 
     fn sample_result(runtime: &str) -> LoadTestResult {
         LoadTestResult {
@@ -270,9 +270,16 @@ mod tests {
             completion_tokens_total: 1425,
             truncated_pct: 0.0,
             sse_batch_ratio: 0.0,
+            goodput_pct: 0.0,
+            decode_us_per_layer: None,
+            num_layers: None,
             output_tokens_dist: None,
             brick_trace_summary: None,
             request_details: Vec::new(),
+            quality: None,
+            tail_analysis: None,
+            gpu_telemetry: None,
+            dataset_stats: None,
         }
     }
 
@@ -384,10 +391,7 @@ mod tests {
         assert!(content.contains("realizar"));
         assert!(content.contains("ollama"));
         // Should NOT have duplicate headers
-        assert_eq!(
-            content.matches("# LLM Inference Performance").count(),
-            1
-        );
+        assert_eq!(content.matches("# LLM Inference Performance").count(), 1);
     }
 
     #[test]

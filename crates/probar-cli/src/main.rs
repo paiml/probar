@@ -424,10 +424,7 @@ fn validate_module_imports(
 
 /// Print detailed module import errors.
 fn print_module_import_errors(result: &probador::ModuleValidationResult) {
-    eprintln!(
-        "  ✗ FAIL: {} broken import(s) found\n",
-        result.errors.len()
-    );
+    eprintln!("  ✗ FAIL: {} broken import(s) found\n", result.errors.len());
     for error in &result.errors {
         eprintln!(
             "    • {} (from {}:{})",
@@ -524,9 +521,7 @@ async fn run_browser_validation_async(
 
     #[cfg(feature = "browser")]
     {
-        errors.extend(
-            run_browser_checks(serve_dir, html_files, port, pages_with_wasm).await,
-        );
+        errors.extend(run_browser_checks(serve_dir, html_files, port, pages_with_wasm).await);
     }
 
     #[cfg(not(feature = "browser"))]
@@ -643,10 +638,7 @@ async fn validate_browser_page(
 
 /// Check for console errors on a loaded page.
 #[cfg(feature = "browser")]
-async fn check_page_console_errors(
-    page: &jugar_probar::Page,
-    url_path: &str,
-) -> Vec<String> {
+async fn check_page_console_errors(page: &jugar_probar::Page, url_path: &str) -> Vec<String> {
     use jugar_probar::BrowserConsoleLevel;
 
     let mut errors = Vec::new();
@@ -704,7 +696,9 @@ async fn check_page_wasm_init(
             if expects_wasm {
                 eprintln!("  ✗ WASM initialization TIMED OUT - APP IS BROKEN");
                 eprintln!("    Page imports WASM but it failed to initialize.\n");
-                errors.push(format!("[{url_path}] WASM required but timed out after 15s"));
+                errors.push(format!(
+                    "[{url_path}] WASM required but timed out after 15s"
+                ));
             } else {
                 eprintln!("  ⚠ WASM initialization timed out");
                 eprintln!("    (No WASM imports detected - may be expected)\n");
@@ -1038,9 +1032,7 @@ fn process_single_playbook(
     Ok(validation_result.is_valid)
 }
 
-fn load_playbook(
-    file: &std::path::Path,
-) -> CliResult<jugar_probar::playbook::Playbook> {
+fn load_playbook(file: &std::path::Path) -> CliResult<jugar_probar::playbook::Playbook> {
     use jugar_probar::playbook::Playbook;
 
     let yaml_content = std::fs::read_to_string(file).map_err(|e| {
@@ -1285,6 +1277,18 @@ fn run_llm(args: &probador::LlmArgs) -> CliResult<()> {
         probador::LlmSubcommand::Report(report_args) => {
             probador::handlers::llm::execute_llm_report(report_args)
         }
+        probador::LlmSubcommand::Experiment(exp_args) => {
+            probador::handlers::llm::execute_llm_experiment(exp_args)
+        }
+        probador::LlmSubcommand::DataAudit(audit_args) => {
+            probador::handlers::llm::execute_data_audit(audit_args)
+        }
+        probador::LlmSubcommand::Sweep(sweep_args) => {
+            rt.block_on(probador::handlers::llm::execute_llm_sweep(sweep_args))
+        }
+        probador::LlmSubcommand::GenDataset(gen_args) => {
+            probador::handlers::llm::execute_llm_gen_dataset(gen_args)
+        }
     }
 }
 
@@ -1380,30 +1384,74 @@ fn run_comply_checks_internal(config: &CliConfig, args: &probador::ComplyArgs) -
         );
     }
 
-    let (results, all_passed) =
-        execute_compliance_checks(&filtered_checks, config, args);
+    let (results, all_passed) = execute_compliance_checks(&filtered_checks, config, args);
 
-    output_compliance_results(config, &results, &args.format, args.report.as_deref(), all_passed)
+    output_compliance_results(
+        config,
+        &results,
+        &args.format,
+        args.report.as_deref(),
+        all_passed,
+    )
 }
 
 /// Build the vector of all compliance checks (C001-C010).
-fn build_compliance_checks(
-) -> Vec<(
+fn build_compliance_checks() -> Vec<(
     &'static str,
     &'static str,
     Box<dyn Fn(&std::path::Path, &probador::ComplyArgs) -> ComplianceResult>,
 )> {
     vec![
-        ("C001", "Code execution verified", Box::new(|path, _| check_c001_code_execution(path))),
-        ("C002", "Console errors fail tests", Box::new(|_, _| check_c002_console_errors())),
-        ("C003", "Custom elements tested", Box::new(|path, _| check_c003_custom_elements(path))),
-        ("C004", "Threading modes tested", Box::new(|_, _| check_c004_threading_modes())),
-        ("C005", "Low memory tested", Box::new(|_, _| check_c005_low_memory())),
-        ("C006", "COOP/COEP headers", Box::new(|path, _| check_c006_headers(path))),
-        ("C007", "Replay hash matches", Box::new(|_, _| check_c007_replay_hash())),
-        ("C008", "Cache handling", Box::new(|_, _| check_c008_cache())),
-        ("C009", "WASM size limit", Box::new(|path, args| check_c009_wasm_size(path, args.max_wasm_size))),
-        ("C010", "No panic paths", Box::new(|path, _| check_c010_panic_paths(path))),
+        (
+            "C001",
+            "Code execution verified",
+            Box::new(|path, _| check_c001_code_execution(path)),
+        ),
+        (
+            "C002",
+            "Console errors fail tests",
+            Box::new(|_, _| check_c002_console_errors()),
+        ),
+        (
+            "C003",
+            "Custom elements tested",
+            Box::new(|path, _| check_c003_custom_elements(path)),
+        ),
+        (
+            "C004",
+            "Threading modes tested",
+            Box::new(|_, _| check_c004_threading_modes()),
+        ),
+        (
+            "C005",
+            "Low memory tested",
+            Box::new(|_, _| check_c005_low_memory()),
+        ),
+        (
+            "C006",
+            "COOP/COEP headers",
+            Box::new(|path, _| check_c006_headers(path)),
+        ),
+        (
+            "C007",
+            "Replay hash matches",
+            Box::new(|_, _| check_c007_replay_hash()),
+        ),
+        (
+            "C008",
+            "Cache handling",
+            Box::new(|_, _| check_c008_cache()),
+        ),
+        (
+            "C009",
+            "WASM size limit",
+            Box::new(|path, args| check_c009_wasm_size(path, args.max_wasm_size)),
+        ),
+        (
+            "C010",
+            "No panic paths",
+            Box::new(|path, _| check_c010_panic_paths(path)),
+        ),
     ]
 }
 
@@ -1463,7 +1511,11 @@ fn print_check_result(
         return;
     }
     let status = if result.passed { "✓" } else { "✗" };
-    let color = if result.passed { "\x1b[32m" } else { "\x1b[31m" };
+    let color = if result.passed {
+        "\x1b[32m"
+    } else {
+        "\x1b[31m"
+    };
     let reset = "\x1b[0m";
 
     eprintln!("  {color}[{status}]{reset} {id}: {description}");
