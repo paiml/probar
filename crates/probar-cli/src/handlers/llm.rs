@@ -211,14 +211,28 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
     let client = jugar_probar::llm::LlmClient::new(&args.url, &args.model);
 
     // Load prompts: dataset > prompt-file > prompt-profile > default
-    let (prompts, dataset_stats) = if let Some(ref dataset_path) = args.dataset {
+    let (mut prompts, dataset_stats) = if let Some(ref dataset_path) = args.dataset {
         let (prompts, stats) = load_dataset(dataset_path)?;
         (prompts, Some(stats))
     } else {
-        let prompts =
-            resolve_prompts(args.prompt_profile.as_deref(), args.prompt_file.as_deref())?;
+        let prompts = resolve_prompts(args.prompt_profile.as_deref(), args.prompt_file.as_deref())?;
         (prompts, None)
     };
+
+    // PMAT-077: Apply max_tokens override or distribution for heterogeneous traffic
+    if let Some(ref dist) = args.max_tokens_distribution {
+        prompts = apply_max_tokens_distribution(&prompts, dist, args.concurrency)?;
+        println!(
+            "Max tokens:   distribution={} ({} prompts generated)",
+            dist,
+            prompts.len()
+        );
+    } else if let Some(max_tokens) = args.max_tokens {
+        for p in &mut prompts {
+            p.max_tokens = Some(max_tokens);
+        }
+        println!("Max tokens:   {}", max_tokens);
+    }
 
     println!(
         "Load testing {} (concurrency={}, duration={:.0}s, warmup={:.0}s, runtime={})",
@@ -377,7 +391,10 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
 
     // Feature 5: Quality validation
     if let Some(ref quality) = result.quality {
-        println!("\n--- Quality Validation ({}) ---", quality.validation_level);
+        println!(
+            "\n--- Quality Validation ({}) ---",
+            quality.validation_level
+        );
         println!(
             "Validated:    {} ({} pass, {} fail, {:.1}% pass rate)",
             quality.total_validated,
@@ -634,6 +651,69 @@ fn write_bench_output(
 }
 
 /// Resolve prompts from profile name or file path.
+/// PMAT-077: Generate prompts with heterogeneous max_tokens from a distribution.
+///
+/// Supported distributions:
+/// - `uniform:MIN,MAX` — uniform spread across [MIN, MAX]
+/// - `fixed:N` — all requests get N (same as --max-tokens N)
+///
+/// Generates enough prompts (concurrency × 256) to cover long benchmarks
+/// with varied max_tokens values for staggered slot completion.
+fn apply_max_tokens_distribution(
+    base_prompts: &[jugar_probar::llm::ChatRequest],
+    distribution: &str,
+    concurrency: usize,
+) -> CliResult<Vec<jugar_probar::llm::ChatRequest>> {
+    let count = concurrency * 256; // Enough for ~60s at ~4 req/s/worker
+
+    let (min, max) = if let Some(rest) = distribution.strip_prefix("uniform:") {
+        let parts: Vec<&str> = rest.split(',').collect();
+        if parts.len() != 2 {
+            return Err(CliError::Generic(format!(
+                "Invalid distribution format: {distribution}. Expected: uniform:MIN,MAX"
+            )));
+        }
+        let min: u32 = parts[0].parse().map_err(|_| {
+            CliError::Generic(format!("Invalid min value: {}", parts[0]))
+        })?;
+        let max: u32 = parts[1].parse().map_err(|_| {
+            CliError::Generic(format!("Invalid max value: {}", parts[1]))
+        })?;
+        if min > max || min == 0 {
+            return Err(CliError::Generic(format!(
+                "Invalid range: min={min}, max={max}. Need 0 < min <= max"
+            )));
+        }
+        (min, max)
+    } else if let Some(rest) = distribution.strip_prefix("fixed:") {
+        let n: u32 = rest.parse().map_err(|_| {
+            CliError::Generic(format!("Invalid fixed value: {rest}"))
+        })?;
+        (n, n)
+    } else {
+        return Err(CliError::Generic(format!(
+            "Unknown distribution: {distribution}. Use: uniform:MIN,MAX or fixed:N"
+        )));
+    };
+
+    let range = max - min + 1;
+    // Simple LCG for deterministic pseudo-random distribution (no rand crate needed).
+    // Multiplier and increment from Numerical Recipes.
+    let mut state: u64 = 0x517c_c1b7_2722_0a95;
+    let mut prompts = Vec::with_capacity(count);
+    for i in 0..count {
+        let mut prompt = base_prompts[i % base_prompts.len()].clone();
+        prompt.max_tokens = Some(if min == max {
+            min
+        } else {
+            state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            min + ((state >> 33) as u32 % range)
+        });
+        prompts.push(prompt);
+    }
+    Ok(prompts)
+}
+
 fn resolve_prompts(
     profile_name: Option<&str>,
     prompt_file: Option<&Path>,
@@ -772,7 +852,10 @@ pub async fn execute_llm_sweep(args: &LlmSweepArgs) -> CliResult<()> {
 
     println!(
         "Sweep: {} (levels={:?}, duration={:.0}s, saturation={:.1}x)",
-        args.url, levels, duration.as_secs_f64(), args.saturation_threshold
+        args.url,
+        levels,
+        duration.as_secs_f64(),
+        args.saturation_threshold
     );
 
     let client = jugar_probar::llm::LlmClient::new(&args.url, &args.model);
@@ -827,22 +910,21 @@ pub async fn execute_llm_sweep(args: &LlmSweepArgs) -> CliResult<()> {
         }
 
         // Saturation detection
-        let (saturated, saturation_reason) =
-            if let Some(base_p99) = baseline_p99 {
-                if base_p99 > 0.0 && p99 > args.saturation_threshold * base_p99 {
-                    (
-                        true,
-                        Some(format!(
-                            "latency_p99 {:.0}ms > {:.1}x baseline {:.0}ms",
-                            p99, args.saturation_threshold, base_p99
-                        )),
-                    )
-                } else {
-                    (false, None)
-                }
+        let (saturated, saturation_reason) = if let Some(base_p99) = baseline_p99 {
+            if base_p99 > 0.0 && p99 > args.saturation_threshold * base_p99 {
+                (
+                    true,
+                    Some(format!(
+                        "latency_p99 {:.0}ms > {:.1}x baseline {:.0}ms",
+                        p99, args.saturation_threshold, base_p99
+                    )),
+                )
             } else {
                 (false, None)
-            };
+            }
+        } else {
+            (false, None)
+        };
 
         // GH-33: quality-aware optimal selection — disqualify zero-decode levels
         let zero_quality = decode == 0.0;
@@ -928,8 +1010,8 @@ fn load_dataset(
     Vec<jugar_probar::llm::ChatRequest>,
     jugar_probar::llm::DatasetStats,
 )> {
-    let content =
-        std::fs::read_to_string(path).map_err(|e| CliError::Generic(format!("Cannot read dataset: {e}")))?;
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| CliError::Generic(format!("Cannot read dataset: {e}")))?;
 
     let mut prompts = Vec::new();
     let mut input_lens = Vec::new();
@@ -1044,19 +1126,11 @@ pub fn execute_llm_gen_dataset(args: &LlmGenDatasetArgs) -> CliResult<()> {
 
     for _ in 0..args.count {
         // Generate lognormal-distributed input length
-        let input_len = sample_lognormal(
-            &mut rng_state,
-            args.input_mean,
-            args.input_stddev,
-        )
-        .max(4.0) as usize;
+        let input_len =
+            sample_lognormal(&mut rng_state, args.input_mean, args.input_stddev).max(4.0) as usize;
 
-        let output_len = sample_lognormal(
-            &mut rng_state,
-            args.output_mean,
-            args.output_stddev,
-        )
-        .max(4.0) as u32;
+        let output_len =
+            sample_lognormal(&mut rng_state, args.output_mean, args.output_stddev).max(4.0) as u32;
 
         // Generate a prompt of approximately input_len tokens
         let prompt = generate_synthetic_prompt(input_len);
@@ -1066,8 +1140,12 @@ pub fn execute_llm_gen_dataset(args: &LlmGenDatasetArgs) -> CliResult<()> {
             "max_tokens": output_len
         });
 
-        writeln!(file, "{}", serde_json::to_string(&entry).unwrap_or_default())
-            .map_err(|e| CliError::Generic(e.to_string()))?;
+        writeln!(
+            file,
+            "{}",
+            serde_json::to_string(&entry).unwrap_or_default()
+        )
+        .map_err(|e| CliError::Generic(e.to_string()))?;
     }
 
     println!(
@@ -1099,11 +1177,36 @@ fn generate_synthetic_prompt(target_tokens: usize) -> String {
     // ~1.3 tokens per word, so target_words = target_tokens / 1.3
     let target_words = (target_tokens as f64 / 1.3).max(1.0) as usize;
     let words = [
-        "Explain", "the", "concept", "of", "data", "structures", "and",
-        "algorithms", "in", "computer", "science", "including", "arrays",
-        "linked", "lists", "trees", "graphs", "hash", "tables", "sorting",
-        "searching", "dynamic", "programming", "recursion", "iteration",
-        "complexity", "analysis", "optimization", "performance", "memory",
+        "Explain",
+        "the",
+        "concept",
+        "of",
+        "data",
+        "structures",
+        "and",
+        "algorithms",
+        "in",
+        "computer",
+        "science",
+        "including",
+        "arrays",
+        "linked",
+        "lists",
+        "trees",
+        "graphs",
+        "hash",
+        "tables",
+        "sorting",
+        "searching",
+        "dynamic",
+        "programming",
+        "recursion",
+        "iteration",
+        "complexity",
+        "analysis",
+        "optimization",
+        "performance",
+        "memory",
     ];
     let mut result = String::with_capacity(target_words * 6);
     for i in 0..target_words {
@@ -1140,7 +1243,11 @@ pub fn execute_llm_experiment(args: &ExperimentArgs) -> CliResult<()> {
             exp.save(&init_args.output)
                 .map_err(|e| CliError::Generic(format!("Failed to save experiment: {e}")))?;
 
-            eprintln!("Experiment '{}' initialized → {}", init_args.name, init_args.output.display());
+            eprintln!(
+                "Experiment '{}' initialized → {}",
+                init_args.name,
+                init_args.output.display()
+            );
             if let Some(ref budget) = exp.budget {
                 if let Some(h) = budget.max_gpu_hours {
                     eprintln!("  Budget: {h:.1} GPU-hours");
@@ -1167,14 +1274,20 @@ pub fn execute_llm_experiment(args: &ExperimentArgs) -> CliResult<()> {
             }
 
             if let Some(ref audit) = exp.data_audit {
-                println!("  Data audit: {}", if audit.passed { "PASS" } else { "FAIL" });
+                println!(
+                    "  Data audit: {}",
+                    if audit.passed { "PASS" } else { "FAIL" }
+                );
                 for issue in &audit.issues {
                     println!("    - {issue}");
                 }
             }
 
             for run in &exp.runs {
-                println!("  Run '{}': {:?} ({:.2} GPU-hours)", run.id, run.status, run.total_gpu_hours);
+                println!(
+                    "  Run '{}': {:?} ({:.2} GPU-hours)",
+                    run.id, run.status, run.total_gpu_hours
+                );
                 if let Some(ref reason) = run.stop_reason {
                     println!("    Stop reason: {reason}");
                 }
@@ -1190,9 +1303,17 @@ pub fn execute_llm_experiment(args: &ExperimentArgs) -> CliResult<()> {
             let exp = Experiment::load(&cmp_args.file)
                 .map_err(|e| CliError::Generic(format!("Failed to load experiment: {e}")))?;
 
-            match exp.compare_runs(&cmp_args.run_a, &cmp_args.run_b, &cmp_args.metric, cmp_args.lower_is_better) {
+            match exp.compare_runs(
+                &cmp_args.run_a,
+                &cmp_args.run_b,
+                &cmp_args.metric,
+                cmp_args.lower_is_better,
+            ) {
                 Some(cmp) => {
-                    println!("Comparison: {} vs {} on '{}'", cmp.run_a, cmp.run_b, cmp.metric);
+                    println!(
+                        "Comparison: {} vs {} on '{}'",
+                        cmp.run_a, cmp.run_b, cmp.metric
+                    );
                     println!("  {}: {:.4}", cmp.run_a, cmp.value_a);
                     println!("  {}: {:.4}", cmp.run_b, cmp.value_b);
                     println!("  Diff: {:+.4} ({:+.1}%)", cmp.diff, cmp.diff_pct);
@@ -1227,7 +1348,9 @@ pub fn execute_data_audit(args: &DataAuditArgs) -> CliResult<()> {
     }
 
     if !result.passed {
-        return Err(CliError::Generic("Data audit failed — fix issues before training".to_string()));
+        return Err(CliError::Generic(
+            "Data audit failed — fix issues before training".to_string(),
+        ));
     }
 
     Ok(())

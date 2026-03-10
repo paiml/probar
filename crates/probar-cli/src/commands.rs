@@ -524,6 +524,16 @@ pub struct LlmLoadArgs {
     /// Path to JSONL dataset file for workload-driven benchmarking
     #[arg(long)]
     pub dataset: Option<PathBuf>,
+
+    /// Override max_tokens for all requests (e.g., --max-tokens 128)
+    #[arg(long)]
+    pub max_tokens: Option<u32>,
+
+    /// Max tokens distribution: uniform:MIN,MAX or fixed:N.
+    /// Creates heterogeneous traffic with staggered completion times.
+    /// Example: --max-tokens-distribution uniform:16,128
+    #[arg(long)]
+    pub max_tokens_distribution: Option<String>,
 }
 
 /// Arguments for `probador llm bench` (full benchmark lifecycle)
