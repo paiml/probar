@@ -267,6 +267,18 @@ fn extract_metrics(result: &LoadTestResult, is_throughput: bool) -> HashMap<Stri
     metrics
 }
 
+/// Strip concurrency suffix (-c1, -c4, etc.) from runtime name for cross-concurrency matching.
+fn strip_concurrency_suffix(name: &str) -> String {
+    // Match patterns like "-c1", "-c4", "-c16" at end of string
+    if let Some(pos) = name.rfind("-c") {
+        let suffix = &name[pos + 2..];
+        if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
+            return name[..pos].to_string();
+        }
+    }
+    name.to_string()
+}
+
 /// Compute scorecard from a set of benchmark results.
 ///
 /// All results must share the same concurrency level. For throughput scoring,
@@ -284,11 +296,12 @@ pub fn compute_scorecard(
         &contract.interactive_weights
     };
 
-    // Build c=1 decode lookup for throughput_scaling
+    // Build c=1 decode lookup for throughput_scaling.
+    // Strip concurrency suffixes (-c1, -c4, etc.) for cross-concurrency matching.
     let c1_decode: HashMap<String, f64> = c1_results
         .map(|c1| {
             c1.iter()
-                .map(|(r, _)| (r.runtime_name.clone(), r.decode_tok_per_sec))
+                .map(|(r, _)| (strip_concurrency_suffix(&r.runtime_name), r.decode_tok_per_sec))
                 .collect()
         })
         .unwrap_or_default();
@@ -302,7 +315,8 @@ pub fn compute_scorecard(
 
         // Compute throughput_scaling if we have c=1 data
         if is_throughput {
-            if let Some(&c1_decode_val) = c1_decode.get(&result.runtime_name) {
+            let base_name = strip_concurrency_suffix(&result.runtime_name);
+            if let Some(&c1_decode_val) = c1_decode.get(&base_name) {
                 if c1_decode_val > 0.0 {
                     metrics.insert(
                         "throughput_scaling".into(),
