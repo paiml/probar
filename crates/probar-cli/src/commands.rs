@@ -658,6 +658,14 @@ pub struct LlmScoreArgs {
     /// Exit non-zero if any runtime scores below this grade (e.g., C+)
     #[arg(long)]
     pub fail_on_grade: Option<String>,
+
+    /// Include per-layer decode efficiency scores
+    #[arg(long)]
+    pub by_layer: bool,
+
+    /// Include per-prompt-profile scores (short/medium/long)
+    #[arg(long)]
+    pub by_profile: bool,
 }
 
 /// Arguments for `probador llm experiment`

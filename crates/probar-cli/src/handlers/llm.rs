@@ -574,6 +574,61 @@ pub fn execute_llm_score(args: &LlmScoreArgs) -> CliResult<()> {
         }
     }
 
+    // Per-layer scoring (--by-layer)
+    if args.by_layer {
+        let all_flat: Vec<_> = by_concurrency
+            .values()
+            .flat_map(|v| v.iter())
+            .cloned()
+            .collect();
+        let layer_card =
+            jugar_probar::llm::compute_layer_scorecard(&all_flat, &contract.grades);
+        if !layer_card.runtimes.is_empty() {
+            match args.format.as_str() {
+                "json" => {
+                    let json = serde_json::to_string_pretty(&layer_card)
+                        .map_err(|e| CliError::Generic(e.to_string()))?;
+                    all_output.push(json);
+                }
+                "markdown" => {
+                    all_output.push(jugar_probar::llm::format_layer_markdown(&layer_card));
+                }
+                _ => {
+                    all_output.push(jugar_probar::llm::format_layer_table(&layer_card));
+                }
+            }
+        }
+    }
+
+    // Per-profile scoring (--by-profile)
+    if args.by_profile {
+        for c in &concurrency_levels {
+            if let Some(results) = by_concurrency.get(c) {
+                let profile_card =
+                    jugar_probar::llm::compute_profile_scorecard(results, &contract);
+                if !profile_card.entries.is_empty() {
+                    match args.format.as_str() {
+                        "json" => {
+                            let json = serde_json::to_string_pretty(&profile_card)
+                                .map_err(|e| CliError::Generic(e.to_string()))?;
+                            all_output.push(json);
+                        }
+                        "markdown" => {
+                            all_output.push(jugar_probar::llm::format_profile_markdown(
+                                &profile_card,
+                            ));
+                        }
+                        _ => {
+                            all_output.push(jugar_probar::llm::format_profile_table(
+                                &profile_card,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let output_text = all_output.join("\n\n");
 
     if let Some(ref output_path) = args.output {

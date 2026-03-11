@@ -46,6 +46,9 @@ pub use prompts::{load_from_file as load_prompts_from_file, load_profile, Prompt
 pub use report::{to_json, to_markdown_row, to_markdown_table, update_performance_md};
 #[cfg(feature = "llm")]
 pub use score::{
-    assign_grade, compute_metric_score, compute_scorecard, format_markdown, format_table,
-    MetricScore, MetricThreshold, RuntimeScore, Scorecard, ScoringContract,
+    assign_grade, compute_layer_scorecard, compute_metric_score, compute_profile_scorecard,
+    compute_scorecard, format_layer_markdown, format_layer_table, format_markdown,
+    format_profile_markdown, format_profile_table, format_table, ConsistencyScore, LayerScore,
+    LayerScorecard, MetricScore, MetricThreshold, ProfileEntry, ProfileScorecard, PromptCategory,
+    RuntimeScore, Scorecard, ScoringContract,
 };

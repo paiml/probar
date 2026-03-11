@@ -573,6 +573,442 @@ fn format_md_cell(metric: Option<&MetricScore>) -> String {
 }
 
 // =============================================================================
+// Per-layer scoring
+// =============================================================================
+
+/// Per-layer decode time thresholds (microseconds per layer).
+/// Derived from current baselines: vLLM 223us, llama.cpp 249us, realizr 255us.
+const LAYER_US_EXCELLENT: f64 = 220.0; // vLLM-class
+const LAYER_US_GOOD: f64 = 300.0; // Acceptable for interactive use
+
+/// Score for a single runtime's per-layer decode efficiency.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LayerScore {
+    /// Runtime name.
+    pub name: String,
+    /// Microseconds per layer during decode.
+    pub us_per_layer: f64,
+    /// Number of layers.
+    pub num_layers: u32,
+    /// Score (0-100).
+    pub score: u8,
+    /// Letter grade.
+    pub grade: String,
+    /// Whether this runtime is best-in-class.
+    pub best: bool,
+}
+
+/// Layer scorecard across runtimes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LayerScorecard {
+    /// Timestamp.
+    pub timestamp: String,
+    /// Scored runtimes, sorted by us_per_layer ascending (best first).
+    pub runtimes: Vec<LayerScore>,
+}
+
+/// Compute per-layer decode scores from results that have `decode_us_per_layer`.
+pub fn compute_layer_scorecard(
+    results: &[(LoadTestResult, String)],
+    grades: &[(f64, String)],
+) -> LayerScorecard {
+    let layer_threshold = MetricThreshold {
+        excellent: LAYER_US_EXCELLENT,
+        good: LAYER_US_GOOD,
+        higher_is_better: false, // lower us/layer is better
+    };
+
+    let mut scored: Vec<LayerScore> = results
+        .iter()
+        .filter_map(|(r, _)| {
+            let us = r.decode_us_per_layer?;
+            let layers = r.num_layers?;
+            if us <= 0.0 {
+                return None;
+            }
+            let score = compute_metric_score(us, &layer_threshold);
+            let grade = assign_grade(f64::from(score), grades);
+            Some(LayerScore {
+                name: r.runtime_name.clone(),
+                us_per_layer: us,
+                num_layers: layers,
+                score,
+                grade,
+                best: false,
+            })
+        })
+        .collect();
+
+    // Sort ascending (best = lowest us/layer)
+    scored.sort_by(|a, b| a.us_per_layer.partial_cmp(&b.us_per_layer).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Mark best
+    if let Some(first) = scored.first_mut() {
+        first.best = true;
+    }
+
+    LayerScorecard {
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        runtimes: scored,
+    }
+}
+
+/// Format layer scorecard as a terminal table.
+pub fn format_layer_table(scorecard: &LayerScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("Per-Layer Decode Efficiency".into());
+    lines.push(String::new());
+    lines.push(format!(
+        "{:<20} {:>12} {:>8} {:>8} {:>8}",
+        "Runtime", "us/layer", "Layers", "Score", "Grade"
+    ));
+    lines.push(format!("{}", "-".repeat(60)));
+
+    for rt in &scorecard.runtimes {
+        let star = if rt.best { "*" } else { " " };
+        lines.push(format!(
+            "{:<20} {:>11.1}{} {:>8} {:>8} {:>8}",
+            rt.name, rt.us_per_layer, star, rt.num_layers, rt.score, rt.grade
+        ));
+    }
+
+    lines.push(String::new());
+    lines.push(format!(
+        "Thresholds: excellent <= {LAYER_US_EXCELLENT}us, good <= {LAYER_US_GOOD}us"
+    ));
+    lines.join("\n")
+}
+
+/// Format layer scorecard as Markdown.
+pub fn format_layer_markdown(scorecard: &LayerScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("## Per-Layer Decode Efficiency".into());
+    lines.push(String::new());
+    lines.push("| Runtime | us/layer | Layers | Score | Grade |".into());
+    lines.push("|---------|----------|--------|-------|-------|".into());
+
+    for rt in &scorecard.runtimes {
+        let star = if rt.best { " **" } else { "" };
+        let end = if rt.best { "**" } else { "" };
+        lines.push(format!(
+            "| {} | {star}{:.1}{end} | {} | {} | {} |",
+            rt.name, rt.us_per_layer, rt.num_layers, rt.score, rt.grade
+        ));
+    }
+
+    lines.join("\n")
+}
+
+// =============================================================================
+// Per-prompt-profile scoring
+// =============================================================================
+
+/// Prompt profile categories derived from average prompt tokens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PromptCategory {
+    /// ~10 tokens (TTFT-only measurement)
+    Micro,
+    /// ~23-32 tokens (quick latency)
+    Short,
+    /// ~100-128 tokens (standard comparison)
+    Medium,
+    /// ~512+ tokens (sustained decode)
+    Long,
+}
+
+impl PromptCategory {
+    /// Classify from average prompt tokens per request.
+    pub fn from_avg_prompt_tokens(avg: f64) -> Self {
+        if avg < 15.0 {
+            Self::Micro
+        } else if avg < 64.0 {
+            Self::Short
+        } else if avg < 256.0 {
+            Self::Medium
+        } else {
+            Self::Long
+        }
+    }
+
+    /// Human-readable label.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Micro => "micro",
+            Self::Short => "short",
+            Self::Medium => "medium",
+            Self::Long => "long",
+        }
+    }
+}
+
+impl std::fmt::Display for PromptCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
+/// Score for a single runtime at a specific prompt profile.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileEntry {
+    /// Runtime name.
+    pub name: String,
+    /// Prompt profile category.
+    pub profile: PromptCategory,
+    /// Average prompt tokens.
+    pub avg_prompt_tokens: f64,
+    /// Composite score for this profile.
+    pub composite: f64,
+    /// Grade.
+    pub grade: String,
+    /// Key metric values for this profile.
+    pub decode_tok_s: f64,
+    pub ttft_p50_ms: f64,
+    pub itl_p50_ms: f64,
+}
+
+/// Profile scorecard showing how each runtime scores across prompt lengths.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileScorecard {
+    /// Timestamp.
+    pub timestamp: String,
+    /// Concurrency level.
+    pub concurrency: usize,
+    /// Entries grouped by runtime, then by profile.
+    pub entries: Vec<ProfileEntry>,
+    /// Per-runtime consistency score: how much does the score degrade from short to long?
+    /// 100 = no degradation, 0 = catastrophic degradation.
+    pub consistency: Vec<ConsistencyScore>,
+}
+
+/// How consistent a runtime's performance is across prompt profiles.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConsistencyScore {
+    /// Runtime name.
+    pub name: String,
+    /// Best profile score.
+    pub best_score: f64,
+    /// Worst profile score.
+    pub worst_score: f64,
+    /// Consistency: worst/best * 100 (100 = perfectly consistent).
+    pub consistency: f64,
+    /// Grade.
+    pub grade: String,
+}
+
+/// Compute per-prompt-profile scores.
+///
+/// Groups results by runtime and prompt category, computes composite scores
+/// per profile, and derives a consistency metric.
+pub fn compute_profile_scorecard(
+    results: &[(LoadTestResult, String)],
+    contract: &ScoringContract,
+) -> ProfileScorecard {
+    let concurrency = results.first().map(|r| r.0.concurrency).unwrap_or(1);
+
+    // Group by (runtime_name, prompt_category)
+    let mut grouped: HashMap<(String, PromptCategory), Vec<&LoadTestResult>> = HashMap::new();
+    for (result, _) in results {
+        let avg_prompt = if result.total_requests > 0 {
+            result.prompt_tokens_total as f64 / result.total_requests as f64
+        } else {
+            0.0
+        };
+        let category = PromptCategory::from_avg_prompt_tokens(avg_prompt);
+        grouped
+            .entry((result.runtime_name.clone(), category))
+            .or_default()
+            .push(result);
+    }
+
+    let weights = if concurrency > 1 {
+        &contract.throughput_weights
+    } else {
+        &contract.interactive_weights
+    };
+
+    // Compute score for each (runtime, profile) pair using latest result
+    let mut entries: Vec<ProfileEntry> = Vec::new();
+    for ((name, profile), results_in_group) in &grouped {
+        // Use the latest result (last by timestamp, already sorted)
+        if let Some(result) = results_in_group.last() {
+            let avg_prompt = if result.total_requests > 0 {
+                result.prompt_tokens_total as f64 / result.total_requests as f64
+            } else {
+                0.0
+            };
+
+            // Compute composite from available metrics
+            let mut weighted_sum = 0.0;
+            for (metric_name, weight) in weights {
+                let value = match metric_name.as_str() {
+                    "decode_tok_s" => result.decode_tok_per_sec,
+                    "ttft_p50_ms" => result.ttft_p50_ms,
+                    "itl_p50_ms" => result.itl_p50_ms,
+                    "ttft_p99_ms" => result.ttft_p99_ms,
+                    "error_rate" => result.error_rate,
+                    "aggregate_tok_s" => result.tokens_per_sec,
+                    _ => continue,
+                };
+                if let Some(threshold) = contract.thresholds.get(metric_name) {
+                    let score = compute_metric_score(value, threshold);
+                    weighted_sum += weight * f64::from(score);
+                }
+            }
+
+            let composite = weighted_sum.round().min(100.0);
+            let grade = assign_grade(composite, &contract.grades);
+
+            entries.push(ProfileEntry {
+                name: name.clone(),
+                profile: *profile,
+                avg_prompt_tokens: avg_prompt,
+                composite,
+                grade,
+                decode_tok_s: result.decode_tok_per_sec,
+                ttft_p50_ms: result.ttft_p50_ms,
+                itl_p50_ms: result.itl_p50_ms,
+            });
+        }
+    }
+
+    // Sort by runtime name, then profile order
+    entries.sort_by(|a, b| {
+        a.name.cmp(&b.name).then_with(|| {
+            let order = |p: &PromptCategory| match p {
+                PromptCategory::Micro => 0,
+                PromptCategory::Short => 1,
+                PromptCategory::Medium => 2,
+                PromptCategory::Long => 3,
+            };
+            order(&a.profile).cmp(&order(&b.profile))
+        })
+    });
+
+    // Compute consistency per runtime
+    let mut runtime_scores: HashMap<String, Vec<f64>> = HashMap::new();
+    for entry in &entries {
+        runtime_scores
+            .entry(entry.name.clone())
+            .or_default()
+            .push(entry.composite);
+    }
+
+    let mut consistency: Vec<ConsistencyScore> = runtime_scores
+        .into_iter()
+        .filter(|(_, scores)| scores.len() >= 2)
+        .map(|(name, scores)| {
+            let best = scores.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let worst = scores.iter().cloned().fold(f64::INFINITY, f64::min);
+            let cons = if best > 0.0 {
+                (worst / best * 100.0).round()
+            } else {
+                0.0
+            };
+            let grade = assign_grade(cons, &contract.grades);
+            ConsistencyScore {
+                name,
+                best_score: best,
+                worst_score: worst,
+                consistency: cons,
+                grade,
+            }
+        })
+        .collect();
+
+    consistency.sort_by(|a, b| b.consistency.partial_cmp(&a.consistency).unwrap_or(std::cmp::Ordering::Equal));
+
+    ProfileScorecard {
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        concurrency,
+        entries,
+        consistency,
+    }
+}
+
+/// Format profile scorecard as a terminal table.
+pub fn format_profile_table(scorecard: &ProfileScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("Per-Prompt-Profile Scores".into());
+    lines.push(String::new());
+    lines.push(format!(
+        "{:<20} {:>8} {:>8} {:>10} {:>10} {:>8}  {:>10}",
+        "Runtime", "Profile", "Tokens", "Decode", "TTFT", "ITL", "Score"
+    ));
+    lines.push(format!("{}", "-".repeat(82)));
+
+    for entry in &scorecard.entries {
+        lines.push(format!(
+            "{:<20} {:>8} {:>8.0} {:>9.1} {:>9.1} {:>8.1}  {:>5.1} {}",
+            entry.name,
+            entry.profile.label(),
+            entry.avg_prompt_tokens,
+            entry.decode_tok_s,
+            entry.ttft_p50_ms,
+            entry.itl_p50_ms,
+            entry.composite,
+            entry.grade,
+        ));
+    }
+
+    if !scorecard.consistency.is_empty() {
+        lines.push(String::new());
+        lines.push("Profile Consistency (worst/best score across profiles)".into());
+        lines.push(format!(
+            "{:<20} {:>8} {:>8} {:>10} {:>8}",
+            "Runtime", "Best", "Worst", "Consistency", "Grade"
+        ));
+        lines.push(format!("{}", "-".repeat(58)));
+        for cs in &scorecard.consistency {
+            lines.push(format!(
+                "{:<20} {:>8.1} {:>8.1} {:>9.0}% {:>8}",
+                cs.name, cs.best_score, cs.worst_score, cs.consistency, cs.grade
+            ));
+        }
+    }
+
+    lines.join("\n")
+}
+
+/// Format profile scorecard as Markdown.
+pub fn format_profile_markdown(scorecard: &ProfileScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("## Per-Prompt-Profile Scores".into());
+    lines.push(String::new());
+    lines.push("| Runtime | Profile | Tokens | Decode tok/s | TTFT P50 ms | ITL P50 ms | **Score** |".into());
+    lines.push("|---------|---------|--------|-------------|-------------|------------|-----------|".into());
+
+    for entry in &scorecard.entries {
+        lines.push(format!(
+            "| {} | {} | {:.0} | {:.1} | {:.1} | {:.1} | **{:.1} ({})** |",
+            entry.name,
+            entry.profile.label(),
+            entry.avg_prompt_tokens,
+            entry.decode_tok_s,
+            entry.ttft_p50_ms,
+            entry.itl_p50_ms,
+            entry.composite,
+            entry.grade,
+        ));
+    }
+
+    if !scorecard.consistency.is_empty() {
+        lines.push(String::new());
+        lines.push("### Profile Consistency".into());
+        lines.push(String::new());
+        lines.push("| Runtime | Best | Worst | Consistency | Grade |".into());
+        lines.push("|---------|------|-------|-------------|-------|".into());
+        for cs in &scorecard.consistency {
+            lines.push(format!(
+                "| {} | {:.1} | {:.1} | {:.0}% | {} |",
+                cs.name, cs.best_score, cs.worst_score, cs.consistency, cs.grade
+            ));
+        }
+    }
+
+    lines.join("\n")
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 
@@ -884,6 +1320,88 @@ mod tests {
             tail_analysis: None,
             gpu_telemetry: None,
             dataset_stats: None,
+        }
+    }
+
+    fn make_test_result_with_layers(
+        name: &str,
+        decode: f64,
+        ttft: f64,
+        us_per_layer: f64,
+        prompt_tokens: u64,
+    ) -> LoadTestResult {
+        let mut r = make_test_result(name, decode, ttft, 7.0, 20.0, 0.0, 1);
+        r.decode_us_per_layer = Some(us_per_layer);
+        r.prompt_tokens_total = prompt_tokens;
+        r
+    }
+
+    #[test]
+    fn test_layer_scoring_best_first() {
+        let contract = ScoringContract::default();
+        let results = vec![
+            (make_test_result_with_layers("fast", 160.0, 12.0, 220.0, 2300), "a.json".into()),
+            (make_test_result_with_layers("slow", 100.0, 50.0, 350.0, 2300), "b.json".into()),
+        ];
+        let card = compute_layer_scorecard(&results, &contract.grades);
+        assert_eq!(card.runtimes.len(), 2);
+        assert_eq!(card.runtimes[0].name, "fast");
+        assert!(card.runtimes[0].best);
+        assert!(card.runtimes[0].score > card.runtimes[1].score);
+    }
+
+    #[test]
+    fn test_layer_scoring_excellent_threshold() {
+        let contract = ScoringContract::default();
+        let results = vec![
+            (make_test_result_with_layers("vllm", 160.0, 12.0, 220.0, 2300), "a.json".into()),
+        ];
+        let card = compute_layer_scorecard(&results, &contract.grades);
+        assert_eq!(card.runtimes[0].score, 100);
+    }
+
+    #[test]
+    fn test_prompt_category_classification() {
+        assert_eq!(PromptCategory::from_avg_prompt_tokens(10.0), PromptCategory::Micro);
+        assert_eq!(PromptCategory::from_avg_prompt_tokens(23.0), PromptCategory::Short);
+        assert_eq!(PromptCategory::from_avg_prompt_tokens(102.0), PromptCategory::Medium);
+        assert_eq!(PromptCategory::from_avg_prompt_tokens(512.0), PromptCategory::Long);
+    }
+
+    #[test]
+    fn test_profile_consistency_perfect() {
+        let contract = ScoringContract::default();
+        // Same runtime, same metrics, different prompt lengths
+        let r_short = make_test_result_with_layers("runtime_a", 150.0, 15.0, 240.0, 2300);
+        let mut r_medium = make_test_result_with_layers("runtime_a", 150.0, 15.0, 240.0, 10200);
+        r_medium.prompt_tokens_total = 10200; // 102 avg prompt tokens
+        let results = vec![
+            (r_short, "short.json".into()),
+            (r_medium, "medium.json".into()),
+        ];
+        let card = compute_profile_scorecard(&results, &contract);
+        assert!(card.entries.len() >= 2);
+        // Same metrics → consistency should be 100%
+        if let Some(cs) = card.consistency.first() {
+            assert_eq!(cs.consistency, 100.0);
+        }
+    }
+
+    #[test]
+    fn test_profile_consistency_degradation() {
+        let contract = ScoringContract::default();
+        // Good on short, bad on medium (TTFT degrades)
+        let r_short = make_test_result_with_layers("runtime_a", 150.0, 15.0, 240.0, 2300);
+        let mut r_medium = make_test_result_with_layers("runtime_a", 140.0, 80.0, 240.0, 10200);
+        r_medium.prompt_tokens_total = 10200;
+        let results = vec![
+            (r_short, "short.json".into()),
+            (r_medium, "medium.json".into()),
+        ];
+        let card = compute_profile_scorecard(&results, &contract);
+        if let Some(cs) = card.consistency.first() {
+            assert!(cs.consistency < 90.0, "Expected degradation, got {}%", cs.consistency);
+            assert!(cs.worst_score < cs.best_score);
         }
     }
 }
