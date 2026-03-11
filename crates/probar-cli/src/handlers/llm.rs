@@ -10,6 +10,7 @@ use crate::LlmBenchArgs;
 use crate::LlmGenDatasetArgs;
 use crate::LlmLoadArgs;
 use crate::LlmReportArgs;
+use crate::LlmScoreArgs;
 use crate::LlmSweepArgs;
 use crate::LlmTestArgs;
 use std::path::Path;
@@ -498,6 +499,149 @@ pub fn execute_llm_report(args: &LlmReportArgs) -> CliResult<()> {
     }
 
     Ok(())
+}
+
+/// Execute `probador llm score`.
+pub fn execute_llm_score(args: &LlmScoreArgs) -> CliResult<()> {
+    let all_results = load_all_results_from_dir(&args.results)?;
+
+    if all_results.is_empty() {
+        println!("No result files found in {}", args.results.display());
+        return Ok(());
+    }
+
+    // Filter by platform if specified
+    let filtered: Vec<_> = all_results
+        .into_iter()
+        .filter(|(r, _)| {
+            args.platform
+                .as_ref()
+                .is_none_or(|p| r.runtime_name.contains(p.as_str()))
+        })
+        .collect();
+
+    // Group by concurrency
+    let mut by_concurrency: std::collections::HashMap<usize, Vec<(jugar_probar::llm::LoadTestResult, String)>> =
+        std::collections::HashMap::new();
+    for (result, filename) in filtered {
+        by_concurrency
+            .entry(result.concurrency)
+            .or_default()
+            .push((result, filename));
+    }
+
+    // If concurrency filter specified, only score that level
+    let concurrency_levels: Vec<usize> = if let Some(c) = args.concurrency {
+        vec![c]
+    } else {
+        let mut levels: Vec<_> = by_concurrency.keys().copied().collect();
+        levels.sort_unstable();
+        levels
+    };
+
+    let contract = jugar_probar::llm::ScoringContract::default();
+    let c1_results = by_concurrency.get(&1);
+    let mut all_output = Vec::new();
+    let mut min_grade_score = f64::MAX;
+
+    for c in &concurrency_levels {
+        if let Some(results) = by_concurrency.get(c) {
+            let scorecard = jugar_probar::llm::compute_scorecard(
+                results,
+                c1_results.map(|v| v.as_slice()),
+                &contract,
+            );
+
+            for rt in &scorecard.runtimes {
+                if rt.composite < min_grade_score {
+                    min_grade_score = rt.composite;
+                }
+            }
+
+            match args.format.as_str() {
+                "json" => {
+                    let json = serde_json::to_string_pretty(&scorecard)
+                        .map_err(|e| CliError::Generic(e.to_string()))?;
+                    all_output.push(json);
+                }
+                "markdown" => {
+                    all_output.push(jugar_probar::llm::format_markdown(&scorecard));
+                }
+                _ => {
+                    all_output.push(jugar_probar::llm::format_table(&scorecard));
+                }
+            }
+        }
+    }
+
+    let output_text = all_output.join("\n\n");
+
+    if let Some(ref output_path) = args.output {
+        std::fs::write(output_path, &output_text).map_err(|e| CliError::Generic(e.to_string()))?;
+        println!("Scorecard written to {}", output_path.display());
+    } else {
+        println!("{output_text}");
+    }
+
+    // CI gate: fail if any runtime is below the specified grade
+    if let Some(ref fail_grade) = args.fail_on_grade {
+        let min_required = grade_to_min_score(fail_grade);
+        if min_grade_score < min_required {
+            return Err(CliError::Generic(format!(
+                "Score gate failed: lowest score {min_grade_score:.1} < {fail_grade} ({min_required})"
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+/// Load all JSON result files from a directory (no filename filter).
+fn load_all_results_from_dir(
+    dir: &Path,
+) -> CliResult<Vec<(jugar_probar::llm::LoadTestResult, String)>> {
+    let mut results = Vec::new();
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| CliError::Generic(format!("Cannot read {}: {e}", dir.display())))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| CliError::Generic(e.to_string()))?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("json") {
+            let content =
+                std::fs::read_to_string(&path).map_err(|e| CliError::Generic(e.to_string()))?;
+            match serde_json::from_str::<jugar_probar::llm::LoadTestResult>(&content) {
+                Ok(result) => {
+                    let filename = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("")
+                        .to_string();
+                    results.push((result, filename));
+                }
+                Err(_) => {} // silently skip non-LoadTestResult JSON files
+            }
+        }
+    }
+
+    results.sort_by(|a, b| a.0.timestamp.cmp(&b.0.timestamp));
+    Ok(results)
+}
+
+/// Convert a grade string to its minimum score threshold.
+fn grade_to_min_score(grade: &str) -> f64 {
+    match grade {
+        "A+" => 95.0,
+        "A" => 90.0,
+        "A-" => 85.0,
+        "B+" => 80.0,
+        "B" => 70.0,
+        "C+" => 60.0,
+        "C" => 50.0,
+        "D" => 40.0,
+        "D-" => 30.0,
+        _ => 0.0,
+    }
 }
 
 /// Execute `probador llm bench`.

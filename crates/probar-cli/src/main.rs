@@ -1289,6 +1289,9 @@ fn run_llm(args: &probador::LlmArgs) -> CliResult<()> {
         probador::LlmSubcommand::GenDataset(gen_args) => {
             probador::handlers::llm::execute_llm_gen_dataset(gen_args)
         }
+        probador::LlmSubcommand::Score(score_args) => {
+            probador::handlers::llm::execute_llm_score(score_args)
+        }
     }
 }
 

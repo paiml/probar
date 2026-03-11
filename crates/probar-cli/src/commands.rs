@@ -414,6 +414,8 @@ pub enum LlmSubcommand {
     Sweep(LlmSweepArgs),
     /// Generate synthetic JSONL dataset for workload-driven benchmarking
     GenDataset(LlmGenDatasetArgs),
+    /// Compute weighted performance scores for runtime comparison
+    Score(LlmScoreArgs),
 }
 
 /// Arguments for `probador llm test`
@@ -628,6 +630,34 @@ pub struct LlmReportArgs {
     /// Also update a README.md with the latest results
     #[arg(long)]
     pub update_readme: Option<PathBuf>,
+}
+
+/// Arguments for `probador llm score`
+#[derive(Parser, Debug)]
+pub struct LlmScoreArgs {
+    /// Directory containing probador JSON result files
+    #[arg(short, long)]
+    pub results: PathBuf,
+
+    /// Filter by concurrency level (scores computed per-concurrency)
+    #[arg(short, long)]
+    pub concurrency: Option<usize>,
+
+    /// Filter results by platform (matches runtime_name substring)
+    #[arg(long)]
+    pub platform: Option<String>,
+
+    /// Output file (default: stdout)
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    /// Output format: json, markdown, table
+    #[arg(long, default_value = "table")]
+    pub format: String,
+
+    /// Exit non-zero if any runtime scores below this grade (e.g., C+)
+    #[arg(long)]
+    pub fail_on_grade: Option<String>,
 }
 
 /// Arguments for `probador llm experiment`

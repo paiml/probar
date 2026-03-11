@@ -19,6 +19,8 @@ pub mod loadtest;
 pub mod prompts;
 #[cfg(feature = "llm")]
 pub mod report;
+#[cfg(feature = "llm")]
+pub mod score;
 
 pub use assertion::{LlmAssertion, LlmAssertionError, LlmAssertionResult};
 pub use client::{
@@ -28,8 +30,8 @@ pub use client::{
 #[cfg(feature = "llm")]
 pub use client::{LlmClient, LlmClientError};
 pub use experiment::{
-    BudgetConfig, DataAuditResult, EarlyStoppingConfig, Experiment, ExperimentRun, ExperimentStatus,
-    KillCriterion, MetricSnapshot,
+    BudgetConfig, DataAuditResult, EarlyStoppingConfig, Experiment, ExperimentRun,
+    ExperimentStatus, KillCriterion, MetricSnapshot,
 };
 #[cfg(feature = "llm")]
 pub use gpu_telemetry::{extract_host_from_url, GpuTelemetryCollector};
@@ -42,3 +44,8 @@ pub use loadtest::{
 pub use prompts::{load_from_file as load_prompts_from_file, load_profile, PromptProfile};
 #[cfg(feature = "llm")]
 pub use report::{to_json, to_markdown_row, to_markdown_table, update_performance_md};
+#[cfg(feature = "llm")]
+pub use score::{
+    assign_grade, compute_metric_score, compute_scorecard, format_markdown, format_table,
+    MetricScore, MetricThreshold, RuntimeScore, Scorecard, ScoringContract,
+};
