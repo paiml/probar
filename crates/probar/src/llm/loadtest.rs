@@ -242,6 +242,10 @@ pub struct LoadTestResult {
     /// Dataset statistics when --dataset was used (Feature 4).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dataset_stats: Option<DatasetStats>,
+    /// Time from process launch to first successful health check (ms).
+    /// Present when benchmark was run with --start-command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cold_start_ms: Option<f64>,
 }
 
 /// Per-request timing for distribution analysis and debugging.
@@ -1003,6 +1007,7 @@ fn aggregate_results(
         tail_analysis: None,
         gpu_telemetry: None,
         dataset_stats: None,
+        cold_start_ms: None,
     }
 }
 
@@ -1106,8 +1111,7 @@ fn compute_quality(records: &[RequestRecord], mode: &ValidationMode) -> QualityR
 
 /// Compute tail latency analysis with jitter and drift detection.
 fn compute_tail_analysis(records: &[RequestRecord], spike_threshold_mult: f64) -> TailAnalysis {
-    let success_records: Vec<&RequestRecord> =
-        records.iter().filter(|r| r.success).collect();
+    let success_records: Vec<&RequestRecord> = records.iter().filter(|r| r.success).collect();
 
     // Compute per-request ITL values
     let multi_token: Vec<&RequestRecord> = success_records
@@ -1151,9 +1155,21 @@ fn compute_tail_analysis(records: &[RequestRecord], spike_threshold_mult: f64) -
     let lat_p99 = percentile(&latencies, 0.99);
 
     // Tail ratios
-    let tail_ratio_itl = if itl_p50 > 0.0 { itl_p99 / itl_p50 } else { 0.0 };
-    let tail_ratio_ttft = if ttft_p50 > 0.0 { ttft_p99 / ttft_p50 } else { 0.0 };
-    let tail_ratio_latency = if lat_p50 > 0.0 { lat_p99 / lat_p50 } else { 0.0 };
+    let tail_ratio_itl = if itl_p50 > 0.0 {
+        itl_p99 / itl_p50
+    } else {
+        0.0
+    };
+    let tail_ratio_ttft = if ttft_p50 > 0.0 {
+        ttft_p99 / ttft_p50
+    } else {
+        0.0
+    };
+    let tail_ratio_latency = if lat_p50 > 0.0 {
+        lat_p99 / lat_p50
+    } else {
+        0.0
+    };
 
     // Jitter: coefficient of variation
     let itl_mean = if itls.is_empty() {
@@ -1162,7 +1178,11 @@ fn compute_tail_analysis(records: &[RequestRecord], spike_threshold_mult: f64) -
         itls.iter().sum::<f64>() / itls.len() as f64
     };
     let itl_sd = stddev(&itls);
-    let itl_cv = if itl_mean > 0.0 { itl_sd / itl_mean } else { 0.0 };
+    let itl_cv = if itl_mean > 0.0 {
+        itl_sd / itl_mean
+    } else {
+        0.0
+    };
 
     // IQR
     let itl_iqr_ms = percentile(&itls, 0.75) - percentile(&itls, 0.25);
@@ -1643,6 +1663,7 @@ mod tests {
             tail_analysis: None,
             gpu_telemetry: None,
             dataset_stats: None,
+            cold_start_ms: None,
         };
         let json = serde_json::to_string(&result).unwrap();
         let back: LoadTestResult = serde_json::from_str(&json).unwrap();
@@ -2266,7 +2287,10 @@ mod tests {
 
     #[test]
     fn test_validation_mode_parse() {
-        assert!(matches!(ValidationMode::parse("none"), ValidationMode::None));
+        assert!(matches!(
+            ValidationMode::parse("none"),
+            ValidationMode::None
+        ));
         assert!(matches!(
             ValidationMode::parse("basic"),
             ValidationMode::Basic

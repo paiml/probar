@@ -629,6 +629,158 @@ pub fn execute_llm_score(args: &LlmScoreArgs) -> CliResult<()> {
         }
     }
 
+    // Correctness scoring (--by-correctness)
+    if args.by_correctness {
+        let all_flat: Vec<_> = by_concurrency
+            .values()
+            .flat_map(|v| v.iter())
+            .cloned()
+            .collect();
+        let card = jugar_probar::llm::compute_correctness_scorecard(&all_flat, &contract.grades);
+        if !card.runtimes.is_empty() {
+            match args.format.as_str() {
+                "json" => {
+                    let json = serde_json::to_string_pretty(&card)
+                        .map_err(|e| CliError::Generic(e.to_string()))?;
+                    all_output.push(json);
+                }
+                "markdown" => {
+                    all_output.push(jugar_probar::llm::format_correctness_markdown(&card));
+                }
+                _ => {
+                    all_output.push(jugar_probar::llm::format_correctness_table(&card));
+                }
+            }
+        }
+    }
+
+    // Output length profile scoring (--by-output-length)
+    if args.by_output_length {
+        for c in &concurrency_levels {
+            if let Some(results) = by_concurrency.get(c) {
+                let card =
+                    jugar_probar::llm::compute_output_length_scorecard(results, &contract);
+                if !card.entries.is_empty() {
+                    match args.format.as_str() {
+                        "json" => {
+                            let json = serde_json::to_string_pretty(&card)
+                                .map_err(|e| CliError::Generic(e.to_string()))?;
+                            all_output.push(json);
+                        }
+                        "markdown" => {
+                            all_output.push(jugar_probar::llm::format_output_length_markdown(&card));
+                        }
+                        _ => {
+                            all_output.push(jugar_probar::llm::format_output_length_table(&card));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Memory footprint scoring (--by-memory)
+    if args.by_memory {
+        let all_flat: Vec<_> = by_concurrency
+            .values()
+            .flat_map(|v| v.iter())
+            .cloned()
+            .collect();
+        let card = jugar_probar::llm::compute_memory_scorecard(&all_flat, &contract.grades);
+        if !card.runtimes.is_empty() {
+            match args.format.as_str() {
+                "json" => {
+                    let json = serde_json::to_string_pretty(&card)
+                        .map_err(|e| CliError::Generic(e.to_string()))?;
+                    all_output.push(json);
+                }
+                "markdown" => {
+                    all_output.push(jugar_probar::llm::format_memory_markdown(&card));
+                }
+                _ => {
+                    all_output.push(jugar_probar::llm::format_memory_table(&card));
+                }
+            }
+        }
+    }
+
+    // Cold start scoring (--by-cold-start)
+    if args.by_cold_start {
+        let all_flat: Vec<_> = by_concurrency
+            .values()
+            .flat_map(|v| v.iter())
+            .cloned()
+            .collect();
+        let card = jugar_probar::llm::compute_cold_start_scorecard(&all_flat, &contract.grades);
+        if !card.runtimes.is_empty() {
+            match args.format.as_str() {
+                "json" => {
+                    let json = serde_json::to_string_pretty(&card)
+                        .map_err(|e| CliError::Generic(e.to_string()))?;
+                    all_output.push(json);
+                }
+                "markdown" => {
+                    all_output.push(jugar_probar::llm::format_cold_start_markdown(&card));
+                }
+                _ => {
+                    all_output.push(jugar_probar::llm::format_cold_start_table(&card));
+                }
+            }
+        }
+    }
+
+    // Power efficiency scoring (--by-power)
+    if args.by_power {
+        let all_flat: Vec<_> = by_concurrency
+            .values()
+            .flat_map(|v| v.iter())
+            .cloned()
+            .collect();
+        let card =
+            jugar_probar::llm::compute_power_efficiency_scorecard(&all_flat, &contract.grades);
+        if !card.runtimes.is_empty() {
+            match args.format.as_str() {
+                "json" => {
+                    let json = serde_json::to_string_pretty(&card)
+                        .map_err(|e| CliError::Generic(e.to_string()))?;
+                    all_output.push(json);
+                }
+                "markdown" => {
+                    all_output.push(jugar_probar::llm::format_power_markdown(&card));
+                }
+                _ => {
+                    all_output.push(jugar_probar::llm::format_power_table(&card));
+                }
+            }
+        }
+    }
+
+    // Concurrency scaling scoring (--by-scaling)
+    if args.by_scaling {
+        let all_flat: Vec<_> = by_concurrency
+            .values()
+            .flat_map(|v| v.iter())
+            .cloned()
+            .collect();
+        let card =
+            jugar_probar::llm::compute_concurrency_scaling_scorecard(&all_flat, &contract.grades);
+        if !card.runtimes.is_empty() {
+            match args.format.as_str() {
+                "json" => {
+                    let json = serde_json::to_string_pretty(&card)
+                        .map_err(|e| CliError::Generic(e.to_string()))?;
+                    all_output.push(json);
+                }
+                "markdown" => {
+                    all_output.push(jugar_probar::llm::format_scaling_markdown(&card));
+                }
+                _ => {
+                    all_output.push(jugar_probar::llm::format_scaling_table(&card));
+                }
+            }
+        }
+    }
+
     let output_text = all_output.join("\n\n");
 
     if let Some(ref output_path) = args.output {

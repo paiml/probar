@@ -1009,6 +1009,881 @@ pub fn format_profile_markdown(scorecard: &ProfileScorecard) -> String {
 }
 
 // =============================================================================
+// Correctness scoring
+// =============================================================================
+
+/// Score for a single runtime's correctness (assertion pass rate).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrectnessScore {
+    /// Runtime name.
+    pub name: String,
+    /// Pass rate (0.0-1.0).
+    pub pass_rate: f64,
+    /// Total tests/validations.
+    pub total: u64,
+    /// Passed.
+    pub passed: u64,
+    /// Score (0-100).
+    pub score: u8,
+    /// Letter grade.
+    pub grade: String,
+    /// Best in class.
+    pub best: bool,
+}
+
+/// Correctness scorecard across runtimes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrectnessScorecard {
+    pub timestamp: String,
+    pub runtimes: Vec<CorrectnessScore>,
+}
+
+/// Compute correctness scores from LoadTestResult quality data.
+pub fn compute_correctness_scorecard(
+    results: &[(LoadTestResult, String)],
+    grades: &[(f64, String)],
+) -> CorrectnessScorecard {
+    let threshold = MetricThreshold {
+        excellent: 1.0,
+        good: 0.95,
+        higher_is_better: true,
+    };
+
+    let mut scored: Vec<CorrectnessScore> = results
+        .iter()
+        .filter_map(|(r, _)| {
+            let q = r.quality.as_ref()?;
+            if q.total_validated == 0 {
+                return None;
+            }
+            let score = compute_metric_score(q.pass_rate, &threshold);
+            let grade = assign_grade(f64::from(score), grades);
+            Some(CorrectnessScore {
+                name: r.runtime_name.clone(),
+                pass_rate: q.pass_rate,
+                total: q.total_validated,
+                passed: q.passed,
+                score,
+                grade,
+                best: false,
+            })
+        })
+        .collect();
+
+    scored.sort_by(|a, b| {
+        b.pass_rate
+            .partial_cmp(&a.pass_rate)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    if let Some(first) = scored.first_mut() {
+        first.best = true;
+    }
+
+    CorrectnessScorecard {
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        runtimes: scored,
+    }
+}
+
+/// Format correctness scorecard as a terminal table.
+pub fn format_correctness_table(scorecard: &CorrectnessScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("Correctness Scores".into());
+    lines.push(String::new());
+    lines.push(format!(
+        "{:<24} {:>10} {:>8} {:>8} {:>8} {:>8}",
+        "Runtime", "Pass Rate", "Passed", "Total", "Score", "Grade"
+    ));
+    lines.push(format!("{}", "-".repeat(70)));
+
+    for rt in &scorecard.runtimes {
+        let star = if rt.best { "*" } else { " " };
+        lines.push(format!(
+            "{:<24} {:>9.1}%{} {:>8} {:>8} {:>8} {:>8}",
+            rt.name,
+            rt.pass_rate * 100.0,
+            star,
+            rt.passed,
+            rt.total,
+            rt.score,
+            rt.grade
+        ));
+    }
+
+    lines.push(String::new());
+    lines.push("Thresholds: excellent = 100%, good = 95%".into());
+    lines.join("\n")
+}
+
+/// Format correctness scorecard as Markdown.
+pub fn format_correctness_markdown(scorecard: &CorrectnessScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("## Correctness Scores".into());
+    lines.push(String::new());
+    lines.push("| Runtime | Pass Rate | Passed | Total | Score | Grade |".into());
+    lines.push("|---------|-----------|--------|-------|-------|-------|".into());
+
+    for rt in &scorecard.runtimes {
+        lines.push(format!(
+            "| {} | {:.1}% | {} | {} | {} | {} |",
+            rt.name,
+            rt.pass_rate * 100.0,
+            rt.passed,
+            rt.total,
+            rt.score,
+            rt.grade
+        ));
+    }
+    lines.join("\n")
+}
+
+// =============================================================================
+// Output length profile scoring
+// =============================================================================
+
+/// Output token count categories.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OutputLengthCategory {
+    /// < 32 tokens.
+    Short,
+    /// 32-128 tokens.
+    Medium,
+    /// > 128 tokens.
+    Long,
+}
+
+impl OutputLengthCategory {
+    /// Classify from completion token count.
+    pub fn from_tokens(tokens: u32) -> Self {
+        if tokens < 32 {
+            Self::Short
+        } else if tokens <= 128 {
+            Self::Medium
+        } else {
+            Self::Long
+        }
+    }
+
+    /// Human-readable label.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Short => "short",
+            Self::Medium => "medium",
+            Self::Long => "long",
+        }
+    }
+}
+
+impl std::fmt::Display for OutputLengthCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
+/// Score entry for a runtime at a specific output length bucket.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputLengthEntry {
+    pub name: String,
+    pub category: OutputLengthCategory,
+    pub request_count: usize,
+    pub avg_output_tokens: f64,
+    pub decode_tok_s: f64,
+    pub itl_p50_ms: f64,
+    pub score: u8,
+    pub grade: String,
+}
+
+/// Output length scorecard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputLengthScorecard {
+    pub timestamp: String,
+    pub entries: Vec<OutputLengthEntry>,
+}
+
+/// Compute output-length-profile scores from request_details.
+pub fn compute_output_length_scorecard(
+    results: &[(LoadTestResult, String)],
+    contract: &ScoringContract,
+) -> OutputLengthScorecard {
+    let mut entries = Vec::new();
+
+    for (result, _) in results {
+        if result.request_details.is_empty() {
+            continue;
+        }
+
+        // Bucket requests by output length
+        let mut buckets: HashMap<OutputLengthCategory, Vec<&super::loadtest::RequestDetail>> =
+            HashMap::new();
+        for rd in &result.request_details {
+            let cat = OutputLengthCategory::from_tokens(rd.completion_tokens);
+            buckets.entry(cat).or_default().push(rd);
+        }
+
+        for (cat, reqs) in &buckets {
+            if reqs.is_empty() {
+                continue;
+            }
+            let avg_tokens =
+                reqs.iter().map(|r| f64::from(r.completion_tokens)).sum::<f64>() / reqs.len() as f64;
+            let avg_itl =
+                reqs.iter().map(|r| r.itl_ms).sum::<f64>() / reqs.len() as f64;
+            let decode = if avg_itl > 0.0 { 1000.0 / avg_itl } else { 0.0 };
+
+            // Score using ITL threshold (decode is derived from ITL)
+            let itl_threshold = contract
+                .thresholds
+                .get("itl_p50_ms")
+                .cloned()
+                .unwrap_or(MetricThreshold {
+                    excellent: 6.0,
+                    good: 10.0,
+                    higher_is_better: false,
+                });
+            let score = compute_metric_score(avg_itl, &itl_threshold);
+            let grade = assign_grade(f64::from(score), &contract.grades);
+
+            entries.push(OutputLengthEntry {
+                name: result.runtime_name.clone(),
+                category: *cat,
+                request_count: reqs.len(),
+                avg_output_tokens: avg_tokens,
+                decode_tok_s: decode,
+                itl_p50_ms: avg_itl,
+                score,
+                grade,
+            });
+        }
+    }
+
+    // Sort by name, then category order
+    entries.sort_by(|a, b| {
+        a.name.cmp(&b.name).then_with(|| {
+            let order = |c: &OutputLengthCategory| match c {
+                OutputLengthCategory::Short => 0,
+                OutputLengthCategory::Medium => 1,
+                OutputLengthCategory::Long => 2,
+            };
+            order(&a.category).cmp(&order(&b.category))
+        })
+    });
+
+    OutputLengthScorecard {
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        entries,
+    }
+}
+
+/// Format output-length scorecard as a terminal table.
+pub fn format_output_length_table(scorecard: &OutputLengthScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("Per-Output-Length Scores".into());
+    lines.push(String::new());
+    lines.push(format!(
+        "{:<24} {:>8} {:>8} {:>8} {:>10} {:>8} {:>8}",
+        "Runtime", "Output", "Count", "AvgTok", "Decode", "ITL", "Score"
+    ));
+    lines.push(format!("{}", "-".repeat(80)));
+
+    for e in &scorecard.entries {
+        lines.push(format!(
+            "{:<24} {:>8} {:>8} {:>8.1} {:>9.1} {:>8.1} {:>5} {}",
+            e.name,
+            e.category.label(),
+            e.request_count,
+            e.avg_output_tokens,
+            e.decode_tok_s,
+            e.itl_p50_ms,
+            e.score,
+            e.grade
+        ));
+    }
+    lines.join("\n")
+}
+
+/// Format output-length scorecard as Markdown.
+pub fn format_output_length_markdown(scorecard: &OutputLengthScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("## Per-Output-Length Scores".into());
+    lines.push(String::new());
+    lines.push(
+        "| Runtime | Output | Count | Avg Tokens | Decode tok/s | ITL ms | Score | Grade |"
+            .into(),
+    );
+    lines.push("|---------|--------|-------|------------|-------------|--------|-------|-------|".into());
+
+    for e in &scorecard.entries {
+        lines.push(format!(
+            "| {} | {} | {} | {:.1} | {:.1} | {:.1} | {} | {} |",
+            e.name,
+            e.category.label(),
+            e.request_count,
+            e.avg_output_tokens,
+            e.decode_tok_s,
+            e.itl_p50_ms,
+            e.score,
+            e.grade
+        ));
+    }
+    lines.join("\n")
+}
+
+// =============================================================================
+// Memory footprint scoring
+// =============================================================================
+
+/// Memory efficiency score for a single runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryScore {
+    pub name: String,
+    /// Peak VRAM used (MB).
+    pub vram_used_mb: f64,
+    /// Total VRAM (MB).
+    pub vram_total_mb: f64,
+    /// Decode tok/s per GB of VRAM used.
+    pub tok_per_sec_per_gb: f64,
+    /// Score (0-100).
+    pub score: u8,
+    /// Grade.
+    pub grade: String,
+    /// Best in class.
+    pub best: bool,
+}
+
+/// Memory scorecard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryScorecard {
+    pub timestamp: String,
+    pub runtimes: Vec<MemoryScore>,
+}
+
+// tok/s per GB thresholds
+const MEMORY_EFFICIENCY_EXCELLENT: f64 = 40.0; // ~140 tok/s in 3.5 GB
+const MEMORY_EFFICIENCY_GOOD: f64 = 20.0; // ~160 tok/s in 8 GB
+
+/// Compute memory efficiency scores from GPU telemetry.
+pub fn compute_memory_scorecard(
+    results: &[(LoadTestResult, String)],
+    grades: &[(f64, String)],
+) -> MemoryScorecard {
+    let threshold = MetricThreshold {
+        excellent: MEMORY_EFFICIENCY_EXCELLENT,
+        good: MEMORY_EFFICIENCY_GOOD,
+        higher_is_better: true,
+    };
+
+    let mut scored: Vec<MemoryScore> = results
+        .iter()
+        .filter_map(|(r, _)| {
+            let telem = r.gpu_telemetry.as_ref()?;
+            let vram_gb = telem.memory_used_mb.max / 1024.0;
+            if vram_gb <= 0.0 {
+                return None;
+            }
+            let efficiency = r.decode_tok_per_sec / vram_gb;
+            let score = compute_metric_score(efficiency, &threshold);
+            let grade = assign_grade(f64::from(score), grades);
+            Some(MemoryScore {
+                name: r.runtime_name.clone(),
+                vram_used_mb: telem.memory_used_mb.max,
+                vram_total_mb: telem.memory_total_mb,
+                tok_per_sec_per_gb: efficiency,
+                score,
+                grade,
+                best: false,
+            })
+        })
+        .collect();
+
+    scored.sort_by(|a, b| {
+        b.tok_per_sec_per_gb
+            .partial_cmp(&a.tok_per_sec_per_gb)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    if let Some(first) = scored.first_mut() {
+        first.best = true;
+    }
+
+    MemoryScorecard {
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        runtimes: scored,
+    }
+}
+
+/// Format memory scorecard as a terminal table.
+pub fn format_memory_table(scorecard: &MemoryScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("Memory Efficiency".into());
+    lines.push(String::new());
+    lines.push(format!(
+        "{:<24} {:>10} {:>10} {:>12} {:>8} {:>8}",
+        "Runtime", "VRAM MB", "Total MB", "tok/s/GB", "Score", "Grade"
+    ));
+    lines.push(format!("{}", "-".repeat(76)));
+
+    for rt in &scorecard.runtimes {
+        let star = if rt.best { "*" } else { " " };
+        lines.push(format!(
+            "{:<24} {:>10.0} {:>10.0} {:>11.1}{} {:>8} {:>8}",
+            rt.name, rt.vram_used_mb, rt.vram_total_mb, rt.tok_per_sec_per_gb, star, rt.score,
+            rt.grade
+        ));
+    }
+
+    lines.push(String::new());
+    lines.push(format!(
+        "Thresholds: excellent >= {MEMORY_EFFICIENCY_EXCELLENT} tok/s/GB, good >= {MEMORY_EFFICIENCY_GOOD} tok/s/GB"
+    ));
+    lines.join("\n")
+}
+
+/// Format memory scorecard as Markdown.
+pub fn format_memory_markdown(scorecard: &MemoryScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("## Memory Efficiency".into());
+    lines.push(String::new());
+    lines.push("| Runtime | VRAM (MB) | Total (MB) | tok/s/GB | Score | Grade |".into());
+    lines.push("|---------|-----------|------------|----------|-------|-------|".into());
+
+    for rt in &scorecard.runtimes {
+        lines.push(format!(
+            "| {} | {:.0} | {:.0} | {:.1} | {} | {} |",
+            rt.name, rt.vram_used_mb, rt.vram_total_mb, rt.tok_per_sec_per_gb, rt.score, rt.grade
+        ));
+    }
+    lines.join("\n")
+}
+
+// =============================================================================
+// Cold start scoring
+// =============================================================================
+
+/// Cold start score for a single runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColdStartScore {
+    pub name: String,
+    /// Cold start time (ms).
+    pub cold_start_ms: f64,
+    /// Score (0-100).
+    pub score: u8,
+    /// Grade.
+    pub grade: String,
+    /// Best in class.
+    pub best: bool,
+}
+
+/// Cold start scorecard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColdStartScorecard {
+    pub timestamp: String,
+    pub runtimes: Vec<ColdStartScore>,
+}
+
+const COLD_START_EXCELLENT_MS: f64 = 500.0;
+const COLD_START_GOOD_MS: f64 = 3000.0;
+
+/// Compute cold start scores from `cold_start_ms` field.
+pub fn compute_cold_start_scorecard(
+    results: &[(LoadTestResult, String)],
+    grades: &[(f64, String)],
+) -> ColdStartScorecard {
+    let threshold = MetricThreshold {
+        excellent: COLD_START_EXCELLENT_MS,
+        good: COLD_START_GOOD_MS,
+        higher_is_better: false,
+    };
+
+    let mut scored: Vec<ColdStartScore> = results
+        .iter()
+        .filter_map(|(r, _)| {
+            let cs = r.cold_start_ms?;
+            if cs <= 0.0 {
+                return None;
+            }
+            let score = compute_metric_score(cs, &threshold);
+            let grade = assign_grade(f64::from(score), grades);
+            Some(ColdStartScore {
+                name: r.runtime_name.clone(),
+                cold_start_ms: cs,
+                score,
+                grade,
+                best: false,
+            })
+        })
+        .collect();
+
+    scored.sort_by(|a, b| {
+        a.cold_start_ms
+            .partial_cmp(&b.cold_start_ms)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    if let Some(first) = scored.first_mut() {
+        first.best = true;
+    }
+
+    ColdStartScorecard {
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        runtimes: scored,
+    }
+}
+
+/// Format cold start scorecard as a terminal table.
+pub fn format_cold_start_table(scorecard: &ColdStartScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("Cold Start Time".into());
+    lines.push(String::new());
+    lines.push(format!(
+        "{:<24} {:>12} {:>8} {:>8}",
+        "Runtime", "Start (ms)", "Score", "Grade"
+    ));
+    lines.push(format!("{}", "-".repeat(56)));
+
+    for rt in &scorecard.runtimes {
+        let star = if rt.best { "*" } else { " " };
+        lines.push(format!(
+            "{:<24} {:>11.0}{} {:>8} {:>8}",
+            rt.name, rt.cold_start_ms, star, rt.score, rt.grade
+        ));
+    }
+
+    lines.push(String::new());
+    lines.push(format!(
+        "Thresholds: excellent <= {COLD_START_EXCELLENT_MS}ms, good <= {COLD_START_GOOD_MS}ms"
+    ));
+    lines.join("\n")
+}
+
+/// Format cold start scorecard as Markdown.
+pub fn format_cold_start_markdown(scorecard: &ColdStartScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("## Cold Start Time".into());
+    lines.push(String::new());
+    lines.push("| Runtime | Start (ms) | Score | Grade |".into());
+    lines.push("|---------|------------|-------|-------|".into());
+
+    for rt in &scorecard.runtimes {
+        lines.push(format!(
+            "| {} | {:.0} | {} | {} |",
+            rt.name, rt.cold_start_ms, rt.score, rt.grade
+        ));
+    }
+    lines.join("\n")
+}
+
+// =============================================================================
+// Power efficiency scoring
+// =============================================================================
+
+/// Power efficiency score for a single runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PowerEfficiencyScore {
+    pub name: String,
+    /// Mean power draw (watts).
+    pub mean_power_w: f64,
+    /// Energy per token (mJ).
+    pub energy_per_token_mj: f64,
+    /// Decode tokens per second per watt.
+    pub tok_per_watt: f64,
+    /// Score (0-100).
+    pub score: u8,
+    /// Grade.
+    pub grade: String,
+    /// Best in class.
+    pub best: bool,
+}
+
+/// Power efficiency scorecard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PowerEfficiencyScorecard {
+    pub timestamp: String,
+    pub runtimes: Vec<PowerEfficiencyScore>,
+}
+
+const POWER_EFFICIENCY_EXCELLENT: f64 = 3.0; // tok/s/W (Jetson-class)
+const POWER_EFFICIENCY_GOOD: f64 = 1.5; // tok/s/W (desktop GPU)
+
+/// Compute power efficiency scores from GPU telemetry.
+pub fn compute_power_efficiency_scorecard(
+    results: &[(LoadTestResult, String)],
+    grades: &[(f64, String)],
+) -> PowerEfficiencyScorecard {
+    let threshold = MetricThreshold {
+        excellent: POWER_EFFICIENCY_EXCELLENT,
+        good: POWER_EFFICIENCY_GOOD,
+        higher_is_better: true,
+    };
+
+    let mut scored: Vec<PowerEfficiencyScore> = results
+        .iter()
+        .filter_map(|(r, _)| {
+            let telem = r.gpu_telemetry.as_ref()?;
+            if telem.power_draw_w.mean <= 0.0 || r.decode_tok_per_sec <= 0.0 {
+                return None;
+            }
+            let tok_per_watt = r.decode_tok_per_sec / telem.power_draw_w.mean;
+            let score = compute_metric_score(tok_per_watt, &threshold);
+            let grade = assign_grade(f64::from(score), grades);
+            Some(PowerEfficiencyScore {
+                name: r.runtime_name.clone(),
+                mean_power_w: telem.power_draw_w.mean,
+                energy_per_token_mj: telem.energy_per_token_mj,
+                tok_per_watt,
+                score,
+                grade,
+                best: false,
+            })
+        })
+        .collect();
+
+    scored.sort_by(|a, b| {
+        b.tok_per_watt
+            .partial_cmp(&a.tok_per_watt)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    if let Some(first) = scored.first_mut() {
+        first.best = true;
+    }
+
+    PowerEfficiencyScorecard {
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        runtimes: scored,
+    }
+}
+
+/// Format power efficiency scorecard as a terminal table.
+pub fn format_power_table(scorecard: &PowerEfficiencyScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("Power Efficiency".into());
+    lines.push(String::new());
+    lines.push(format!(
+        "{:<24} {:>10} {:>12} {:>10} {:>8} {:>8}",
+        "Runtime", "Power (W)", "mJ/token", "tok/s/W", "Score", "Grade"
+    ));
+    lines.push(format!("{}", "-".repeat(76)));
+
+    for rt in &scorecard.runtimes {
+        let star = if rt.best { "*" } else { " " };
+        lines.push(format!(
+            "{:<24} {:>10.1} {:>12.1} {:>9.2}{} {:>8} {:>8}",
+            rt.name, rt.mean_power_w, rt.energy_per_token_mj, rt.tok_per_watt, star, rt.score,
+            rt.grade
+        ));
+    }
+
+    lines.push(String::new());
+    lines.push(format!(
+        "Thresholds: excellent >= {POWER_EFFICIENCY_EXCELLENT} tok/s/W, good >= {POWER_EFFICIENCY_GOOD} tok/s/W"
+    ));
+    lines.join("\n")
+}
+
+/// Format power efficiency scorecard as Markdown.
+pub fn format_power_markdown(scorecard: &PowerEfficiencyScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("## Power Efficiency".into());
+    lines.push(String::new());
+    lines.push("| Runtime | Power (W) | mJ/token | tok/s/W | Score | Grade |".into());
+    lines.push("|---------|-----------|----------|---------|-------|-------|".into());
+
+    for rt in &scorecard.runtimes {
+        lines.push(format!(
+            "| {} | {:.1} | {:.1} | {:.2} | {} | {} |",
+            rt.name, rt.mean_power_w, rt.energy_per_token_mj, rt.tok_per_watt, rt.score, rt.grade
+        ));
+    }
+    lines.join("\n")
+}
+
+// =============================================================================
+// Concurrency scaling curve scoring
+// =============================================================================
+
+/// Concurrency scaling score for a single runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConcurrencyScalingScore {
+    pub name: String,
+    /// Decode tok/s at c=1.
+    pub c1_decode_tok_s: f64,
+    /// Peak aggregate tok/s (at best concurrency).
+    pub peak_aggregate_tok_s: f64,
+    /// Concurrency level of peak throughput.
+    pub peak_concurrency: usize,
+    /// Scaling efficiency: peak_aggregate / (c1_decode * peak_concurrency).
+    /// 1.0 = perfect linear scaling.
+    pub scaling_efficiency: f64,
+    /// Score (0-100).
+    pub score: u8,
+    /// Grade.
+    pub grade: String,
+    /// Best in class.
+    pub best: bool,
+}
+
+/// Concurrency scaling scorecard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConcurrencyScalingScorecard {
+    pub timestamp: String,
+    pub runtimes: Vec<ConcurrencyScalingScore>,
+}
+
+const SCALING_EFFICIENCY_EXCELLENT: f64 = 0.90; // Near-linear (vLLM PagedAttention)
+const SCALING_EFFICIENCY_GOOD: f64 = 0.50; // Acceptable batching
+
+/// Compute concurrency scaling scores by grouping results by runtime across concurrency levels.
+pub fn compute_concurrency_scaling_scorecard(
+    results: &[(LoadTestResult, String)],
+    grades: &[(f64, String)],
+) -> ConcurrencyScalingScorecard {
+    let threshold = MetricThreshold {
+        excellent: SCALING_EFFICIENCY_EXCELLENT,
+        good: SCALING_EFFICIENCY_GOOD,
+        higher_is_better: true,
+    };
+
+    // Group by runtime base name (strip -cN suffix)
+    let mut by_runtime: HashMap<String, Vec<&LoadTestResult>> = HashMap::new();
+    for (r, _) in results {
+        let base = strip_concurrency_suffix(&r.runtime_name);
+        by_runtime.entry(base).or_default().push(r);
+    }
+
+    let mut scored: Vec<ConcurrencyScalingScore> = Vec::new();
+
+    for (base_name, runs) in &by_runtime {
+        // Need at least 2 concurrency levels
+        let mut by_c: HashMap<usize, Vec<&LoadTestResult>> = HashMap::new();
+        for r in runs {
+            by_c.entry(r.concurrency).or_default().push(r);
+        }
+        if by_c.len() < 2 {
+            continue;
+        }
+
+        // Get c=1 baseline (best decode tok/s)
+        let c1_decode = by_c
+            .get(&1)
+            .and_then(|runs| {
+                runs.iter()
+                    .map(|r| r.decode_tok_per_sec)
+                    .fold(None, |max: Option<f64>, v| {
+                        Some(max.map_or(v, |m: f64| m.max(v)))
+                    })
+            })
+            .unwrap_or(0.0);
+
+        if c1_decode <= 0.0 {
+            continue;
+        }
+
+        // Find peak aggregate across all concurrency levels
+        let mut peak_agg = 0.0f64;
+        let mut peak_c = 1usize;
+        for (&c, runs) in &by_c {
+            for r in runs {
+                if r.tokens_per_sec > peak_agg {
+                    peak_agg = r.tokens_per_sec;
+                    peak_c = c;
+                }
+            }
+        }
+
+        if peak_c == 0 {
+            continue;
+        }
+
+        let efficiency = peak_agg / (c1_decode * peak_c as f64);
+        let score = compute_metric_score(efficiency, &threshold);
+        let grade = assign_grade(f64::from(score), grades);
+
+        scored.push(ConcurrencyScalingScore {
+            name: base_name.clone(),
+            c1_decode_tok_s: c1_decode,
+            peak_aggregate_tok_s: peak_agg,
+            peak_concurrency: peak_c,
+            scaling_efficiency: efficiency,
+            score,
+            grade,
+            best: false,
+        });
+    }
+
+    scored.sort_by(|a, b| {
+        b.scaling_efficiency
+            .partial_cmp(&a.scaling_efficiency)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    if let Some(first) = scored.first_mut() {
+        first.best = true;
+    }
+
+    ConcurrencyScalingScorecard {
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        runtimes: scored,
+    }
+}
+
+/// Format concurrency scaling scorecard as a terminal table.
+pub fn format_scaling_table(scorecard: &ConcurrencyScalingScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("Concurrency Scaling Efficiency".into());
+    lines.push(String::new());
+    lines.push(format!(
+        "{:<24} {:>10} {:>12} {:>8} {:>12} {:>8} {:>8}",
+        "Runtime", "c=1 tok/s", "Peak Aggr", "Peak c", "Efficiency", "Score", "Grade"
+    ));
+    lines.push(format!("{}", "-".repeat(88)));
+
+    for rt in &scorecard.runtimes {
+        let star = if rt.best { "*" } else { " " };
+        lines.push(format!(
+            "{:<24} {:>10.1} {:>12.1} {:>8} {:>11.1}%{} {:>8} {:>8}",
+            rt.name,
+            rt.c1_decode_tok_s,
+            rt.peak_aggregate_tok_s,
+            rt.peak_concurrency,
+            rt.scaling_efficiency * 100.0,
+            star,
+            rt.score,
+            rt.grade
+        ));
+    }
+
+    lines.push(String::new());
+    lines.push(format!(
+        "Thresholds: excellent >= {:.0}%, good >= {:.0}%",
+        SCALING_EFFICIENCY_EXCELLENT * 100.0,
+        SCALING_EFFICIENCY_GOOD * 100.0
+    ));
+    lines.push("Efficiency = peak_aggregate / (c1_decode × peak_concurrency)".into());
+    lines.join("\n")
+}
+
+/// Format concurrency scaling scorecard as Markdown.
+pub fn format_scaling_markdown(scorecard: &ConcurrencyScalingScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push("## Concurrency Scaling Efficiency".into());
+    lines.push(String::new());
+    lines.push(
+        "| Runtime | c=1 tok/s | Peak Aggregate | Peak c | Efficiency | Score | Grade |".into(),
+    );
+    lines.push("|---------|-----------|---------------|--------|------------|-------|-------|".into());
+
+    for rt in &scorecard.runtimes {
+        lines.push(format!(
+            "| {} | {:.1} | {:.1} | {} | {:.1}% | {} | {} |",
+            rt.name,
+            rt.c1_decode_tok_s,
+            rt.peak_aggregate_tok_s,
+            rt.peak_concurrency,
+            rt.scaling_efficiency * 100.0,
+            rt.score,
+            rt.grade
+        ));
+    }
+    lines.join("\n")
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 
@@ -1320,6 +2195,7 @@ mod tests {
             tail_analysis: None,
             gpu_telemetry: None,
             dataset_stats: None,
+            cold_start_ms: None,
         }
     }
 
@@ -1385,6 +2261,128 @@ mod tests {
         if let Some(cs) = card.consistency.first() {
             assert_eq!(cs.consistency, 100.0);
         }
+    }
+
+    #[test]
+    fn test_correctness_scoring() {
+        let contract = ScoringContract::default();
+        let mut r = make_test_result("runtime_a", 150.0, 15.0, 7.0, 20.0, 0.0, 1);
+        r.quality = Some(super::super::loadtest::QualityResult {
+            validation_level: "basic".into(),
+            total_validated: 100,
+            passed: 100,
+            failed: 0,
+            pass_rate: 1.0,
+            failures: vec![],
+        });
+        let results = vec![(r, "a.json".into())];
+        let card = compute_correctness_scorecard(&results, &contract.grades);
+        assert_eq!(card.runtimes.len(), 1);
+        assert_eq!(card.runtimes[0].score, 100);
+    }
+
+    #[test]
+    fn test_correctness_partial() {
+        let contract = ScoringContract::default();
+        let mut r = make_test_result("runtime_a", 150.0, 15.0, 7.0, 20.0, 0.0, 1);
+        r.quality = Some(super::super::loadtest::QualityResult {
+            validation_level: "basic".into(),
+            total_validated: 100,
+            passed: 90,
+            failed: 10,
+            pass_rate: 0.9,
+            failures: vec![],
+        });
+        let results = vec![(r, "a.json".into())];
+        let card = compute_correctness_scorecard(&results, &contract.grades);
+        assert!(card.runtimes[0].score < 75, "90% pass rate should score below good");
+    }
+
+    #[test]
+    fn test_output_length_classification() {
+        assert_eq!(OutputLengthCategory::from_tokens(10), OutputLengthCategory::Short);
+        assert_eq!(OutputLengthCategory::from_tokens(32), OutputLengthCategory::Medium);
+        assert_eq!(OutputLengthCategory::from_tokens(128), OutputLengthCategory::Medium);
+        assert_eq!(OutputLengthCategory::from_tokens(200), OutputLengthCategory::Long);
+    }
+
+    #[test]
+    fn test_memory_scoring() {
+        let contract = ScoringContract::default();
+        let mut r = make_test_result("runtime_a", 140.0, 15.0, 7.0, 20.0, 0.0, 1);
+        r.gpu_telemetry = Some(super::super::loadtest::GpuTelemetry {
+            samples: 10,
+            gpu_utilization_pct: super::super::loadtest::TelemetryStat { mean: 80.0, max: 95.0, min: 60.0 },
+            memory_used_mb: super::super::loadtest::TelemetryStat { mean: 3200.0, max: 3500.0, min: 3000.0 },
+            memory_total_mb: 8192.0,
+            power_draw_w: super::super::loadtest::TelemetryStat { mean: 80.0, max: 100.0, min: 60.0 },
+            temperature_c: super::super::loadtest::TelemetryStat { mean: 70.0, max: 80.0, min: 50.0 },
+            clock_gpu_mhz: super::super::loadtest::TelemetryStat { mean: 1500.0, max: 1500.0, min: 1500.0 },
+            throttle_events: 0,
+            energy_total_wh: 1.0,
+            energy_per_token_mj: 5.0,
+            energy_per_request_mj: 160.0,
+        });
+        let results = vec![(r, "a.json".into())];
+        let card = compute_memory_scorecard(&results, &contract.grades);
+        assert_eq!(card.runtimes.len(), 1);
+        // 140 tok/s / 3.42 GB = ~40.9 tok/s/GB → excellent
+        assert!(card.runtimes[0].score >= 95, "High efficiency should score well: {}", card.runtimes[0].score);
+    }
+
+    #[test]
+    fn test_cold_start_scoring() {
+        let contract = ScoringContract::default();
+        let mut r_fast = make_test_result("realizr", 140.0, 15.0, 7.0, 20.0, 0.0, 1);
+        r_fast.cold_start_ms = Some(300.0);
+        let mut r_slow = make_test_result("vllm", 160.0, 12.0, 6.0, 15.0, 0.0, 1);
+        r_slow.cold_start_ms = Some(15000.0);
+        let results = vec![(r_fast, "a.json".into()), (r_slow, "b.json".into())];
+        let card = compute_cold_start_scorecard(&results, &contract.grades);
+        assert_eq!(card.runtimes.len(), 2);
+        assert_eq!(card.runtimes[0].name, "realizr"); // fastest first
+        assert!(card.runtimes[0].score > card.runtimes[1].score);
+    }
+
+    #[test]
+    fn test_power_efficiency_scoring() {
+        let contract = ScoringContract::default();
+        let mut r = make_test_result("runtime_a", 140.0, 15.0, 7.0, 20.0, 0.0, 1);
+        r.gpu_telemetry = Some(super::super::loadtest::GpuTelemetry {
+            samples: 10,
+            gpu_utilization_pct: super::super::loadtest::TelemetryStat { mean: 80.0, max: 95.0, min: 60.0 },
+            memory_used_mb: super::super::loadtest::TelemetryStat { mean: 3200.0, max: 3500.0, min: 3000.0 },
+            memory_total_mb: 8192.0,
+            power_draw_w: super::super::loadtest::TelemetryStat { mean: 80.0, max: 100.0, min: 60.0 },
+            temperature_c: super::super::loadtest::TelemetryStat { mean: 70.0, max: 80.0, min: 50.0 },
+            clock_gpu_mhz: super::super::loadtest::TelemetryStat { mean: 1500.0, max: 1500.0, min: 1500.0 },
+            throttle_events: 0,
+            energy_total_wh: 1.0,
+            energy_per_token_mj: 5.0,
+            energy_per_request_mj: 160.0,
+        });
+        let results = vec![(r, "a.json".into())];
+        let card = compute_power_efficiency_scorecard(&results, &contract.grades);
+        assert_eq!(card.runtimes.len(), 1);
+        // 140 tok/s / 80W = 1.75 tok/s/W → above good
+        assert!(card.runtimes[0].score >= 75, "1.75 tok/s/W should be above good: {}", card.runtimes[0].score);
+    }
+
+    #[test]
+    fn test_concurrency_scaling() {
+        let contract = ScoringContract::default();
+        let r_c1 = make_test_result("runtime_a-c1", 150.0, 15.0, 7.0, 20.0, 0.0, 1);
+        let mut r_c4 = make_test_result("runtime_a-c4", 140.0, 30.0, 8.0, 40.0, 0.0, 4);
+        r_c4.tokens_per_sec = 540.0; // aggregate = 540
+        let results = vec![
+            (r_c1, "c1.json".into()),
+            (r_c4, "c4.json".into()),
+        ];
+        let card = compute_concurrency_scaling_scorecard(&results, &contract.grades);
+        assert_eq!(card.runtimes.len(), 1);
+        // 540 / (150 * 4) = 0.90 → excellent
+        assert!(card.runtimes[0].scaling_efficiency > 0.85);
+        assert!(card.runtimes[0].score >= 90, "Near-linear scaling: {}", card.runtimes[0].score);
     }
 
     #[test]

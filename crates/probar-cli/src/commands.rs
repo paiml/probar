@@ -666,6 +666,30 @@ pub struct LlmScoreArgs {
     /// Include per-prompt-profile scores (short/medium/long)
     #[arg(long)]
     pub by_profile: bool,
+
+    /// Include correctness scores (from inline quality validation)
+    #[arg(long)]
+    pub by_correctness: bool,
+
+    /// Include per-output-length scores (short/medium/long output)
+    #[arg(long)]
+    pub by_output_length: bool,
+
+    /// Include VRAM memory efficiency scores
+    #[arg(long)]
+    pub by_memory: bool,
+
+    /// Include cold start time scores
+    #[arg(long)]
+    pub by_cold_start: bool,
+
+    /// Include power efficiency (tok/s per watt) scores
+    #[arg(long)]
+    pub by_power: bool,
+
+    /// Include concurrency scaling curve scores
+    #[arg(long)]
+    pub by_scaling: bool,
 }
 
 /// Arguments for `probador llm experiment`

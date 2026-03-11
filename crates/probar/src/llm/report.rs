@@ -280,6 +280,7 @@ mod tests {
             tail_analysis: None,
             gpu_telemetry: None,
             dataset_stats: None,
+            cold_start_ms: None,
         }
     }
 
