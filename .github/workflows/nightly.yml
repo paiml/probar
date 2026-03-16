@@ -63,45 +63,9 @@ jobs:
         if: "!matrix.use_cross"
         run: cargo build --release --target ${{ matrix.target }} -p probador
 
-      - name: Find and rename binary
+      - name: Rename binary
         shell: bash
-        run: |
-          echo "=== Debug: pwd ==="
-          pwd
-          echo "=== Debug: ls top-level ==="
-          ls -la
-          echo "=== Debug: target dir exists? ==="
-          ls -la target/ 2>/dev/null || echo "NO target/ directory!"
-          echo "=== Debug: find all executables in target ==="
-          find target -type f -executable 2>/dev/null | grep -v deps/ | grep -v '\.d$' | head -20 || true
-          echo "=== Debug: find by name ==="
-          find . -name "${{ matrix.binary }}" -type f 2>/dev/null | head -10 || true
-          echo "=== Looking for binary ==="
-          # Search multiple possible paths
-          BINARY=""
-          for P in \
-            "target/${{ matrix.target }}/release/${{ matrix.binary }}" \
-            "target/release/${{ matrix.binary }}" \
-            ; do
-            if [ -f "$P" ]; then
-              BINARY="$P"
-              break
-            fi
-          done
-          if [ -z "$BINARY" ]; then
-            # Last resort: find it anywhere
-            BINARY=$(find . -name "${{ matrix.binary }}" -type f 2>/dev/null | head -1)
-          fi
-          if [ -n "$BINARY" ]; then
-            echo "Found binary at: $BINARY"
-            cp "$BINARY" "${{ matrix.artifact }}"
-          else
-            echo "::error::Binary ${{ matrix.binary }} not found anywhere"
-            echo "=== All files in target/release ==="
-            ls -la target/release/ 2>/dev/null || echo "no target/release/"
-            ls -la "target/${{ matrix.target }}/release/" 2>/dev/null || echo "no target/${{ matrix.target }}/release/"
-            exit 1
-          fi
+        run: cp target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.artifact }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
