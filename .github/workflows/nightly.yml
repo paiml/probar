@@ -66,19 +66,40 @@ jobs:
       - name: Find and rename binary
         shell: bash
         run: |
+          echo "=== Debug: pwd ==="
+          pwd
+          echo "=== Debug: ls top-level ==="
+          ls -la
+          echo "=== Debug: target dir exists? ==="
+          ls -la target/ 2>/dev/null || echo "NO target/ directory!"
+          echo "=== Debug: find all executables in target ==="
+          find target -type f -executable 2>/dev/null | grep -v deps/ | grep -v '\.d$' | head -20 || true
+          echo "=== Debug: find by name ==="
+          find . -name "${{ matrix.binary }}" -type f 2>/dev/null | head -10 || true
           echo "=== Looking for binary ==="
-          find target -name "${{ matrix.binary }}" -type f 2>/dev/null || true
-          ls -la "target/${{ matrix.target }}/release/${{ matrix.binary }}" 2>/dev/null || true
-          ls -la "target/release/${{ matrix.binary }}" 2>/dev/null || true
-          # Try target-specific path first, fall back to target/release/
-          if [ -f "target/${{ matrix.target }}/release/${{ matrix.binary }}" ]; then
-            cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "${{ matrix.artifact }}"
-          elif [ -f "target/release/${{ matrix.binary }}" ]; then
-            echo "::warning::Binary found at target/release/ instead of target/${{ matrix.target }}/release/"
-            cp "target/release/${{ matrix.binary }}" "${{ matrix.artifact }}"
+          # Search multiple possible paths
+          BINARY=""
+          for P in \
+            "target/${{ matrix.target }}/release/${{ matrix.binary }}" \
+            "target/release/${{ matrix.binary }}" \
+            ; do
+            if [ -f "$P" ]; then
+              BINARY="$P"
+              break
+            fi
+          done
+          if [ -z "$BINARY" ]; then
+            # Last resort: find it anywhere
+            BINARY=$(find . -name "${{ matrix.binary }}" -type f 2>/dev/null | head -1)
+          fi
+          if [ -n "$BINARY" ]; then
+            echo "Found binary at: $BINARY"
+            cp "$BINARY" "${{ matrix.artifact }}"
           else
-            echo "::error::Binary ${{ matrix.binary }} not found"
-            find target -type f -name 'probador*' 2>/dev/null || true
+            echo "::error::Binary ${{ matrix.binary }} not found anywhere"
+            echo "=== All files in target/release ==="
+            ls -la target/release/ 2>/dev/null || echo "no target/release/"
+            ls -la "target/${{ matrix.target }}/release/" 2>/dev/null || echo "no target/${{ matrix.target }}/release/"
             exit 1
           fi
 
