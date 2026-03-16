@@ -86,9 +86,8 @@ trueno = { version = "0.15", features = ["gpu"] }
 crossterm = "0.28"
 
 # ComputeBlock testing (presentar-terminal integration)
-# NOTE: Path dependency until published to crates.io
-presentar-terminal = { version = "0.3", path = "../presentar/crates/presentar-terminal" }
-presentar-core = { version = "0.3", path = "../presentar/crates/presentar-core" }
+presentar-terminal = "0.3"
+presentar-core = "0.3"
 
 # Deterministic replay
 serde_yaml_ng = "0.10"
