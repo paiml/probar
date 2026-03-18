@@ -31,20 +31,16 @@ pub fn execute_check(config: &CliConfig, args: &AnimationCheckArgs) -> CliResult
         println!("Verifying animation timeline: {}", timeline_path.display());
     }
 
-    let timeline_json = std::fs::read_to_string(timeline_path).map_err(|e| {
-        CliError::test_execution(format!("Failed to read timeline: {e}"))
-    })?;
-    let timeline: AnimationTimeline = serde_json::from_str(&timeline_json).map_err(|e| {
-        CliError::test_execution(format!("Failed to parse timeline JSON: {e}"))
-    })?;
+    let timeline_json = std::fs::read_to_string(timeline_path)
+        .map_err(|e| CliError::test_execution(format!("Failed to read timeline: {e}")))?;
+    let timeline: AnimationTimeline = serde_json::from_str(&timeline_json)
+        .map_err(|e| CliError::test_execution(format!("Failed to parse timeline JSON: {e}")))?;
 
-    let observed_json = std::fs::read_to_string(observed_path).map_err(|e| {
-        CliError::test_execution(format!("Failed to read observed events: {e}"))
+    let observed_json = std::fs::read_to_string(observed_path)
+        .map_err(|e| CliError::test_execution(format!("Failed to read observed events: {e}")))?;
+    let observed: Vec<ObservedEventJson> = serde_json::from_str(&observed_json).map_err(|e| {
+        CliError::test_execution(format!("Failed to parse observed events JSON: {e}"))
     })?;
-    let observed: Vec<ObservedEventJson> =
-        serde_json::from_str(&observed_json).map_err(|e| {
-            CliError::test_execution(format!("Failed to parse observed events JSON: {e}"))
-        })?;
 
     let observed_events: Vec<ObservedEvent> = observed
         .into_iter()
@@ -84,10 +80,7 @@ struct ObservedEventJson {
     time_secs: f64,
 }
 
-fn render_text_report(
-    report: &jugar_probar::animation::AnimationReport,
-    tolerance_ms: f64,
-) {
+fn render_text_report(report: &jugar_probar::animation::AnimationReport, tolerance_ms: f64) {
     println!(
         "Animation: {} (tolerance: {:.0}ms)",
         report.video_id, tolerance_ms
@@ -123,8 +116,8 @@ fn render_text_report(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use jugar_probar::animation::{AnimationReport, AnimationVerdict, EventResult};
     use jugar_probar::animation::AnimationEventType;
+    use jugar_probar::animation::{AnimationReport, AnimationVerdict, EventResult};
 
     fn sample_report() -> AnimationReport {
         AnimationReport {

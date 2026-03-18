@@ -197,7 +197,8 @@ impl AssertionCheck for TokenCountCheck {
             .as_ref()
             .map_or(0, |u| u.completion_tokens);
 
-        let passed = self.min.map_or(true, |m| tokens >= m) && self.max.map_or(true, |m| tokens <= m);
+        let passed =
+            self.min.map_or(true, |m| tokens >= m) && self.max.map_or(true, |m| tokens <= m);
 
         if passed {
             LlmAssertionResult {
@@ -584,6 +585,10 @@ mod tests {
             .assert_matches_pattern("[invalid")
             .run(&timed);
         assert!(!results[0].passed);
-        assert!(results[0].detail.as_ref().unwrap().contains("invalid regex"));
+        assert!(results[0]
+            .detail
+            .as_ref()
+            .unwrap()
+            .contains("invalid regex"));
     }
 }

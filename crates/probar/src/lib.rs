@@ -570,12 +570,27 @@ pub use accessibility::{
     ContrastAnalysis, ContrastPair, FlashDetector, FlashResult, FocusConfig, KeyboardIssue,
     Severity, MIN_CONTRAST_LARGE, MIN_CONTRAST_NORMAL, MIN_CONTRAST_UI,
 };
+pub use animation::{
+    sample_easing, verify_easing, verify_events, verify_timeline, AnimationEvent,
+    AnimationEventType, AnimationReport, AnimationTimeline, AnimationVerdict, EasingFunction,
+    EasingVerification, EventResult, Keyframe, ObservedEvent,
+};
 pub use assertion::{
     retry_contains, retry_eq, retry_none, retry_some, retry_true, Assertion, AssertionCheckResult,
     AssertionFailure, AssertionMode, AssertionResult, AssertionSummary, EnergyVerifier,
     EquationContext, EquationResult, EquationVerifier, InvariantVerifier, KinematicVerifier,
     MomentumVerifier, RetryAssertion, RetryConfig, RetryError, RetryResult, SoftAssertionError,
     SoftAssertions, Variable,
+};
+pub use audio_quality::{
+    analyze_audio, analyze_samples, detect_clipping, detect_silence, AudioLevels,
+    AudioQualityConfig, AudioQualityReport, AudioVerdict, ClippingReport, SilenceRegion,
+    SilenceReport,
+};
+pub use av_sync::{
+    compare_edl_to_onsets, default_edl_path, detect_onsets, extract_audio, AudioOnset,
+    AudioTickPlacement, AvSyncReport, DetectionConfig, EditDecision, EditDecisionList,
+    SegmentSyncResult, SyncVerdict, TickDelta, DEFAULT_SAMPLE_RATE,
 };
 pub use bridge::{
     BridgeConnection, DiffRegion, EntitySnapshot, GameStateData, GameStateSnapshot, SnapshotCache,
@@ -668,25 +683,6 @@ pub use replay::{
 pub use reporter::{
     AndonCordPulled, FailureMode, Reporter, TestResultEntry, TestStatus, TraceData,
 };
-pub use av_sync::{
-    compare_edl_to_onsets, detect_onsets, default_edl_path, extract_audio, AudioOnset,
-    AudioTickPlacement, AvSyncReport, DetectionConfig, EditDecision, EditDecisionList,
-    SegmentSyncResult, SyncVerdict, TickDelta, DEFAULT_SAMPLE_RATE,
-};
-pub use audio_quality::{
-    analyze_audio, analyze_samples, detect_clipping, detect_silence, AudioLevels,
-    AudioQualityConfig, AudioQualityReport, AudioVerdict, ClippingReport, SilenceRegion,
-    SilenceReport,
-};
-pub use video_quality::{
-    build_ffprobe_args, parse_ffprobe_json, probe_video, validate_video, VideoCheck,
-    VideoExpectations, VideoProbe, VideoQualityReport, VideoVerdict,
-};
-pub use animation::{
-    sample_easing, verify_easing, verify_events, verify_timeline, AnimationEvent,
-    AnimationEventType, AnimationReport, AnimationTimeline, AnimationVerdict, EasingFunction,
-    EasingVerification, EventResult, Keyframe, ObservedEvent,
-};
 pub use result::{ProbarError, ProbarResult};
 pub use runtime::{
     ComponentId, EntityId, FrameResult, GameHostState, MemoryView, ProbarComponent, ProbarEntity,
@@ -724,6 +720,10 @@ pub use validators::{
     StreamingMetricRecord, StreamingState, StreamingUxValidator, StreamingValidationError,
     StreamingValidationResult, TestExecutionStats, VuMeterConfig, VuMeterError, VuMeterSample,
 };
+pub use video_quality::{
+    build_ffprobe_args, parse_ffprobe_json, probe_video, validate_video, VideoCheck,
+    VideoExpectations, VideoProbe, VideoQualityReport, VideoVerdict,
+};
 #[cfg(feature = "media")]
 pub use visual_regression::{
     perceptual_diff, ImageDiffResult, MaskRegion, ScreenshotComparison, VisualRegressionConfig,
@@ -757,27 +757,27 @@ pub use websocket::{
 
 /// Prelude for convenient imports
 pub mod prelude {
-    pub use super::av_sync::{
-        compare_edl_to_onsets, default_edl_path, detect_onsets, extract_audio, AudioOnset,
-        AudioTickPlacement, AvSyncReport, DetectionConfig, EditDecision, EditDecisionList,
-        SegmentSyncResult, SyncVerdict, TickDelta,
-    };
-    pub use super::audio_quality::{
-        analyze_audio, analyze_samples, detect_clipping, detect_silence, AudioLevels,
-        AudioQualityConfig, AudioQualityReport, AudioVerdict, ClippingReport, SilenceRegion,
-        SilenceReport,
-    };
-    pub use super::video_quality::{
-        build_ffprobe_args, parse_ffprobe_json, probe_video, validate_video, VideoCheck,
-        VideoExpectations, VideoProbe, VideoQualityReport, VideoVerdict,
-    };
+    pub use super::accessibility::*;
     pub use super::animation::{
         sample_easing, verify_easing, verify_events, verify_timeline, AnimationEvent,
         AnimationEventType, AnimationReport, AnimationTimeline, AnimationVerdict, EasingFunction,
         EasingVerification, EventResult, Keyframe, ObservedEvent,
     };
-    pub use super::accessibility::*;
     pub use super::assertion::*;
+    pub use super::audio_quality::{
+        analyze_audio, analyze_samples, detect_clipping, detect_silence, AudioLevels,
+        AudioQualityConfig, AudioQualityReport, AudioVerdict, ClippingReport, SilenceRegion,
+        SilenceReport,
+    };
+    pub use super::av_sync::{
+        compare_edl_to_onsets, default_edl_path, detect_onsets, extract_audio, AudioOnset,
+        AudioTickPlacement, AvSyncReport, DetectionConfig, EditDecision, EditDecisionList,
+        SegmentSyncResult, SyncVerdict, TickDelta,
+    };
+    pub use super::video_quality::{
+        build_ffprobe_args, parse_ffprobe_json, probe_video, validate_video, VideoCheck,
+        VideoExpectations, VideoProbe, VideoQualityReport, VideoVerdict,
+    };
     // Brick Architecture (PROBAR-SPEC-009)
     pub use super::brick::*;
     pub use super::brick_house::*;
@@ -841,6 +841,8 @@ pub mod prelude {
         DockerTestRunner, DockerTestRunnerBuilder, ParallelRunner, ParallelRunnerBuilder,
         TestResult as DockerTestResult, TestResults as DockerTestResults,
     };
+    #[cfg(feature = "llm")]
+    pub use super::llm::*;
     pub use super::wait::{
         wait_timeout, wait_until, FnCondition, LoadState, NavigationOptions, PageEvent,
         WaitCondition, WaitOptions, WaitResult, Waiter, DEFAULT_WAIT_TIMEOUT_MS,
@@ -850,8 +852,6 @@ pub mod prelude {
     pub use super::watch::*;
     pub use super::web::*;
     pub use super::websocket::*;
-    #[cfg(feature = "llm")]
-    pub use super::llm::*;
     // Note: renacer_integration types are available as RenacerTracingConfig, etc.
     // to avoid conflicts with tracing_support::TracingConfig
     pub use super::renacer_integration::{

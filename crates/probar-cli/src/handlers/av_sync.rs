@@ -38,7 +38,10 @@ pub fn execute_check(config: &CliConfig, args: &AvSyncCheckArgs) -> CliResult<()
 
     match args.format {
         AvSyncOutputFormat::Text => {
-            print!("{}", render_text_report(&report, args.tolerance_ms, args.detailed));
+            print!(
+                "{}",
+                render_text_report(&report, args.tolerance_ms, args.detailed)
+            );
         }
         AvSyncOutputFormat::Json => {
             let json = serde_json::to_string_pretty(&report).map_err(|e| {
@@ -129,9 +132,8 @@ fn format_report_output(
             }
             Ok(output)
         }
-        AvSyncOutputFormat::Json => serde_json::to_string_pretty(reports).map_err(|e| {
-            CliError::report_generation(format!("JSON serialization error: {e}"))
-        }),
+        AvSyncOutputFormat::Json => serde_json::to_string_pretty(reports)
+            .map_err(|e| CliError::report_generation(format!("JSON serialization error: {e}"))),
     }
 }
 
@@ -165,9 +167,8 @@ fn run_av_sync_check(
         .first()
         .map_or(DEFAULT_SAMPLE_RATE, |d| d.sample_rate);
 
-    let samples = extract_audio(video_path, sample_rate).map_err(|e| {
-        CliError::test_execution(format!("Audio extraction failed: {e}"))
-    })?;
+    let samples = extract_audio(video_path, sample_rate)
+        .map_err(|e| CliError::test_execution(format!("Audio extraction failed: {e}")))?;
 
     if config.verbosity.is_verbose() {
         #[allow(clippy::cast_precision_loss)]
@@ -439,11 +440,7 @@ mod tests {
     fn test_load_edl_valid() {
         let temp = tempfile::TempDir::new().unwrap();
         let edl_path = temp.path().join("test.edl.json");
-        std::fs::write(
-            &edl_path,
-            r#"{"video_id":"test","decisions":[]}"#,
-        )
-        .unwrap();
+        std::fs::write(&edl_path, r#"{"video_id":"test","decisions":[]}"#).unwrap();
         let edl = load_edl(&edl_path).unwrap();
         assert_eq!(edl.video_id, "test");
     }

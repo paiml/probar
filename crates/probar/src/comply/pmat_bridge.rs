@@ -498,7 +498,10 @@ Total violations: 0
         };
 
         let checks = bridge.to_compliance_checks(&result);
-        let dup = checks.iter().find(|c| c.id == "PMAT-DUPLICATE-001").unwrap();
+        let dup = checks
+            .iter()
+            .find(|c| c.id == "PMAT-DUPLICATE-001")
+            .unwrap();
         assert_eq!(dup.status, ComplianceStatus::Warn);
     }
 }

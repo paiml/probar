@@ -18,7 +18,5 @@ pub mod types;
 pub mod validation;
 
 pub use probe::{build_ffprobe_args, parse_ffprobe_json, probe_video};
-pub use types::{
-    VideoCheck, VideoExpectations, VideoProbe, VideoQualityReport, VideoVerdict,
-};
+pub use types::{VideoCheck, VideoExpectations, VideoProbe, VideoQualityReport, VideoVerdict};
 pub use validation::validate_video;

@@ -4,9 +4,9 @@
 //! and any server exposing the OpenAI `/v1/chat/completions` API.
 
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 #[cfg(feature = "llm")]
 use std::time::Instant;
-use std::time::Duration;
 
 /// SSE streaming chunk from an OpenAI-compatible chat completion endpoint.
 #[derive(Debug, Clone, Deserialize)]
@@ -681,10 +681,7 @@ mod tests {
         let json = r#"{"choices":[{"delta":{"content":"Hello"},"finish_reason":null}]}"#;
         let chunk: StreamChunk = serde_json::from_str(json).unwrap();
         assert_eq!(chunk.choices.len(), 1);
-        assert_eq!(
-            chunk.choices[0].delta.content.as_deref(),
-            Some("Hello")
-        );
+        assert_eq!(chunk.choices[0].delta.content.as_deref(), Some("Hello"));
         assert!(chunk.choices[0].finish_reason.is_none());
         assert!(chunk.usage.is_none());
     }
@@ -694,10 +691,7 @@ mod tests {
         // GH-24: Final streaming chunk with usage stats
         let json = r#"{"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}"#;
         let chunk: StreamChunk = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            chunk.choices[0].finish_reason.as_deref(),
-            Some("stop")
-        );
+        assert_eq!(chunk.choices[0].finish_reason.as_deref(), Some("stop"));
         assert!(chunk.choices[0].delta.content.is_none());
         let usage = chunk.usage.unwrap();
         assert_eq!(usage.completion_tokens, 5);

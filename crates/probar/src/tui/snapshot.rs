@@ -103,10 +103,11 @@ impl TuiSnapshot {
 
     /// Save snapshot to a YAML file
     pub fn save(&self, path: &Path) -> ProbarResult<()> {
-        let yaml =
-            serde_yaml_ng::to_string(self).map_err(|e| ProbarError::SnapshotSerializationError {
+        let yaml = serde_yaml_ng::to_string(self).map_err(|e| {
+            ProbarError::SnapshotSerializationError {
                 message: format!("Failed to serialize snapshot: {e}"),
-            })?;
+            }
+        })?;
 
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -119,10 +120,11 @@ impl TuiSnapshot {
     /// Load snapshot from a YAML file
     pub fn load(path: &Path) -> ProbarResult<Self> {
         let yaml = fs::read_to_string(path)?;
-        let snapshot: TuiSnapshot =
-            serde_yaml_ng::from_str(&yaml).map_err(|e| ProbarError::SnapshotSerializationError {
+        let snapshot: TuiSnapshot = serde_yaml_ng::from_str(&yaml).map_err(|e| {
+            ProbarError::SnapshotSerializationError {
                 message: format!("Failed to deserialize snapshot: {e}"),
-            })?;
+            }
+        })?;
         Ok(snapshot)
     }
 
@@ -355,10 +357,11 @@ impl FrameSequence {
 
     /// Save sequence to YAML file
     pub fn save(&self, path: &Path) -> ProbarResult<()> {
-        let yaml =
-            serde_yaml_ng::to_string(self).map_err(|e| ProbarError::SnapshotSerializationError {
+        let yaml = serde_yaml_ng::to_string(self).map_err(|e| {
+            ProbarError::SnapshotSerializationError {
                 message: format!("Failed to serialize frame sequence: {e}"),
-            })?;
+            }
+        })?;
 
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -371,10 +374,11 @@ impl FrameSequence {
     /// Load sequence from YAML file
     pub fn load(path: &Path) -> ProbarResult<Self> {
         let yaml = fs::read_to_string(path)?;
-        let sequence: FrameSequence =
-            serde_yaml_ng::from_str(&yaml).map_err(|e| ProbarError::SnapshotSerializationError {
+        let sequence: FrameSequence = serde_yaml_ng::from_str(&yaml).map_err(|e| {
+            ProbarError::SnapshotSerializationError {
                 message: format!("Failed to deserialize frame sequence: {e}"),
-            })?;
+            }
+        })?;
         Ok(sequence)
     }
 }

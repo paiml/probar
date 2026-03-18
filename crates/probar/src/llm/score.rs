@@ -301,7 +301,12 @@ pub fn compute_scorecard(
     let c1_decode: HashMap<String, f64> = c1_results
         .map(|c1| {
             c1.iter()
-                .map(|(r, _)| (strip_concurrency_suffix(&r.runtime_name), r.decode_tok_per_sec))
+                .map(|(r, _)| {
+                    (
+                        strip_concurrency_suffix(&r.runtime_name),
+                        r.decode_tok_per_sec,
+                    )
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -387,9 +392,7 @@ pub fn compute_scorecard(
                         .is_some_and(|&(_, best_idx)| best_idx == idx);
 
                     if is_best {
-                        score = score
-                            .saturating_add(contract.best_in_class_bonus)
-                            .min(100);
+                        score = score.saturating_add(contract.best_in_class_bonus).min(100);
                     }
 
                     weighted_sum += *weight * f64::from(score);
@@ -420,7 +423,11 @@ pub fn compute_scorecard(
     }
 
     // Sort by composite descending
-    scored_runtimes.sort_by(|a, b| b.composite.partial_cmp(&a.composite).unwrap_or(std::cmp::Ordering::Equal));
+    scored_runtimes.sort_by(|a, b| {
+        b.composite
+            .partial_cmp(&a.composite)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     Scorecard {
         contract_version: "2.0.0".into(),
@@ -522,10 +529,11 @@ pub fn format_markdown(scorecard: &Scorecard) -> String {
 
     if scorecard.concurrency == 1 {
         lines.push(
-            "| Runtime | Decode | TTFT P50 | ITL P50 | Tail P99 | Error | **Composite** |"
-                .into(),
+            "| Runtime | Decode | TTFT P50 | ITL P50 | Tail P99 | Error | **Composite** |".into(),
         );
-        lines.push("|---------|--------|----------|---------|----------|-------|---------------|".into());
+        lines.push(
+            "|---------|--------|----------|---------|----------|-------|---------------|".into(),
+        );
 
         for rt in &scorecard.runtimes {
             let decode = format_md_cell(rt.metrics.get("decode_tok_s"));
@@ -640,7 +648,11 @@ pub fn compute_layer_scorecard(
         .collect();
 
     // Sort ascending (best = lowest us/layer)
-    scored.sort_by(|a, b| a.us_per_layer.partial_cmp(&b.us_per_layer).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        a.us_per_layer
+            .partial_cmp(&b.us_per_layer)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // Mark best
     if let Some(first) = scored.first_mut() {
@@ -915,7 +927,11 @@ pub fn compute_profile_scorecard(
         })
         .collect();
 
-    consistency.sort_by(|a, b| b.consistency.partial_cmp(&a.consistency).unwrap_or(std::cmp::Ordering::Equal));
+    consistency.sort_by(|a, b| {
+        b.consistency
+            .partial_cmp(&a.consistency)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     ProfileScorecard {
         timestamp: chrono::Utc::now().to_rfc3339(),
@@ -974,8 +990,14 @@ pub fn format_profile_markdown(scorecard: &ProfileScorecard) -> String {
     let mut lines = Vec::new();
     lines.push("## Per-Prompt-Profile Scores".into());
     lines.push(String::new());
-    lines.push("| Runtime | Profile | Tokens | Decode tok/s | TTFT P50 ms | ITL P50 ms | **Score** |".into());
-    lines.push("|---------|---------|--------|-------------|-------------|------------|-----------|".into());
+    lines.push(
+        "| Runtime | Profile | Tokens | Decode tok/s | TTFT P50 ms | ITL P50 ms | **Score** |"
+            .into(),
+    );
+    lines.push(
+        "|---------|---------|--------|-------------|-------------|------------|-----------|"
+            .into(),
+    );
 
     for entry in &scorecard.entries {
         lines.push(format!(
@@ -1224,22 +1246,25 @@ pub fn compute_output_length_scorecard(
             if reqs.is_empty() {
                 continue;
             }
-            let avg_tokens =
-                reqs.iter().map(|r| f64::from(r.completion_tokens)).sum::<f64>() / reqs.len() as f64;
-            let avg_itl =
-                reqs.iter().map(|r| r.itl_ms).sum::<f64>() / reqs.len() as f64;
+            let avg_tokens = reqs
+                .iter()
+                .map(|r| f64::from(r.completion_tokens))
+                .sum::<f64>()
+                / reqs.len() as f64;
+            let avg_itl = reqs.iter().map(|r| r.itl_ms).sum::<f64>() / reqs.len() as f64;
             let decode = if avg_itl > 0.0 { 1000.0 / avg_itl } else { 0.0 };
 
             // Score using ITL threshold (decode is derived from ITL)
-            let itl_threshold = contract
-                .thresholds
-                .get("itl_p50_ms")
-                .cloned()
-                .unwrap_or(MetricThreshold {
-                    excellent: 6.0,
-                    good: 10.0,
-                    higher_is_better: false,
-                });
+            let itl_threshold =
+                contract
+                    .thresholds
+                    .get("itl_p50_ms")
+                    .cloned()
+                    .unwrap_or(MetricThreshold {
+                        excellent: 6.0,
+                        good: 10.0,
+                        higher_is_better: false,
+                    });
             let score = compute_metric_score(avg_itl, &itl_threshold);
             let grade = assign_grade(f64::from(score), &contract.grades);
 
@@ -1307,10 +1332,11 @@ pub fn format_output_length_markdown(scorecard: &OutputLengthScorecard) -> Strin
     lines.push("## Per-Output-Length Scores".into());
     lines.push(String::new());
     lines.push(
-        "| Runtime | Output | Count | Avg Tokens | Decode tok/s | ITL ms | Score | Grade |"
-            .into(),
+        "| Runtime | Output | Count | Avg Tokens | Decode tok/s | ITL ms | Score | Grade |".into(),
     );
-    lines.push("|---------|--------|-------|------------|-------------|--------|-------|-------|".into());
+    lines.push(
+        "|---------|--------|-------|------------|-------------|--------|-------|-------|".into(),
+    );
 
     for e in &scorecard.entries {
         lines.push(format!(
@@ -1425,7 +1451,12 @@ pub fn format_memory_table(scorecard: &MemoryScorecard) -> String {
         let star = if rt.best { "*" } else { " " };
         lines.push(format!(
             "{:<24} {:>10.0} {:>10.0} {:>11.1}{} {:>8} {:>8}",
-            rt.name, rt.vram_used_mb, rt.vram_total_mb, rt.tok_per_sec_per_gb, star, rt.score,
+            rt.name,
+            rt.vram_used_mb,
+            rt.vram_total_mb,
+            rt.tok_per_sec_per_gb,
+            star,
+            rt.score,
             rt.grade
         ));
     }
@@ -1665,7 +1696,12 @@ pub fn format_power_table(scorecard: &PowerEfficiencyScorecard) -> String {
         let star = if rt.best { "*" } else { " " };
         lines.push(format!(
             "{:<24} {:>10.1} {:>12.1} {:>9.2}{} {:>8} {:>8}",
-            rt.name, rt.mean_power_w, rt.energy_per_token_mj, rt.tok_per_watt, star, rt.score,
+            rt.name,
+            rt.mean_power_w,
+            rt.energy_per_token_mj,
+            rt.tok_per_watt,
+            star,
+            rt.score,
             rt.grade
         ));
     }
@@ -1866,7 +1902,9 @@ pub fn format_scaling_markdown(scorecard: &ConcurrencyScalingScorecard) -> Strin
     lines.push(
         "| Runtime | c=1 tok/s | Peak Aggregate | Peak c | Efficiency | Score | Grade |".into(),
     );
-    lines.push("|---------|-----------|---------------|--------|------------|-------|-------|".into());
+    lines.push(
+        "|---------|-----------|---------------|--------|------------|-------|-------|".into(),
+    );
 
     for rt in &scorecard.runtimes {
         lines.push(format!(
@@ -1984,7 +2022,10 @@ mod tests {
             higher_is_better: false,
         };
         let score = compute_metric_score(0.007, &t);
-        assert!(score >= 80, "0.7% error rate scored {score}, expected >= 80");
+        assert!(
+            score >= 80,
+            "0.7% error rate scored {score}, expected >= 80"
+        );
     }
 
     #[test]
@@ -2216,8 +2257,14 @@ mod tests {
     fn test_layer_scoring_best_first() {
         let contract = ScoringContract::default();
         let results = vec![
-            (make_test_result_with_layers("fast", 160.0, 12.0, 220.0, 2300), "a.json".into()),
-            (make_test_result_with_layers("slow", 100.0, 50.0, 350.0, 2300), "b.json".into()),
+            (
+                make_test_result_with_layers("fast", 160.0, 12.0, 220.0, 2300),
+                "a.json".into(),
+            ),
+            (
+                make_test_result_with_layers("slow", 100.0, 50.0, 350.0, 2300),
+                "b.json".into(),
+            ),
         ];
         let card = compute_layer_scorecard(&results, &contract.grades);
         assert_eq!(card.runtimes.len(), 2);
@@ -2229,19 +2276,32 @@ mod tests {
     #[test]
     fn test_layer_scoring_excellent_threshold() {
         let contract = ScoringContract::default();
-        let results = vec![
-            (make_test_result_with_layers("vllm", 160.0, 12.0, 220.0, 2300), "a.json".into()),
-        ];
+        let results = vec![(
+            make_test_result_with_layers("vllm", 160.0, 12.0, 220.0, 2300),
+            "a.json".into(),
+        )];
         let card = compute_layer_scorecard(&results, &contract.grades);
         assert_eq!(card.runtimes[0].score, 100);
     }
 
     #[test]
     fn test_prompt_category_classification() {
-        assert_eq!(PromptCategory::from_avg_prompt_tokens(10.0), PromptCategory::Micro);
-        assert_eq!(PromptCategory::from_avg_prompt_tokens(23.0), PromptCategory::Short);
-        assert_eq!(PromptCategory::from_avg_prompt_tokens(102.0), PromptCategory::Medium);
-        assert_eq!(PromptCategory::from_avg_prompt_tokens(512.0), PromptCategory::Long);
+        assert_eq!(
+            PromptCategory::from_avg_prompt_tokens(10.0),
+            PromptCategory::Micro
+        );
+        assert_eq!(
+            PromptCategory::from_avg_prompt_tokens(23.0),
+            PromptCategory::Short
+        );
+        assert_eq!(
+            PromptCategory::from_avg_prompt_tokens(102.0),
+            PromptCategory::Medium
+        );
+        assert_eq!(
+            PromptCategory::from_avg_prompt_tokens(512.0),
+            PromptCategory::Long
+        );
     }
 
     #[test]
@@ -2295,15 +2355,30 @@ mod tests {
         });
         let results = vec![(r, "a.json".into())];
         let card = compute_correctness_scorecard(&results, &contract.grades);
-        assert!(card.runtimes[0].score < 75, "90% pass rate should score below good");
+        assert!(
+            card.runtimes[0].score < 75,
+            "90% pass rate should score below good"
+        );
     }
 
     #[test]
     fn test_output_length_classification() {
-        assert_eq!(OutputLengthCategory::from_tokens(10), OutputLengthCategory::Short);
-        assert_eq!(OutputLengthCategory::from_tokens(32), OutputLengthCategory::Medium);
-        assert_eq!(OutputLengthCategory::from_tokens(128), OutputLengthCategory::Medium);
-        assert_eq!(OutputLengthCategory::from_tokens(200), OutputLengthCategory::Long);
+        assert_eq!(
+            OutputLengthCategory::from_tokens(10),
+            OutputLengthCategory::Short
+        );
+        assert_eq!(
+            OutputLengthCategory::from_tokens(32),
+            OutputLengthCategory::Medium
+        );
+        assert_eq!(
+            OutputLengthCategory::from_tokens(128),
+            OutputLengthCategory::Medium
+        );
+        assert_eq!(
+            OutputLengthCategory::from_tokens(200),
+            OutputLengthCategory::Long
+        );
     }
 
     #[test]
@@ -2312,12 +2387,32 @@ mod tests {
         let mut r = make_test_result("runtime_a", 140.0, 15.0, 7.0, 20.0, 0.0, 1);
         r.gpu_telemetry = Some(super::super::loadtest::GpuTelemetry {
             samples: 10,
-            gpu_utilization_pct: super::super::loadtest::TelemetryStat { mean: 80.0, max: 95.0, min: 60.0 },
-            memory_used_mb: super::super::loadtest::TelemetryStat { mean: 3200.0, max: 3500.0, min: 3000.0 },
+            gpu_utilization_pct: super::super::loadtest::TelemetryStat {
+                mean: 80.0,
+                max: 95.0,
+                min: 60.0,
+            },
+            memory_used_mb: super::super::loadtest::TelemetryStat {
+                mean: 3200.0,
+                max: 3500.0,
+                min: 3000.0,
+            },
             memory_total_mb: 8192.0,
-            power_draw_w: super::super::loadtest::TelemetryStat { mean: 80.0, max: 100.0, min: 60.0 },
-            temperature_c: super::super::loadtest::TelemetryStat { mean: 70.0, max: 80.0, min: 50.0 },
-            clock_gpu_mhz: super::super::loadtest::TelemetryStat { mean: 1500.0, max: 1500.0, min: 1500.0 },
+            power_draw_w: super::super::loadtest::TelemetryStat {
+                mean: 80.0,
+                max: 100.0,
+                min: 60.0,
+            },
+            temperature_c: super::super::loadtest::TelemetryStat {
+                mean: 70.0,
+                max: 80.0,
+                min: 50.0,
+            },
+            clock_gpu_mhz: super::super::loadtest::TelemetryStat {
+                mean: 1500.0,
+                max: 1500.0,
+                min: 1500.0,
+            },
             throttle_events: 0,
             energy_total_wh: 1.0,
             energy_per_token_mj: 5.0,
@@ -2327,7 +2422,11 @@ mod tests {
         let card = compute_memory_scorecard(&results, &contract.grades);
         assert_eq!(card.runtimes.len(), 1);
         // 140 tok/s / 3.42 GB = ~40.9 tok/s/GB → excellent
-        assert!(card.runtimes[0].score >= 95, "High efficiency should score well: {}", card.runtimes[0].score);
+        assert!(
+            card.runtimes[0].score >= 95,
+            "High efficiency should score well: {}",
+            card.runtimes[0].score
+        );
     }
 
     #[test]
@@ -2350,12 +2449,32 @@ mod tests {
         let mut r = make_test_result("runtime_a", 140.0, 15.0, 7.0, 20.0, 0.0, 1);
         r.gpu_telemetry = Some(super::super::loadtest::GpuTelemetry {
             samples: 10,
-            gpu_utilization_pct: super::super::loadtest::TelemetryStat { mean: 80.0, max: 95.0, min: 60.0 },
-            memory_used_mb: super::super::loadtest::TelemetryStat { mean: 3200.0, max: 3500.0, min: 3000.0 },
+            gpu_utilization_pct: super::super::loadtest::TelemetryStat {
+                mean: 80.0,
+                max: 95.0,
+                min: 60.0,
+            },
+            memory_used_mb: super::super::loadtest::TelemetryStat {
+                mean: 3200.0,
+                max: 3500.0,
+                min: 3000.0,
+            },
             memory_total_mb: 8192.0,
-            power_draw_w: super::super::loadtest::TelemetryStat { mean: 80.0, max: 100.0, min: 60.0 },
-            temperature_c: super::super::loadtest::TelemetryStat { mean: 70.0, max: 80.0, min: 50.0 },
-            clock_gpu_mhz: super::super::loadtest::TelemetryStat { mean: 1500.0, max: 1500.0, min: 1500.0 },
+            power_draw_w: super::super::loadtest::TelemetryStat {
+                mean: 80.0,
+                max: 100.0,
+                min: 60.0,
+            },
+            temperature_c: super::super::loadtest::TelemetryStat {
+                mean: 70.0,
+                max: 80.0,
+                min: 50.0,
+            },
+            clock_gpu_mhz: super::super::loadtest::TelemetryStat {
+                mean: 1500.0,
+                max: 1500.0,
+                min: 1500.0,
+            },
             throttle_events: 0,
             energy_total_wh: 1.0,
             energy_per_token_mj: 5.0,
@@ -2365,7 +2484,11 @@ mod tests {
         let card = compute_power_efficiency_scorecard(&results, &contract.grades);
         assert_eq!(card.runtimes.len(), 1);
         // 140 tok/s / 80W = 1.75 tok/s/W → above good
-        assert!(card.runtimes[0].score >= 75, "1.75 tok/s/W should be above good: {}", card.runtimes[0].score);
+        assert!(
+            card.runtimes[0].score >= 75,
+            "1.75 tok/s/W should be above good: {}",
+            card.runtimes[0].score
+        );
     }
 
     #[test]
@@ -2374,15 +2497,16 @@ mod tests {
         let r_c1 = make_test_result("runtime_a-c1", 150.0, 15.0, 7.0, 20.0, 0.0, 1);
         let mut r_c4 = make_test_result("runtime_a-c4", 140.0, 30.0, 8.0, 40.0, 0.0, 4);
         r_c4.tokens_per_sec = 540.0; // aggregate = 540
-        let results = vec![
-            (r_c1, "c1.json".into()),
-            (r_c4, "c4.json".into()),
-        ];
+        let results = vec![(r_c1, "c1.json".into()), (r_c4, "c4.json".into())];
         let card = compute_concurrency_scaling_scorecard(&results, &contract.grades);
         assert_eq!(card.runtimes.len(), 1);
         // 540 / (150 * 4) = 0.90 → excellent
         assert!(card.runtimes[0].scaling_efficiency > 0.85);
-        assert!(card.runtimes[0].score >= 90, "Near-linear scaling: {}", card.runtimes[0].score);
+        assert!(
+            card.runtimes[0].score >= 90,
+            "Near-linear scaling: {}",
+            card.runtimes[0].score
+        );
     }
 
     #[test]
@@ -2398,7 +2522,11 @@ mod tests {
         ];
         let card = compute_profile_scorecard(&results, &contract);
         if let Some(cs) = card.consistency.first() {
-            assert!(cs.consistency < 90.0, "Expected degradation, got {}%", cs.consistency);
+            assert!(
+                cs.consistency < 90.0,
+                "Expected degradation, got {}%",
+                cs.consistency
+            );
             assert!(cs.worst_score < cs.best_score);
         }
     }

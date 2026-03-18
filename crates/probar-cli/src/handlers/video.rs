@@ -21,9 +21,8 @@ pub fn execute_check(config: &CliConfig, args: &VideoCheckArgs) -> CliResult<()>
         println!("Probing video: {}", video_path.display());
     }
 
-    let probe = probe_video(video_path).map_err(|e| {
-        CliError::test_execution(format!("Video probe failed: {e}"))
-    })?;
+    let probe = probe_video(video_path)
+        .map_err(|e| CliError::test_execution(format!("Video probe failed: {e}")))?;
 
     let mut expectations = VideoExpectations::default();
     if let (Some(w), Some(h)) = (args.width, args.height) {

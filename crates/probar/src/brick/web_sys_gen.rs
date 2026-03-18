@@ -234,7 +234,10 @@ impl FetchClient {
         let fetch_fn: js_sys::Function = fetch_fn.dyn_into().map_err(|_| WebSysError::NoWindow)?;
 
         let promise = fetch_fn
-            .call1(&wasm_bindgen::JsValue::UNDEFINED, &wasm_bindgen::JsValue::from_str(url))
+            .call1(
+                &wasm_bindgen::JsValue::UNDEFINED,
+                &wasm_bindgen::JsValue::from_str(url),
+            )
             .map_err(|_| WebSysError::FetchFailed)?;
 
         let response = JsFuture::from(js_sys::Promise::from(promise))

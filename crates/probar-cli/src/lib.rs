@@ -39,11 +39,11 @@ pub use commands::{
     ComplyEnforceArgs, ComplyMigrateArgs, ComplyOutputFormat, ComplyReportArgs, ComplyReportFormat,
     ComplySubcommand, ConfigArgs, CoverageArgs, DataAuditArgs, DiagramFormat, ExperimentArgs,
     ExperimentCompareArgs, ExperimentInitArgs, ExperimentStatusArgs, ExperimentSubcommand,
-    InitArgs, LlmArgs, LlmBenchArgs, LlmGenDatasetArgs, LlmLoadArgs, LlmReportArgs, LlmSubcommand,
-    LlmScoreArgs, LlmSweepArgs, LlmTestArgs, OutputFormat, PaletteArg, PlaybookArgs, PlaybookOutputFormat,
-    RecordArgs, RecordFormat, ReportArgs, ReportFormat, ScoreArgs, ScoreOutputFormat, ServeArgs,
-    ServeSubcommand, StressArgs, TestArgs, TreeArgs, VideoArgs, VideoCheckArgs, VideoSubcommand,
-    VizArgs, WasmTarget, WatchArgs,
+    InitArgs, LlmArgs, LlmBenchArgs, LlmGenDatasetArgs, LlmLoadArgs, LlmReportArgs, LlmScoreArgs,
+    LlmSubcommand, LlmSweepArgs, LlmTestArgs, OutputFormat, PaletteArg, PlaybookArgs,
+    PlaybookOutputFormat, RecordArgs, RecordFormat, ReportArgs, ReportFormat, ScoreArgs,
+    ScoreOutputFormat, ServeArgs, ServeSubcommand, StressArgs, TestArgs, TreeArgs, VideoArgs,
+    VideoCheckArgs, VideoSubcommand, VizArgs, WasmTarget, WatchArgs,
 };
 pub use config::{CliConfig, ColorChoice, Verbosity};
 pub use debug::{create_tracer, DebugCategory, DebugTracer, DebugVerbosity, ResolutionRule};

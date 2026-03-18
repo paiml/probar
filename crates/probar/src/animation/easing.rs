@@ -123,7 +123,7 @@ mod tests {
     #[test]
     fn test_verify_easing_mismatch() {
         let easing = EasingFunction::EaseIn; // quadratic
-        // Provide linear values instead
+                                             // Provide linear values instead
         let keyframes: Vec<Keyframe> = (0..=10)
             .map(|i| {
                 let t = i as f64 / 10.0;

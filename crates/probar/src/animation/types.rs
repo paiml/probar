@@ -234,7 +234,10 @@ mod tests {
     #[test]
     fn test_animation_event_type_display() {
         assert_eq!(AnimationEventType::Enter.to_string(), "enter");
-        assert_eq!(AnimationEventType::PhysicsEvent.to_string(), "physics_event");
+        assert_eq!(
+            AnimationEventType::PhysicsEvent.to_string(),
+            "physics_event"
+        );
     }
 
     #[test]
@@ -288,7 +291,10 @@ mod tests {
         let parsed: AnimationTimeline = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.video_id, "test");
         assert_eq!(parsed.events.len(), 1);
-        assert_eq!(parsed.events[0].event_type, AnimationEventType::PhysicsEvent);
+        assert_eq!(
+            parsed.events[0].event_type,
+            AnimationEventType::PhysicsEvent
+        );
     }
 
     #[test]

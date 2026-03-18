@@ -521,8 +521,10 @@ pub fn execute_llm_score(args: &LlmScoreArgs) -> CliResult<()> {
         .collect();
 
     // Group by concurrency
-    let mut by_concurrency: std::collections::HashMap<usize, Vec<(jugar_probar::llm::LoadTestResult, String)>> =
-        std::collections::HashMap::new();
+    let mut by_concurrency: std::collections::HashMap<
+        usize,
+        Vec<(jugar_probar::llm::LoadTestResult, String)>,
+    > = std::collections::HashMap::new();
     for (result, filename) in filtered {
         by_concurrency
             .entry(result.concurrency)
@@ -581,8 +583,7 @@ pub fn execute_llm_score(args: &LlmScoreArgs) -> CliResult<()> {
             .flat_map(|v| v.iter())
             .cloned()
             .collect();
-        let layer_card =
-            jugar_probar::llm::compute_layer_scorecard(&all_flat, &contract.grades);
+        let layer_card = jugar_probar::llm::compute_layer_scorecard(&all_flat, &contract.grades);
         if !layer_card.runtimes.is_empty() {
             match args.format.as_str() {
                 "json" => {
@@ -604,8 +605,7 @@ pub fn execute_llm_score(args: &LlmScoreArgs) -> CliResult<()> {
     if args.by_profile {
         for c in &concurrency_levels {
             if let Some(results) = by_concurrency.get(c) {
-                let profile_card =
-                    jugar_probar::llm::compute_profile_scorecard(results, &contract);
+                let profile_card = jugar_probar::llm::compute_profile_scorecard(results, &contract);
                 if !profile_card.entries.is_empty() {
                     match args.format.as_str() {
                         "json" => {
@@ -614,14 +614,11 @@ pub fn execute_llm_score(args: &LlmScoreArgs) -> CliResult<()> {
                             all_output.push(json);
                         }
                         "markdown" => {
-                            all_output.push(jugar_probar::llm::format_profile_markdown(
-                                &profile_card,
-                            ));
+                            all_output
+                                .push(jugar_probar::llm::format_profile_markdown(&profile_card));
                         }
                         _ => {
-                            all_output.push(jugar_probar::llm::format_profile_table(
-                                &profile_card,
-                            ));
+                            all_output.push(jugar_probar::llm::format_profile_table(&profile_card));
                         }
                     }
                 }
@@ -658,8 +655,7 @@ pub fn execute_llm_score(args: &LlmScoreArgs) -> CliResult<()> {
     if args.by_output_length {
         for c in &concurrency_levels {
             if let Some(results) = by_concurrency.get(c) {
-                let card =
-                    jugar_probar::llm::compute_output_length_scorecard(results, &contract);
+                let card = jugar_probar::llm::compute_output_length_scorecard(results, &contract);
                 if !card.entries.is_empty() {
                     match args.format.as_str() {
                         "json" => {
@@ -668,7 +664,8 @@ pub fn execute_llm_score(args: &LlmScoreArgs) -> CliResult<()> {
                             all_output.push(json);
                         }
                         "markdown" => {
-                            all_output.push(jugar_probar::llm::format_output_length_markdown(&card));
+                            all_output
+                                .push(jugar_probar::llm::format_output_length_markdown(&card));
                         }
                         _ => {
                             all_output.push(jugar_probar::llm::format_output_length_table(&card));
@@ -1024,12 +1021,12 @@ fn apply_max_tokens_distribution(
                 "Invalid distribution format: {distribution}. Expected: uniform:MIN,MAX"
             )));
         }
-        let min: u32 = parts[0].parse().map_err(|_| {
-            CliError::Generic(format!("Invalid min value: {}", parts[0]))
-        })?;
-        let max: u32 = parts[1].parse().map_err(|_| {
-            CliError::Generic(format!("Invalid max value: {}", parts[1]))
-        })?;
+        let min: u32 = parts[0]
+            .parse()
+            .map_err(|_| CliError::Generic(format!("Invalid min value: {}", parts[0])))?;
+        let max: u32 = parts[1]
+            .parse()
+            .map_err(|_| CliError::Generic(format!("Invalid max value: {}", parts[1])))?;
         if min > max || min == 0 {
             return Err(CliError::Generic(format!(
                 "Invalid range: min={min}, max={max}. Need 0 < min <= max"
@@ -1037,9 +1034,9 @@ fn apply_max_tokens_distribution(
         }
         (min, max)
     } else if let Some(rest) = distribution.strip_prefix("fixed:") {
-        let n: u32 = rest.parse().map_err(|_| {
-            CliError::Generic(format!("Invalid fixed value: {rest}"))
-        })?;
+        let n: u32 = rest
+            .parse()
+            .map_err(|_| CliError::Generic(format!("Invalid fixed value: {rest}")))?;
         (n, n)
     } else {
         return Err(CliError::Generic(format!(
@@ -1057,7 +1054,9 @@ fn apply_max_tokens_distribution(
         prompt.max_tokens = Some(if min == max {
             min
         } else {
-            state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1);
             min + ((state >> 33) as u32 % range)
         });
         prompts.push(prompt);

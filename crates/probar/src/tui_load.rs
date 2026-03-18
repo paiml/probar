@@ -292,11 +292,42 @@ impl DataGenerator {
         let mut rng_state = self.seed;
 
         let names = [
-            "systemd", "kworker", "chrome", "firefox", "code", "rust-analyzer",
-            "node", "python", "java", "postgres", "nginx", "docker", "containerd",
-            "ssh", "bash", "zsh", "fish", "vim", "nvim", "emacs", "tmux",
-            "htop", "top", "ps", "grep", "find", "cargo", "rustc", "gcc",
-            "clang", "llvm", "git", "make", "cmake", "webpack", "vite",
+            "systemd",
+            "kworker",
+            "chrome",
+            "firefox",
+            "code",
+            "rust-analyzer",
+            "node",
+            "python",
+            "java",
+            "postgres",
+            "nginx",
+            "docker",
+            "containerd",
+            "ssh",
+            "bash",
+            "zsh",
+            "fish",
+            "vim",
+            "nvim",
+            "emacs",
+            "tmux",
+            "htop",
+            "top",
+            "ps",
+            "grep",
+            "find",
+            "cargo",
+            "rustc",
+            "gcc",
+            "clang",
+            "llvm",
+            "git",
+            "make",
+            "cmake",
+            "webpack",
+            "vite",
         ];
 
         let states = ["R", "S", "D", "Z", "T", "I"];
@@ -337,16 +368,25 @@ impl DataGenerator {
 
     fn generate_cmdline(&self, base_name: &str, seed: u64) -> String {
         let args = [
-            "--config", "/etc/config.yaml",
-            "--port", "8080",
-            "--workers", "4",
-            "--log-level", "debug",
-            "--data-dir", "/var/lib/data",
-            "--cache-size", "1024",
-            "--timeout", "30",
-            "--max-connections", "1000",
+            "--config",
+            "/etc/config.yaml",
+            "--port",
+            "8080",
+            "--workers",
+            "4",
+            "--log-level",
+            "debug",
+            "--data-dir",
+            "/var/lib/data",
+            "--cache-size",
+            "1024",
+            "--timeout",
+            "30",
+            "--max-connections",
+            "1000",
             "--enable-metrics",
-            "--prometheus-port", "9090",
+            "--prometheus-port",
+            "9090",
         ];
 
         let mut cmdline = format!("/usr/bin/{}", base_name);
@@ -554,7 +594,10 @@ impl TuiLoadTest {
     /// # Errors
     ///
     /// Returns error if hang detected or budget exceeded.
-    pub fn run_filter_stress<F>(&self, mut filter_fn: F) -> TuiLoadResult<Vec<(String, TuiFrameMetrics)>>
+    pub fn run_filter_stress<F>(
+        &self,
+        mut filter_fn: F,
+    ) -> TuiLoadResult<Vec<(String, TuiFrameMetrics)>>
     where
         F: FnMut(&[SyntheticItem], &str) -> Vec<SyntheticItem>,
     {
@@ -710,8 +753,8 @@ impl IntegrationLoadTest {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            frame_budget_ms: 100.0,  // 10 FPS minimum
-            timeout_ms: 5000,         // 5 second hang detection
+            frame_budget_ms: 100.0, // 10 FPS minimum
+            timeout_ms: 5000,       // 5 second hang detection
             frame_count: 5,
             component_budgets: std::collections::HashMap::new(),
         }
@@ -1092,7 +1135,11 @@ mod tests {
 
         assert!(result.is_err());
         match result {
-            Err(TuiLoadError::BudgetExceeded { actual_ms, budget_ms, .. }) => {
+            Err(TuiLoadError::BudgetExceeded {
+                actual_ms,
+                budget_ms,
+                ..
+            }) => {
                 assert!((actual_ms - 10.0).abs() < f64::EPSILON);
                 assert!((budget_ms - 0.001).abs() < f64::EPSILON);
             }

@@ -17,10 +17,7 @@ pub fn analyze_levels(samples: &[f32]) -> AudioLevels {
         };
     }
 
-    let peak = samples
-        .iter()
-        .map(|s| s.abs())
-        .fold(0.0f32, f32::max);
+    let peak = samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
 
     let sum_sq: f64 = samples.iter().map(|&s| f64::from(s) * f64::from(s)).sum();
     let rms = (sum_sq / samples.len() as f64).sqrt();

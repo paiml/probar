@@ -23,15 +23,11 @@ pub fn execute_check(config: &CliConfig, args: &AudioCheckArgs) -> CliResult<()>
         .with_no_clipping(args.no_clipping);
 
     if config.verbosity.is_verbose() {
-        println!(
-            "Analyzing audio quality: {}",
-            video_path.display()
-        );
+        println!("Analyzing audio quality: {}", video_path.display());
     }
 
-    let report = analyze_audio(video_path, &audio_config, args.sample_rate).map_err(|e| {
-        CliError::test_execution(format!("Audio extraction failed: {e}"))
-    })?;
+    let report = analyze_audio(video_path, &audio_config, args.sample_rate)
+        .map_err(|e| CliError::test_execution(format!("Audio extraction failed: {e}")))?;
 
     match args.format {
         OutputFormat::Json => {
@@ -56,7 +52,10 @@ pub fn execute_check(config: &CliConfig, args: &AudioCheckArgs) -> CliResult<()>
 
 fn render_text_report(report: &jugar_probar::audio_quality::AudioQualityReport) {
     println!("Audio Quality: {} ({})", report.source, report.verdict);
-    println!("  Duration: {:.1}s ({} samples @ {}Hz)", report.duration_secs, report.sample_count, report.sample_rate);
+    println!(
+        "  Duration: {:.1}s ({} samples @ {}Hz)",
+        report.duration_secs, report.sample_count, report.sample_rate
+    );
     println!("  Levels:");
     println!(
         "    Peak: {:.1} dBFS  {}",
@@ -64,20 +63,31 @@ fn render_text_report(report: &jugar_probar::audio_quality::AudioQualityReport) 
         if report.levels.passed { "PASS" } else { "FAIL" }
     );
     println!("    RMS:  {:.1} dBFS", report.levels.rms_dbfs);
-    println!("    Dynamic range: {:.1} dB", report.levels.dynamic_range_db);
+    println!(
+        "    Dynamic range: {:.1} dB",
+        report.levels.dynamic_range_db
+    );
     println!("  Clipping:");
     println!(
         "    Clipped samples: {} ({:.2}%)  {}",
         report.clipping.clipped_samples,
         report.clipping.clipped_pct,
-        if report.clipping.passed { "PASS" } else { "FAIL" }
+        if report.clipping.passed {
+            "PASS"
+        } else {
+            "FAIL"
+        }
     );
     println!("  Silence:");
     println!(
         "    Total silence: {:.1}s ({:.1}%)  {}",
         report.silence.total_silence_secs,
         report.silence.silence_pct,
-        if report.silence.passed { "PASS" } else { "FAIL" }
+        if report.silence.passed {
+            "PASS"
+        } else {
+            "FAIL"
+        }
     );
     for region in &report.silence.regions {
         println!(
@@ -93,8 +103,7 @@ fn render_text_report(report: &jugar_probar::audio_quality::AudioQualityReport) 
 mod tests {
     use super::*;
     use jugar_probar::audio_quality::{
-        AudioLevels, AudioQualityReport, AudioVerdict, ClippingReport, SilenceRegion,
-        SilenceReport,
+        AudioLevels, AudioQualityReport, AudioVerdict, ClippingReport, SilenceRegion, SilenceReport,
     };
 
     fn sample_report() -> AudioQualityReport {

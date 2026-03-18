@@ -2152,7 +2152,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "trueno",
+ "trueno 0.15.0",
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -2794,16 +2794,20 @@ dependencies = [
 
 [[package]]
 name = "presentar-core"
-version = "0.3.5"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cec076597046cb63e9c064b708e010ab98a1f48db4c0004e8192724e383a6c8d"
 dependencies = [
  "serde",
  "serde_json",
- "trueno",
+ "trueno 0.14.6",
 ]
 
 [[package]]
 name = "presentar-terminal"
 version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "280dc9e13136a2d3490fde1d76d0450cca37268a280e95d814964a41efa31bcc"
 dependencies = [
  "bitvec",
  "compact_str",
@@ -3020,7 +3024,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4175,6 +4179,22 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "trueno"
+version = "0.14.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90b0f08c743a6d63e691f80624e67e306e83f9bc532ebc618b2352cd02126e7e"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "hostname",
+ "num_cpus",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "toml 0.8.23",
 ]
 
 [[package]]

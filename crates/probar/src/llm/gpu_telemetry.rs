@@ -77,8 +77,10 @@ impl GpuTelemetryCollector {
             if is_remote_host(host) {
                 Command::new("ssh")
                     .args([
-                        "-o", "StrictHostKeyChecking=no",
-                        "-o", "ConnectTimeout=5",
+                        "-o",
+                        "StrictHostKeyChecking=no",
+                        "-o",
+                        "ConnectTimeout=5",
                         host,
                         &nvsmi_args,
                     ])
@@ -154,10 +156,7 @@ impl GpuTelemetryCollector {
         let temp = stat(&self.samples, |s| s.temperature_c);
         let clock = stat(&self.samples, |s| s.clock_gpu_mhz);
 
-        let memory_total_mb = self
-            .samples
-            .first()
-            .map_or(0.0, |s| s.memory_total_mb);
+        let memory_total_mb = self.samples.first().map_or(0.0, |s| s.memory_total_mb);
 
         // Energy: sum(power_w * interval_s) / 3600 = Wh
         let energy_total_wh: f64 = self
@@ -180,10 +179,7 @@ impl GpuTelemetryCollector {
         };
 
         // Throttle detection: clock drop >10% from expected or max observed
-        let expected_clock = self
-            .expected_clock_mhz
-            .map(f64::from)
-            .unwrap_or(clock.max);
+        let expected_clock = self.expected_clock_mhz.map(f64::from).unwrap_or(clock.max);
         let throttle_threshold = expected_clock * 0.9;
         let throttle_events = self
             .samples
@@ -238,10 +234,7 @@ fn spawn_local_nvidia_smi(interval: u64) -> Result<tokio::process::Child, String
 }
 
 fn is_remote_host(host: &str) -> bool {
-    !matches!(
-        host,
-        "localhost" | "127.0.0.1" | "::1" | "0.0.0.0"
-    )
+    !matches!(host, "localhost" | "127.0.0.1" | "::1" | "0.0.0.0")
 }
 
 /// Extract hostname from a URL for GPU telemetry collection.

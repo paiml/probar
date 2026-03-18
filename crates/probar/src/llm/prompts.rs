@@ -59,8 +59,8 @@ pub fn load_profile(profile: PromptProfile) -> Vec<ChatRequest> {
 ///     temperature: 0.0
 /// ```
 pub fn load_from_file(path: &Path) -> Result<Vec<ChatRequest>, String> {
-    let content =
-        std::fs::read_to_string(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
 
     let doc: PromptFile =
         serde_yaml_ng::from_str(&content).map_err(|e| format!("Failed to parse YAML: {e}"))?;
@@ -209,11 +209,23 @@ mod tests {
 
     #[test]
     fn test_profile_from_name() {
-        assert_eq!(PromptProfile::from_name("micro"), Some(PromptProfile::Micro));
-        assert_eq!(PromptProfile::from_name("short"), Some(PromptProfile::Short));
-        assert_eq!(PromptProfile::from_name("medium"), Some(PromptProfile::Medium));
+        assert_eq!(
+            PromptProfile::from_name("micro"),
+            Some(PromptProfile::Micro)
+        );
+        assert_eq!(
+            PromptProfile::from_name("short"),
+            Some(PromptProfile::Short)
+        );
+        assert_eq!(
+            PromptProfile::from_name("medium"),
+            Some(PromptProfile::Medium)
+        );
         assert_eq!(PromptProfile::from_name("long"), Some(PromptProfile::Long));
-        assert_eq!(PromptProfile::from_name("MEDIUM"), Some(PromptProfile::Medium));
+        assert_eq!(
+            PromptProfile::from_name("MEDIUM"),
+            Some(PromptProfile::Medium)
+        );
         assert_eq!(PromptProfile::from_name("unknown"), None);
     }
 
@@ -299,9 +311,16 @@ prompts:
         ] {
             let prompts = load_profile(profile);
             for p in &prompts {
-                assert_eq!(p.temperature, Some(0.0), "Profile {profile:?} should be deterministic");
+                assert_eq!(
+                    p.temperature,
+                    Some(0.0),
+                    "Profile {profile:?} should be deterministic"
+                );
                 assert_eq!(p.stream, Some(false));
-                assert!(p.max_tokens.is_some(), "Profile {profile:?} should set max_tokens");
+                assert!(
+                    p.max_tokens.is_some(),
+                    "Profile {profile:?} should set max_tokens"
+                );
             }
         }
     }

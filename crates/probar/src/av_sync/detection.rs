@@ -117,7 +117,13 @@ pub fn detect_onsets(samples: &[f32], config: &DetectionConfig) -> Vec<AudioOnse
         if db >= config.threshold_db && was_below {
             // Threshold crossing detected
             let onset_sample = if lookback > 0 && pos >= lookback {
-                refine_onset(samples, pos, lookback, config.threshold_db, config.sample_rate)
+                refine_onset(
+                    samples,
+                    pos,
+                    lookback,
+                    config.threshold_db,
+                    config.sample_rate,
+                )
             } else {
                 pos
             };
@@ -193,7 +199,8 @@ mod tests {
             for i in 0..tick_duration_samples {
                 if start + i < total_samples {
                     // Generate a short burst at 0.5 amplitude
-                    let phase = (i as f64 / f64::from(sample_rate)) * 1000.0 * std::f64::consts::TAU;
+                    let phase =
+                        (i as f64 / f64::from(sample_rate)) * 1000.0 * std::f64::consts::TAU;
                     samples[start + i] = (phase.sin() * 0.5) as f32;
                 }
             }
@@ -314,7 +321,10 @@ mod tests {
         config.threshold_db = 0.0; // Very high threshold
         let signal = synthetic_signal(48000, 2.0, &[1.0]);
         let onsets = detect_onsets(&signal, &config);
-        assert!(onsets.is_empty(), "high threshold should reject quiet ticks");
+        assert!(
+            onsets.is_empty(),
+            "high threshold should reject quiet ticks"
+        );
     }
 
     #[test]
