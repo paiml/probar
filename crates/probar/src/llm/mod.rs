@@ -22,6 +22,7 @@ pub mod report;
 #[cfg(feature = "llm")]
 #[allow(missing_docs)]
 pub mod score;
+pub mod training_scorecard;
 
 pub use assertion::{LlmAssertion, LlmAssertionError, LlmAssertionResult};
 pub use client::{
@@ -61,4 +62,8 @@ pub use score::{
     MemoryScorecard, MetricScore, MetricThreshold, OutputLengthCategory, OutputLengthEntry,
     OutputLengthScorecard, PowerEfficiencyScore, PowerEfficiencyScorecard, ProfileEntry,
     ProfileScorecard, PromptCategory, RuntimeScore, Scorecard, ScoringContract,
+};
+pub use training_scorecard::{
+    compute_training_scorecard, format_training_scorecard_markdown, Bottleneck, Grade,
+    HardwareSpec, StepProfilerInput, TrainingScorecard,
 };
