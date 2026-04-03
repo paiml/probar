@@ -209,21 +209,27 @@ pub struct HardwareSpec {
 }
 
 impl HardwareSpec {
-    /// RTX 4060 Laptop (yoga).
+    /// RTX 4060 Laptop (yoga) for Qwen 1.5B NF4 training.
+    ///
+    /// Derived from measured roofline: 256 GB/s DRAM BW, Qwen 1.5B NF4 training
+    /// reads ~158 MB of weight data per effective token (NF4 packed weights ×
+    /// forward + backward passes, amortized over batch). At peak BW this gives
+    /// ~1620 tok/s theoretical, making 194 tok/s ≈ 12% efficiency (matches
+    /// measured 12.2% from profile-yoga-20260402.json).
     #[must_use]
     pub fn rtx_4060l() -> Self {
         Self {
             peak_bw_gb_s: 256.0,
-            bytes_per_token: 4096.0, // ~4KB/token for 1.5B model
+            bytes_per_token: 158_000_000.0, // ~158 MB/token (NF4 fwd+bwd amortized)
         }
     }
 
-    /// GB10 (gx10).
+    /// GB10 (gx10) for Qwen 1.5B NF4 training.
     #[must_use]
     pub fn gb10() -> Self {
         Self {
             peak_bw_gb_s: 273.0,
-            bytes_per_token: 4096.0,
+            bytes_per_token: 158_000_000.0,
         }
     }
 
