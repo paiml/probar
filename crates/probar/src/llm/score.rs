@@ -712,6 +712,169 @@ pub fn format_layer_markdown(scorecard: &LayerScorecard) -> String {
 }
 
 // =============================================================================
+// Per-training-step scoring (PMAT-485)
+// =============================================================================
+
+/// Bottleneck classification for training profiling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrainingBottleneck {
+    /// Memory bandwidth limited (DRAM loads dominate)
+    MemoryBw,
+    /// Compute limited (GPU utilization > 50%)
+    Compute,
+    /// Kernel launch overhead (too many small kernels)
+    Launch,
+    /// PCIe/H2D/D2H transfer limited
+    Transfer,
+}
+
+impl std::fmt::Display for TrainingBottleneck {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MemoryBw => f.write_str("memory_bw"),
+            Self::Compute => f.write_str("compute"),
+            Self::Launch => f.write_str("launch"),
+            Self::Transfer => f.write_str("transfer"),
+        }
+    }
+}
+
+/// Score for a single runtime's per-step training efficiency.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrainingStepScore {
+    /// Runtime name (e.g., "apr", "unsloth", "pytorch").
+    pub name: String,
+    /// Average milliseconds per training step.
+    pub ms_per_step: f64,
+    /// Training throughput in tokens/second.
+    pub tokens_per_sec: f64,
+    /// Wall coverage: fraction of step time accounted for by profiled phases.
+    pub wall_coverage: f64,
+    /// Classified bottleneck type.
+    pub bottleneck: TrainingBottleneck,
+    /// Number of hotspot layers (>1.5x average).
+    pub hotspot_layers: u32,
+    /// Score 0-100.
+    pub score: u8,
+    /// Letter grade.
+    pub grade: String,
+    /// Best in class flag.
+    pub best: bool,
+}
+
+/// Training step scorecard across runtimes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrainingStepScorecard {
+    /// Timestamp of analysis.
+    pub timestamp: String,
+    /// Model being trained.
+    pub model_name: String,
+    /// Per-runtime scores, sorted best-first.
+    pub runtimes: Vec<TrainingStepScore>,
+}
+
+/// Thresholds for training throughput scoring (Qwen 1.5B on RTX 4060L).
+const TRAINING_TOK_S_EXCELLENT: f64 = 6000.0; // unsloth-level
+const TRAINING_TOK_S_GOOD: f64 = 1500.0; // pytorch-gradacc level
+
+/// Classify bottleneck from profiling phase percentages.
+pub fn classify_bottleneck(
+    forward_pct: f64,
+    transfer_pct: f64,
+    _compute_util: f64,
+) -> TrainingBottleneck {
+    if transfer_pct > 30.0 {
+        TrainingBottleneck::Transfer
+    } else if forward_pct < 20.0 {
+        TrainingBottleneck::Launch
+    } else if _compute_util > 50.0 {
+        TrainingBottleneck::Compute
+    } else {
+        TrainingBottleneck::MemoryBw
+    }
+}
+
+/// Compute training step scores from profiling data.
+///
+/// `results` is a list of (name, tokens_per_sec, wall_coverage, bottleneck, hotspot_layers, ms_per_step).
+pub fn compute_training_step_scorecard(
+    results: &[(String, f64, f64, TrainingBottleneck, u32, f64)],
+    model_name: &str,
+    grades: &[(f64, String)],
+) -> TrainingStepScorecard {
+    let threshold = MetricThreshold {
+        excellent: TRAINING_TOK_S_EXCELLENT,
+        good: TRAINING_TOK_S_GOOD,
+        higher_is_better: true,
+    };
+
+    let mut runtimes: Vec<TrainingStepScore> = results
+        .iter()
+        .map(|(name, tok_s, wc, bn, hotspots, ms)| {
+            let raw_score = compute_metric_score(*tok_s, &threshold);
+            let grade = assign_grade(raw_score.into(), grades);
+            TrainingStepScore {
+                name: name.clone(),
+                ms_per_step: *ms,
+                tokens_per_sec: *tok_s,
+                wall_coverage: *wc,
+                bottleneck: *bn,
+                hotspot_layers: *hotspots,
+                score: raw_score,
+                grade,
+                best: false,
+            }
+        })
+        .collect();
+
+    // Sort descending by tokens/sec (best first)
+    runtimes.sort_by(|a, b| {
+        b.tokens_per_sec
+            .partial_cmp(&a.tokens_per_sec)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    if let Some(first) = runtimes.first_mut() {
+        first.best = true;
+    }
+
+    TrainingStepScorecard {
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        model_name: model_name.to_string(),
+        runtimes,
+    }
+}
+
+/// Format training step scorecard as aligned table.
+pub fn format_training_step_table(scorecard: &TrainingStepScorecard) -> String {
+    let mut lines = Vec::new();
+    lines.push(format!(
+        "Training Step Scorecard — {}",
+        scorecard.model_name
+    ));
+    lines.push(format!(
+        "{:<12} {:>10} {:>10} {:>5} {:>5} {:>10} {:>3}",
+        "Runtime", "tok/s", "ms/step", "WC%", "Score", "Bottleneck", "Grd"
+    ));
+    lines.push("-".repeat(62));
+
+    for rt in &scorecard.runtimes {
+        let star = if rt.best { "*" } else { " " };
+        lines.push(format!(
+            "{:<12}{star}{:>9.0} {:>10.1} {:>4.0}% {:>5} {:>10} {:>3}",
+            rt.name,
+            rt.tokens_per_sec,
+            rt.ms_per_step,
+            rt.wall_coverage * 100.0,
+            rt.score,
+            rt.bottleneck,
+            rt.grade,
+        ));
+    }
+
+    lines.join("\n")
+}
+
+// =============================================================================
 // Per-prompt-profile scoring
 // =============================================================================
 
