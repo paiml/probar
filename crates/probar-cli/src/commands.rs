@@ -523,6 +523,10 @@ pub struct LlmLoadArgs {
     #[arg(long)]
     pub expected_clock_mhz: Option<u32>,
 
+    /// Skip the pre-flight health check (not recommended)
+    #[arg(long)]
+    pub skip_health_check: bool,
+
     /// Path to JSONL dataset file for workload-driven benchmarking
     #[arg(long)]
     pub dataset: Option<PathBuf>,

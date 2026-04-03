@@ -249,11 +249,34 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
         println!("Validation:   {}", args.validate);
     }
 
-    // Health check
-    match client.health_check().await {
-        Ok(true) => println!("Health check passed"),
-        Ok(false) | Err(_) => {
-            eprintln!("Warning: health check failed, proceeding anyway");
+    // Health gate: verify endpoint is reachable before sending load (GH-37)
+    if args.skip_health_check {
+        eprintln!("Warning: health check skipped (--skip-health-check)");
+    } else {
+        let health_timeout = Duration::from_secs(5);
+        match tokio::time::timeout(health_timeout, client.health_check()).await {
+            Ok(Ok(true)) => println!("Health check passed"),
+            Ok(Ok(false)) => {
+                return Err(CliError::Generic(format!(
+                    "Health check failed: endpoint {} returned non-200 response. \
+                     Use --skip-health-check to bypass.",
+                    args.url
+                )));
+            }
+            Ok(Err(e)) => {
+                return Err(CliError::Generic(format!(
+                    "Health check failed: endpoint {} is unreachable: {e}. \
+                     Use --skip-health-check to bypass.",
+                    args.url
+                )));
+            }
+            Err(_) => {
+                return Err(CliError::Generic(format!(
+                    "Health check timed out after {health_timeout:?}: endpoint {} did not respond. \
+                     Use --skip-health-check to bypass.",
+                    args.url
+                )));
+            }
         }
     }
 
