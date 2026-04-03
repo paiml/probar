@@ -335,7 +335,7 @@ mod tests {
             sample_rate: 48000,
             ticks: vec![],
         };
-        let cloned = decision.clone();
+        let cloned = decision;
         assert_eq!(cloned.segment, "test");
         assert_eq!(cloned.fps, 24);
     }
@@ -349,7 +349,7 @@ mod tests {
             peak_anticipation_ms: 0.0,
             perceptual_lead_ms: 41.667,
         };
-        let cloned = tick.clone();
+        let cloned = tick;
         assert_eq!(cloned.bullet_index, 0);
         assert!((cloned.perceptual_lead_ms - 41.667).abs() < f64::EPSILON);
     }

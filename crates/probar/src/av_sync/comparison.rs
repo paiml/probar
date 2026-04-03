@@ -196,7 +196,7 @@ mod tests {
         times
             .iter()
             .enumerate()
-            .map(|(i, &t)| AudioOnset {
+            .map(|(_i, &t)| AudioOnset {
                 time_secs: t,
                 energy_db: -20.0,
                 sample_index: (t * 48000.0) as usize,

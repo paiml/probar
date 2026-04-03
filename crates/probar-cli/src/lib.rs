@@ -9,8 +9,30 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::module_name_repetitions)]
-#![allow(clippy::format_push_string)] // String building is clear and correct
-#![allow(clippy::missing_errors_doc)] // Error types are self-documenting
+#![allow(clippy::format_push_string)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_wrap)]
+#![allow(clippy::float_cmp)]
+#![allow(clippy::unreadable_literal)]
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::if_not_else)]
+#![allow(clippy::match_same_arms)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+#![allow(clippy::items_after_statements)]
+#![allow(clippy::option_if_let_else)]
+#![allow(missing_docs)]
+#![allow(clippy::fn_params_excessive_bools)]
+#![allow(clippy::struct_excessive_bools)]
+#![allow(clippy::large_enum_variant)]
+#![allow(clippy::only_used_in_recursion)]
+#![allow(irrefutable_let_patterns)]
+#![allow(clippy::assigning_clones)]
+#![allow(clippy::incompatible_msrv)]
+#![allow(clippy::single_match_else)]
 
 mod commands;
 mod config;

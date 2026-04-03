@@ -459,7 +459,7 @@ pub fn format_table(scorecard: &Scorecard) -> String {
             "{:<12} {:>8} {:>8} {:>8} {:>8} {:>8}  {:>10}",
             "", "tok/s", "P50", "P50", "P99", "Rate", "Score"
         ));
-        lines.push(format!("{}", "-".repeat(74)));
+        lines.push("-".repeat(74));
 
         for rt in &scorecard.runtimes {
             let decode = format_metric_cell(rt.metrics.get("decode_tok_s"));
@@ -483,7 +483,7 @@ pub fn format_table(scorecard: &Scorecard) -> String {
             "{:<12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}  {:>10}",
             "", "tok/s", "tok/s", "P50", "P50", "ratio", "Rate", "Score"
         ));
-        lines.push(format!("{}", "-".repeat(88)));
+        lines.push("-".repeat(88));
 
         for rt in &scorecard.runtimes {
             let aggr = format_metric_cell(rt.metrics.get("aggregate_tok_s"));
@@ -674,7 +674,7 @@ pub fn format_layer_table(scorecard: &LayerScorecard) -> String {
         "{:<20} {:>12} {:>8} {:>8} {:>8}",
         "Runtime", "us/layer", "Layers", "Score", "Grade"
     ));
-    lines.push(format!("{}", "-".repeat(60)));
+    lines.push("-".repeat(60));
 
     for rt in &scorecard.runtimes {
         let star = if rt.best { "*" } else { " " };
@@ -1113,7 +1113,7 @@ pub fn format_profile_table(scorecard: &ProfileScorecard) -> String {
         "{:<20} {:>8} {:>8} {:>10} {:>10} {:>8}  {:>10}",
         "Runtime", "Profile", "Tokens", "Decode", "TTFT", "ITL", "Score"
     ));
-    lines.push(format!("{}", "-".repeat(82)));
+    lines.push("-".repeat(82));
 
     for entry in &scorecard.entries {
         lines.push(format!(
@@ -1136,7 +1136,7 @@ pub fn format_profile_table(scorecard: &ProfileScorecard) -> String {
             "{:<20} {:>8} {:>8} {:>10} {:>8}",
             "Runtime", "Best", "Worst", "Consistency", "Grade"
         ));
-        lines.push(format!("{}", "-".repeat(58)));
+        lines.push("-".repeat(58));
         for cs in &scorecard.consistency {
             lines.push(format!(
                 "{:<20} {:>8.1} {:>8.1} {:>9.0}% {:>8}",
@@ -1279,7 +1279,7 @@ pub fn format_correctness_table(scorecard: &CorrectnessScorecard) -> String {
         "{:<24} {:>10} {:>8} {:>8} {:>8} {:>8}",
         "Runtime", "Pass Rate", "Passed", "Total", "Score", "Grade"
     ));
-    lines.push(format!("{}", "-".repeat(70)));
+    lines.push("-".repeat(70));
 
     for rt in &scorecard.runtimes {
         let star = if rt.best { "*" } else { " " };
@@ -1471,7 +1471,7 @@ pub fn format_output_length_table(scorecard: &OutputLengthScorecard) -> String {
         "{:<24} {:>8} {:>8} {:>8} {:>10} {:>8} {:>8}",
         "Runtime", "Output", "Count", "AvgTok", "Decode", "ITL", "Score"
     ));
-    lines.push(format!("{}", "-".repeat(80)));
+    lines.push("-".repeat(80));
 
     for e in &scorecard.entries {
         lines.push(format!(
@@ -1608,7 +1608,7 @@ pub fn format_memory_table(scorecard: &MemoryScorecard) -> String {
         "{:<24} {:>10} {:>10} {:>12} {:>8} {:>8}",
         "Runtime", "VRAM MB", "Total MB", "tok/s/GB", "Score", "Grade"
     ));
-    lines.push(format!("{}", "-".repeat(76)));
+    lines.push("-".repeat(76));
 
     for rt in &scorecard.runtimes {
         let star = if rt.best { "*" } else { " " };
@@ -1730,7 +1730,7 @@ pub fn format_cold_start_table(scorecard: &ColdStartScorecard) -> String {
         "{:<24} {:>12} {:>8} {:>8}",
         "Runtime", "Start (ms)", "Score", "Grade"
     ));
-    lines.push(format!("{}", "-".repeat(56)));
+    lines.push("-".repeat(56));
 
     for rt in &scorecard.runtimes {
         let star = if rt.best { "*" } else { " " };
@@ -1853,7 +1853,7 @@ pub fn format_power_table(scorecard: &PowerEfficiencyScorecard) -> String {
         "{:<24} {:>10} {:>12} {:>10} {:>8} {:>8}",
         "Runtime", "Power (W)", "mJ/token", "tok/s/W", "Score", "Grade"
     ));
-    lines.push(format!("{}", "-".repeat(76)));
+    lines.push("-".repeat(76));
 
     for rt in &scorecard.runtimes {
         let star = if rt.best { "*" } else { " " };
@@ -2030,7 +2030,7 @@ pub fn format_scaling_table(scorecard: &ConcurrencyScalingScorecard) -> String {
         "{:<24} {:>10} {:>12} {:>8} {:>12} {:>8} {:>8}",
         "Runtime", "c=1 tok/s", "Peak Aggr", "Peak c", "Efficiency", "Score", "Grade"
     ));
-    lines.push(format!("{}", "-".repeat(88)));
+    lines.push("-".repeat(88));
 
     for rt in &scorecard.runtimes {
         let star = if rt.best { "*" } else { " " };
@@ -2269,7 +2269,7 @@ mod tests {
     fn test_no_single_metric_dominates() {
         // F-SCORE-002: zeroing any one metric cannot drop composite below 40
         let contract = ScoringContract::default();
-        for (zeroed_metric, _) in &contract.interactive_weights {
+        for zeroed_metric in contract.interactive_weights.keys() {
             let mut weighted_sum = 0.0;
             for (metric, weight) in &contract.interactive_weights {
                 let score = if metric == zeroed_metric { 0.0 } else { 100.0 };
@@ -2311,17 +2311,14 @@ mod tests {
             &[
                 (result_a.clone(), "a.json".into()),
                 (result_b.clone(), "b.json".into()),
-                (result_c.clone(), "c.json".into()),
+                (result_c, "c.json".into()),
             ],
             None,
             &contract,
         );
 
         let card_ab = compute_scorecard(
-            &[
-                (result_a.clone(), "a.json".into()),
-                (result_b.clone(), "b.json".into()),
-            ],
+            &[(result_a, "a.json".into()), (result_b, "b.json".into())],
             None,
             &contract,
         );

@@ -1127,11 +1127,7 @@ fn compute_tail_analysis(records: &[RequestRecord], spike_threshold_mult: f64) -
             ratio < 0.95
         });
 
-    let mut itls = compute_per_token_latencies(
-        &multi_token.iter().copied().collect::<Vec<_>>(),
-        has_timestamps,
-        is_streaming,
-    );
+    let mut itls = compute_per_token_latencies(&multi_token.to_vec(), has_timestamps, is_streaming);
     itls.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     let mut ttfbs: Vec<f64> = success_records
@@ -1191,13 +1187,11 @@ fn compute_tail_analysis(records: &[RequestRecord], spike_threshold_mult: f64) -
     let spike_threshold_ms = itl_p50 * spike_threshold_mult;
     let mut spikes = Vec::new();
     for (idx, &itl) in itls.iter().enumerate() {
-        if itl > spike_threshold_ms && spike_threshold_ms > 0.0 {
-            if spikes.len() < 20 {
-                spikes.push(LatencySpike {
-                    request_idx: idx,
-                    itl_ms: itl,
-                });
-            }
+        if itl > spike_threshold_ms && spike_threshold_ms > 0.0 && spikes.len() < 20 {
+            spikes.push(LatencySpike {
+                request_idx: idx,
+                itl_ms: itl,
+            });
         }
     }
 
@@ -1300,7 +1294,7 @@ fn compute_per_token_latencies(
             .map(|r| {
                 let first = &r.token_timestamps[0];
                 let last = &r.token_timestamps[r.token_timestamps.len() - 1];
-                let decode_ms = (*last - *first).as_secs_f64() * 1000.0;
+                let decode_ms = (*last).checked_sub(*first).unwrap().as_secs_f64() * 1000.0;
                 decode_ms / (r.token_timestamps.len() - 1) as f64
             })
             .collect()
@@ -1331,7 +1325,7 @@ fn build_request_details(records: &[RequestRecord]) -> Vec<RequestDetail> {
             let itl_ms = if r.token_timestamps.len() >= 2 {
                 let first = &r.token_timestamps[0];
                 let last = &r.token_timestamps[r.token_timestamps.len() - 1];
-                let decode_ms = (*last - *first).as_secs_f64() * 1000.0;
+                let decode_ms = (*last).checked_sub(*first).unwrap().as_secs_f64() * 1000.0;
                 decode_ms / (r.token_timestamps.len() - 1) as f64
             } else if r.tokens >= 2 {
                 let decode_ms = (r.latency.as_secs_f64() - r.ttfb.as_secs_f64()) * 1000.0;

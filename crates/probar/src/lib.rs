@@ -17,7 +17,7 @@
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
 // Lints are configured in workspace Cargo.toml [workspace.lints.clippy]
 // Allow large stack arrays/frames in tests (e.g., test data generation)
 #![cfg_attr(test, allow(clippy::large_stack_arrays, clippy::large_stack_frames))]

@@ -232,7 +232,7 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
         for p in &mut prompts {
             p.max_tokens = Some(max_tokens);
         }
-        println!("Max tokens:   {}", max_tokens);
+        println!("Max tokens:   {max_tokens}");
     }
 
     println!(
@@ -365,7 +365,7 @@ pub async fn execute_llm_load(args: &LlmLoadArgs) -> CliResult<()> {
         println!("Decode tok/s: {:.1}", result.decode_tok_per_sec);
         println!("ITL P50:      {:.1} ms", result.itl_p50_ms);
         if let (Some(us_per_layer), Some(n)) = (result.decode_us_per_layer, result.num_layers) {
-            println!("µs/layer:     {:.1} ({n} layers)", us_per_layer);
+            println!("µs/layer:     {us_per_layer:.1} ({n} layers)");
         }
     }
     if result.tpot_p50_ms > 0.0 {
@@ -573,7 +573,7 @@ pub fn execute_llm_score(args: &LlmScoreArgs) -> CliResult<()> {
         if let Some(results) = by_concurrency.get(c) {
             let scorecard = jugar_probar::llm::compute_scorecard(
                 results,
-                c1_results.map(|v| v.as_slice()),
+                c1_results.map(std::vec::Vec::as_slice),
                 &contract,
             );
 
@@ -837,16 +837,14 @@ fn load_all_results_from_dir(
         if path.extension().and_then(|e| e.to_str()) == Some("json") {
             let content =
                 std::fs::read_to_string(&path).map_err(|e| CliError::Generic(e.to_string()))?;
-            match serde_json::from_str::<jugar_probar::llm::LoadTestResult>(&content) {
-                Ok(result) => {
-                    let filename = path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("")
-                        .to_string();
-                    results.push((result, filename));
-                }
-                Err(_) => {} // silently skip non-LoadTestResult JSON files
+            if let Ok(result) = serde_json::from_str::<jugar_probar::llm::LoadTestResult>(&content)
+            {
+                let filename = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                results.push((result, filename));
             }
         }
     }
@@ -1022,14 +1020,14 @@ fn write_bench_output(
 }
 
 /// Resolve prompts from profile name or file path.
-/// PMAT-077: Generate prompts with heterogeneous max_tokens from a distribution.
+/// PMAT-077: Generate prompts with heterogeneous `max_tokens` from a distribution.
 ///
 /// Supported distributions:
 /// - `uniform:MIN,MAX` — uniform spread across [MIN, MAX]
 /// - `fixed:N` — all requests get N (same as --max-tokens N)
 ///
 /// Generates enough prompts (concurrency × 256) to cover long benchmarks
-/// with varied max_tokens values for staggered slot completion.
+/// with varied `max_tokens` values for staggered slot completion.
 fn apply_max_tokens_distribution(
     base_prompts: &[jugar_probar::llm::ChatRequest],
     distribution: &str,
@@ -1356,11 +1354,8 @@ pub async fn execute_llm_sweep(args: &LlmSweepArgs) -> CliResult<()> {
     };
 
     println!("\n--- Sweep Summary ---");
-    println!(
-        "Optimal:      c={} ({:.1} req/s)",
-        optimal_concurrency, best_throughput
-    );
-    println!("Pareto front: {:?}", pareto_frontier);
+    println!("Optimal:      c={optimal_concurrency} ({best_throughput:.1} req/s)");
+    println!("Pareto front: {pareto_frontier:?}");
 
     if let Some(ref output_path) = args.output {
         let json = serde_json::to_string_pretty(&sweep_result)
@@ -1376,7 +1371,7 @@ pub async fn execute_llm_sweep(args: &LlmSweepArgs) -> CliResult<()> {
 // Feature 4: Dataset loading and generation
 // =============================================================================
 
-/// Load a JSONL dataset file into ChatRequest prompts and compute stats.
+/// Load a JSONL dataset file into `ChatRequest` prompts and compute stats.
 fn load_dataset(
     path: &Path,
 ) -> CliResult<(
@@ -1428,7 +1423,7 @@ fn load_dataset(
 
         let max_tokens = entry
             .get("max_tokens")
-            .and_then(|v| v.as_u64())
+            .and_then(serde_json::Value::as_u64)
             .unwrap_or(128) as u32;
 
         // Estimate input tokens (words * 1.3)
@@ -1438,8 +1433,8 @@ fn load_dataset(
             .sum();
         let estimated_tokens = (input_tokens as f64 * 1.3) as u32;
 
-        input_lens.push(estimated_tokens as f64);
-        max_tokens_vals.push(max_tokens as f64);
+        input_lens.push(f64::from(estimated_tokens));
+        max_tokens_vals.push(f64::from(max_tokens));
 
         prompts.push(jugar_probar::llm::ChatRequest {
             model: String::new(),
@@ -1535,7 +1530,7 @@ fn sample_lognormal(state: &mut u64, mean: f64, stddev: f64) -> f64 {
     let u1 = next_uniform(state);
     let u2 = next_uniform(state);
     let z = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
-    (mean + stddev * z).max(1.0)
+    stddev.mul_add(z, mean).max(1.0)
 }
 
 fn next_uniform(state: &mut u64) -> f64 {

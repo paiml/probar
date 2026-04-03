@@ -531,7 +531,7 @@ pub struct LlmLoadArgs {
     #[arg(long)]
     pub dataset: Option<PathBuf>,
 
-    /// Override max_tokens for all requests (e.g., --max-tokens 128)
+    /// Override `max_tokens` for all requests (e.g., --max-tokens 128)
     #[arg(long)]
     pub max_tokens: Option<u32>,
 
@@ -647,7 +647,7 @@ pub struct LlmScoreArgs {
     #[arg(short, long)]
     pub concurrency: Option<usize>,
 
-    /// Filter results by platform (matches runtime_name substring)
+    /// Filter results by platform (matches `runtime_name` substring)
     #[arg(long)]
     pub platform: Option<String>,
 
@@ -763,7 +763,7 @@ pub struct ExperimentCompareArgs {
     /// Second run ID
     pub run_b: String,
 
-    /// Metric to compare (e.g., eval_accuracy, eval_loss)
+    /// Metric to compare (e.g., `eval_accuracy`, `eval_loss`)
     #[arg(short, long, default_value = "eval_loss")]
     pub metric: String,
 
@@ -854,11 +854,11 @@ pub struct LlmGenDatasetArgs {
     #[arg(long, default_value = "64")]
     pub input_stddev: f64,
 
-    /// Mean output (max_tokens) count
+    /// Mean output (`max_tokens`) count
     #[arg(long, default_value = "128")]
     pub output_mean: f64,
 
-    /// Stddev of output (max_tokens) count
+    /// Stddev of output (`max_tokens`) count
     #[arg(long, default_value = "96")]
     pub output_stddev: f64,
 

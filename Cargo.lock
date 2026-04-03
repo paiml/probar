@@ -2152,7 +2152,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "trueno 0.15.0",
+ "trueno 0.16.5",
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -2910,6 +2910,17 @@ dependencies = [
  "rusty-fork",
  "tempfile",
  "unarray",
+]
+
+[[package]]
+name = "provable-contracts-macros"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a79b3496cd98fb9767f6ee845a4fda80f3b4a18de4a1477d8a59d527f2e98ac"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -4199,9 +4210,9 @@ dependencies = [
 
 [[package]]
 name = "trueno"
-version = "0.15.0"
+version = "0.16.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85e19fa22753d395f043b205999122520efd45a33e0867d137f20b777ad794ef"
+checksum = "aef9a7f78a2c56f69a831812f4b82fae90ed5c1451301501a7f1b7af90a789f7"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -4210,8 +4221,10 @@ dependencies = [
  "hostname",
  "num_cpus",
  "pollster",
+ "provable-contracts-macros",
  "serde",
  "serde_json",
+ "serde_yaml_ng",
  "thiserror 2.0.18",
  "toml 0.8.23",
  "trueno-quant",

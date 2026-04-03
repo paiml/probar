@@ -1064,7 +1064,7 @@ mod tests {
             item_count: 5000,
         };
         let msg = err.to_string();
-        assert!(msg.contains("5"));
+        assert!(msg.contains('5'));
         assert!(msg.contains("1000"));
         assert!(msg.contains("test"));
         assert!(msg.contains("5000"));

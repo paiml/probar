@@ -63,7 +63,7 @@ fn bench_soft_assertions_verify(c: &mut Criterion) {
             for i in 0..50 {
                 soft.assert_eq(&i, &(i + 1), "mismatch");
             }
-            black_box(soft.verify());
+            let _ = black_box(soft.verify());
         });
     });
 }

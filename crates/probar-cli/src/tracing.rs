@@ -538,6 +538,7 @@ impl Flamegraph {
         out
     }
 
+    #[allow(clippy::self_only_used_in_recursion)]
     fn fold_node(&self, out: &mut String, node: &FlamegraphNode, prefix: &str) {
         let path = if prefix.is_empty() {
             node.name.clone()

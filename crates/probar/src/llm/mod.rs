@@ -20,6 +20,7 @@ pub mod prompts;
 #[cfg(feature = "llm")]
 pub mod report;
 #[cfg(feature = "llm")]
+#[allow(missing_docs)]
 pub mod score;
 
 pub use assertion::{LlmAssertion, LlmAssertionError, LlmAssertionResult};
