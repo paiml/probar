@@ -455,7 +455,7 @@ fn detect_regressions(
 pub fn format_training_scorecard_markdown(sc: &TrainingScorecard) -> String {
     let mut s = String::new();
     s.push_str("## Training Scorecard\n\n");
-    s.push_str(&format!("| Metric | Value |\n|--------|-------|\n"));
+    s.push_str("| Metric | Value |\n|--------|-------|\n");
     s.push_str(&format!("| Grade | **{}** |\n", sc.grade));
     s.push_str(&format!("| Efficiency | {:.1}% |\n", sc.efficiency * 100.0));
     s.push_str(&format!("| Bottleneck | {} |\n", sc.bottleneck));
