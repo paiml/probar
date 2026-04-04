@@ -509,6 +509,128 @@ pub fn format_training_scorecard_markdown(sc: &TrainingScorecard) -> String {
     s
 }
 
+// ─── Parity comparison (PMAT-487) ───
+
+/// Parity profile from a single runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParityProfile {
+    pub runtime: String,
+    pub throughput_tok_s: f64,
+    pub step_time_ms: f64,
+    pub kernel_launches_per_step: usize,
+    pub ops: BTreeMap<String, f64>, // op_name → mean_ms
+}
+
+/// Parity gap between APR and a baseline runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParityGap {
+    pub op: String,
+    pub apr_ms: f64,
+    pub baseline_ms: f64,
+    pub ratio: f64, // apr_ms / baseline_ms (>1 = APR slower)
+}
+
+/// Parity comparison result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParityComparison {
+    pub apr_runtime: String,
+    pub baseline_runtime: String,
+    pub throughput_ratio: f64, // baseline_tok_s / apr_tok_s
+    pub launch_ratio: f64,     // apr_launches / baseline_launches
+    pub top_gaps: Vec<ParityGap>,
+    pub parity_achieved: bool, // all ops within 10%
+}
+
+/// Compare APR against a baseline runtime for parity analysis.
+///
+/// Identifies the top operation gaps (where APR is slowest relative to baseline)
+/// and determines whether parity is achieved (all ops within 10%).
+#[must_use]
+pub fn compute_parity_comparison(
+    apr: &ParityProfile,
+    baseline: &ParityProfile,
+) -> ParityComparison {
+    let throughput_ratio = if apr.throughput_tok_s > 0.0 {
+        baseline.throughput_tok_s / apr.throughput_tok_s
+    } else {
+        0.0
+    };
+
+    let launch_ratio = if baseline.kernel_launches_per_step > 0 {
+        apr.kernel_launches_per_step as f64 / baseline.kernel_launches_per_step as f64
+    } else {
+        0.0
+    };
+
+    // Find per-op gaps
+    let mut gaps = Vec::new();
+    for (op, &apr_ms) in &apr.ops {
+        let baseline_ms = baseline.ops.get(op).copied().unwrap_or(0.0);
+        if apr_ms > 0.0 && baseline_ms > 0.0 {
+            let ratio = apr_ms / baseline_ms;
+            gaps.push(ParityGap {
+                op: op.clone(),
+                apr_ms,
+                baseline_ms,
+                ratio,
+            });
+        }
+    }
+
+    gaps.sort_by(|a, b| {
+        b.ratio
+            .partial_cmp(&a.ratio)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let parity_achieved = gaps.iter().all(|g| g.ratio <= 1.10);
+    gaps.truncate(5); // top 5
+
+    ParityComparison {
+        apr_runtime: apr.runtime.clone(),
+        baseline_runtime: baseline.runtime.clone(),
+        throughput_ratio,
+        launch_ratio,
+        top_gaps: gaps,
+        parity_achieved,
+    }
+}
+
+/// Format parity comparison as Markdown.
+#[must_use]
+pub fn format_parity_markdown(comp: &ParityComparison) -> String {
+    let mut s = String::new();
+    s.push_str(&format!(
+        "## Parity: {} vs {}\n\n",
+        comp.apr_runtime, comp.baseline_runtime
+    ));
+    s.push_str(&format!(
+        "- **Throughput gap**: {:.1}x ({} is {:.1}x faster)\n",
+        comp.throughput_ratio, comp.baseline_runtime, comp.throughput_ratio
+    ));
+    s.push_str(&format!(
+        "- **Kernel launches**: {:.1}x (APR launches {:.1}x more)\n",
+        comp.launch_ratio, comp.launch_ratio
+    ));
+    s.push_str(&format!(
+        "- **Parity achieved**: {}\n",
+        if comp.parity_achieved { "YES" } else { "NO" }
+    ));
+
+    if !comp.top_gaps.is_empty() {
+        s.push_str("\n### Top Gaps\n\n");
+        s.push_str("| Op | APR (ms) | Baseline (ms) | Ratio |\n");
+        s.push_str("|-----|---------|--------------|-------|\n");
+        for g in &comp.top_gaps {
+            s.push_str(&format!(
+                "| {} | {:.1} | {:.1} | {:.1}x |\n",
+                g.op, g.apr_ms, g.baseline_ms, g.ratio
+            ));
+        }
+    }
+
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -64,6 +64,7 @@ pub use score::{
     ProfileScorecard, PromptCategory, RuntimeScore, Scorecard, ScoringContract,
 };
 pub use training_scorecard::{
-    compute_training_scorecard, format_training_scorecard_markdown, Bottleneck, Grade,
-    HardwareSpec, StepProfilerInput, TrainingScorecard,
+    compute_parity_comparison, compute_training_scorecard, format_parity_markdown,
+    format_training_scorecard_markdown, Bottleneck, Grade, HardwareSpec, ParityComparison,
+    ParityGap, ParityProfile, StepProfilerInput, TrainingScorecard,
 };
