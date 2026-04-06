@@ -29,6 +29,7 @@ impl TestSuite {
     /// Get the number of tests
     #[must_use]
     pub fn test_count(&self) -> usize {
+        contract_pre_test_result_reporting!();
         self.tests.len()
     }
 }
@@ -77,6 +78,7 @@ impl TestResult {
     /// Create a passing test result
     #[must_use]
     pub fn pass(name: impl Into<String>) -> Self {
+        contract_pre_test_result_reporting!();
         Self {
             name: name.into(),
             passed: true,
@@ -88,6 +90,7 @@ impl TestResult {
     /// Create a failing test result
     #[must_use]
     pub fn fail(name: impl Into<String>, error: impl Into<String>) -> Self {
+        contract_pre_test_result_reporting!();
         Self {
             name: name.into(),
             passed: false,

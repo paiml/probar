@@ -102,6 +102,7 @@ impl SoftAssertions {
 
     /// Assert two values are equal
     pub fn assert_eq<T: PartialEq + Debug>(&mut self, actual: &T, expected: &T, message: &str) {
+        contract_pre_soft_assertion_collection!();
         self.assertion_count += 1;
         if actual != expected {
             let failure_msg = format!("{message}: expected {expected:?}, got {actual:?}");
@@ -268,6 +269,7 @@ impl SoftAssertions {
     ///
     /// Returns error containing all failure messages if any assertions failed
     pub fn verify(&self) -> Result<(), SoftAssertionError> {
+        contract_pre_soft_assertion_collection!();
         if self.failures.is_empty() {
             Ok(())
         } else {

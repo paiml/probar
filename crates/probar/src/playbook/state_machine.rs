@@ -98,6 +98,7 @@ impl<'a> StateMachineValidator<'a> {
 
     /// Perform full validation of the state machine.
     pub fn validate(&self) -> ValidationResult {
+        contract_pre_playbook_state_machine!();
         let mut issues = Vec::new();
 
         // Compute reachability
@@ -134,6 +135,7 @@ impl<'a> StateMachineValidator<'a> {
 
     /// Compute which states are reachable from the initial state using BFS.
     fn compute_reachability(&self) -> ReachabilityInfo {
+        contract_pre_playbook_state_machine!();
         let mut reachable = HashSet::new();
         let mut queue = VecDeque::new();
 
@@ -201,6 +203,7 @@ impl<'a> StateMachineValidator<'a> {
 
     /// Check for non-deterministic transitions.
     fn check_determinism(&self, issues: &mut Vec<ValidationIssue>) -> DeterminismInfo {
+        contract_pre_playbook_state_machine!();
         // Group transitions by (source_state, event)
         let mut transition_map: HashMap<(String, String), Vec<&Transition>> = HashMap::new();
 

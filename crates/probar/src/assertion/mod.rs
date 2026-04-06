@@ -62,6 +62,7 @@ impl Assertion {
     /// Assert two values are equal
     #[must_use]
     pub fn equals<T: PartialEq + Debug>(expected: &T, actual: &T) -> AssertionResult {
+        contract_pre_assertion_evaluation!();
         if expected == actual {
             AssertionResult::pass()
         } else {
@@ -82,6 +83,7 @@ impl Assertion {
     /// Assert a value is in a range
     #[must_use]
     pub fn in_range(value: f64, min: f64, max: f64) -> AssertionResult {
+        contract_pre_assertion_evaluation!();
         if value >= min && value <= max {
             AssertionResult::pass()
         } else {
@@ -152,6 +154,7 @@ impl Assertion {
     /// Assert two floats are approximately equal
     #[must_use]
     pub fn approx_eq(a: f64, b: f64, epsilon: f64) -> AssertionResult {
+        contract_pre_assertion_evaluation!();
         if (a - b).abs() < epsilon {
             AssertionResult::pass()
         } else {

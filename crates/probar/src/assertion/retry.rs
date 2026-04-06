@@ -60,6 +60,7 @@ impl RetryConfig {
     /// Create a new retry config with timeout
     #[must_use]
     pub const fn new(timeout: Duration) -> Self {
+        contract_pre_retry_assertion!();
         Self {
             timeout,
             poll_interval: Duration::from_millis(100),
@@ -189,6 +190,7 @@ where
     /// Returns error if the assertion fails after all retries
     #[allow(unused_assignments)]
     pub fn verify(&self) -> Result<RetryResult, RetryError> {
+        contract_pre_retry_assertion!();
         let start = Instant::now();
         let mut attempts = 0;
         let mut last_error: Option<String> = None;

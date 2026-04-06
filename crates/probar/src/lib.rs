@@ -22,6 +22,11 @@
 // Allow large stack arrays/frames in tests (e.g., test data generation)
 #![cfg_attr(test, allow(clippy::large_stack_arrays, clippy::large_stack_frames))]
 
+// Contract assertions from YAML (pv codegen)
+#[macro_use]
+#[allow(unused_macros, clippy::duplicated_attributes)]
+mod generated_contracts;
+
 /// Brick Architecture: Tests ARE the Interface (PROBAR-SPEC-009)
 ///
 /// Core abstraction where UI components are defined by test assertions.
